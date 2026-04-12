@@ -16,7 +16,8 @@
 4. [Control Deployment Lifecycle (5 States)](#4-control-deployment-lifecycle-5-states)
 5. [Policy Lifecycle (6 States)](#5-policy-lifecycle-6-states)
 6. [Policy Exception Lifecycle (4 States)](#6-policy-exception-lifecycle-4-states)
-7. [Cross-Lifecycle Cascade Rules](#7-cross-lifecycle-cascade-rules)
+7. [Threat Model Lifecycle (7 States)](#7-threat-model-lifecycle-7-states)
+8. [Cross-Lifecycle Cascade Rules](#8-cross-lifecycle-cascade-rules)
 
 ---
 
@@ -254,7 +255,31 @@ Unscheduled reviews triggered by: regulatory change, incident, audit finding, >5
 
 ---
 
-## 7. Cross-Lifecycle Cascade Rules
+## 7. Threat Model Lifecycle (7 States)
+
+### State Machine Diagram
+
+```
+[Scope] → [Decomposition] → [Threat_Analysis] → [Mitigation_Design] → [Review] ⇄ [Active]
+                                                                          ↓
+                                                                     [Deprecated]
+```
+
+### Transition Rules
+
+| From | To | Gate Preconditions |
+|---|---|---|
+| Scope | Decomposition | Model MUST have ≥ 1 linked `attack_surface` asset. |
+| Decomposition | Threat_Analysis | Model MUST have ≥ 1 trust boundary or component defined. |
+| Threat_Analysis | Mitigation_Design | Model MUST have ≥ 1 identified threat scenario. |
+| Mitigation_Design | Review | All `Critical` and `High` severity threat scenarios MUST be assigned a valid mitigation OR explicitly flagged for Risk Promotion. |
+| Review | Active | Enforces TINV-2: Requires concurrent sign-off from `AppSec` and `System_Owner`. Enforces TINV-1: Blocks if any unhandled scenarios remain. |
+| Active | Review | Handled via cascade: A linked control fails, OR the underlying architecture changes. Automatically strips sign-off. |
+| Active | Deprecated | Feature or system decommissioned. Drops mapping to enterprise controls. |
+
+---
+
+## 8. Cross-Lifecycle Cascade Rules
 
 State changes in one lifecycle propagate to related entities. These cascades are the mechanism by which the platform maintains consistency across interconnected state machines.
 
@@ -281,6 +306,13 @@ State changes in one lifecycle propagate to related entities. These cascades are
 |---|---|---|---|---|
 | Control test failure | Control Deployment | Issue auto-created | Risk | Issue created linked to deployment (CI-1). CE re-assessment triggered (CI-2). If issue breaches SLA → evaluate for risk promotion (CI-3). |
 | Issue remediation | Issue | Control Deployment | Risk | CE re-assessment on linked deployment. If CE improves and linked risk has locked residual → risk flagged as eligible for update. |
+
+### Threat Model → Risk Cascades
+
+| Trigger | Source | Intermediate | Target | Cascade Behaviour |
+|---|---|---|---|---|
+| Control test failure | Control Deployment | Threat Scenario | Threat Model & Risk | TINV-4: Failed control immediately re-opens the `Threat_Scenario` to 'Identified'. Threat model transitions from Active back to Review. `System_Owner` notified. If unaddressed > 15bd AND severity ≥ Medium → auto-promotes to formal Risk. |
+| Threat scenario unmitigated | Threat Scenario | — | Risk | Threat scenario without mitigation assigned (and NOT eligible for local Low acceptance) automatically creates mapped Risk Record in register. |
 
 ### Acceptance Expiry Cascade
 

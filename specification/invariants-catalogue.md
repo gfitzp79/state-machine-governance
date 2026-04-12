@@ -12,7 +12,7 @@
 
 | Column | Meaning |
 |---|---|
-| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy. |
+| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy, TINV = Threat Modeling. |
 | **Rule** | The constraint expressed as a natural-language rule. |
 | **Enforcement Layer** | Where the constraint is implemented: Schema (DB constraint), Service (API/business logic), or Both. |
 | **Enforcement Mechanism** | The specific technical mechanism that prevents violation. |
@@ -74,6 +74,17 @@
 
 ---
 
+## Threat Management Invariants (TINV)
+
+| ID | Rule | Enforcement Layer | Enforcement Mechanism | Violation Behaviour | Spec Ref |
+|---|---|---|---|---|---|
+| TINV-1 | Threat Scenario MUST have mitigation OR local acceptance (Low) OR risk promotion (Medium+) | Service | Phase validation gate enforces that all scenarios must resolve to an allowed end-state before a threat model can be signed off. | Phase transition from Review to Active blocked | §19.3 |
+| TINV-2 | Threat Model CANNOT proceed from Review to Active without AppSec and System_Owner sign-off | Service | Review gate requires both user identities to explicitly log a signature. | Phase transition blocked until both signatures present | §19.3 |
+| TINV-3 | Medium, High, or Critical threat scenarios CANNOT be locally "Accepted" | Service | Rejects any `status = Accepted` change event if `inherent_severity >= Medium`, unless the promotion flag and `promoted_risk_id` are supplied simultaneously. | API returns HTTP 400; promotion required | §19.3 |
+| TINV-4 | Full Mitigation of a threat scenario REQUIRES an active, linked control_deployment | Schema + Service | The `threat_mitigation_links` schema relies on FKs to `controls` table. The service layer verifies the control is active. | Cannot flag scenario as `status = Mitigated` | §19.3 |
+
+---
+
 ## Implementation Guidance
 
 ### Enforcement Priority
@@ -99,7 +110,7 @@ For schema-layer invariants, test both through the API and via direct SQL to con
 
 When adding invariants to this catalogue:
 
-1. Assign the next sequential ID in the appropriate domain (RINV, CINV, PINV)
+1. Assign the next sequential ID in the appropriate domain (RINV, CINV, PINV, TINV)
 2. Identify the enforcement layer (Schema, Service, or Both)
 3. Define the specific mechanism (constraint type, gate check, trigger)
 4. Define the violation behaviour (what the user sees or what the system does)

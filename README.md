@@ -75,6 +75,10 @@ Key enforcement rules: Accept requires time-bound expiry (NOT NULL). Critical ri
 
 Control failure → linked risk scores frozen. Policy update → mapped controls flagged for re-assessment. Open issues above threshold → risk cannot close. Full cascade rules: [State Transitions §7](./specification/state-transitions.md#7-cross-lifecycle-cascade-rules).
 
+### Threat Management & Engineering Integration
+
+Engineering state (STRIDE threat models) is bidirectionally linked to GRC state. Unmitigated critical threats promote to formal Risk Records. If a production control mitigating a threat fails, the threat automatically reopens.
+
 ### Agent Identity
 
 System-signed tokens (OAuth 2.0 / SPIFFE/SPIRE). Scope-bounded permissions. Proposal/execution separation. Immutable audit. Out-of-scope attempts trigger suspension. Full detail: [Reference Architecture](./architecture/reference-architecture.md).
