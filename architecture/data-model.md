@@ -19,9 +19,10 @@
 5. [Domain 4: Treatment Management](#5-domain-4-treatment-management)
 6. [Domain 5: Policy and Standards](#6-domain-5-policy-and-standards)
 7. [Domain 6: Vendor and Third-Party Risk](#7-domain-6-vendor-and-third-party-risk)
-8. [Foreign Key Relationship Map](#8-foreign-key-relationship-map)
-9. [Schema-Level Constraint Summary](#9-schema-level-constraint-summary)
-10. [Invariant Enforcement at Schema Layer](#10-invariant-enforcement-at-schema-layer)
+8. [Domain 7: Threat Management](#8-domain-7-threat-management)
+9. [Foreign Key Relationship Map](#9-foreign-key-relationship-map)
+10. [Schema-Level Constraint Summary](#10-schema-level-constraint-summary)
+11. [Invariant Enforcement at Schema Layer](#11-invariant-enforcement-at-schema-layer)
 
 ---
 
@@ -35,7 +36,8 @@
 | Treatment Management | 3 | Treatment plans, approval workflows, progress check-ins |
 | Policy and Standards | 7 | Policy register, standards, versions, exceptions, control links, AI assessments, AI recommendations |
 | Vendor and Third-Party Risk | 8 | Vendor register, engagements (assessment lifecycle), inherent risk assessments, due diligence artefacts, findings, approval decisions, offboarding, analyst tasks |
-| **Total** | **35** | |
+| Threat Management | 4 | Threat models, components (DFD items), STRIDE threat scenarios, and mitigation links mapping threats to deployed controls |
+| **Total** | **39** | |
 
 ### Entity Relationship Summary
 
@@ -73,6 +75,9 @@ vendors ←── engagements ←── ira_assessments
                         ←── offboarding_checklist
                         ←── analyst_tasks
         ←── analyst_tasks (direct)
+
+threat_models ←── threat_components ←── threat_scenarios ──→ risks (promoted_risk_id)
+              ←── threat_scenarios ←── threat_mitigation_links ──→ controls (control_deployment_id)
 
 engagements ──→ risks (promoted_risk_id: promoted vendor findings)
 ```
@@ -800,9 +805,78 @@ Task management for TPRM analysts. Links to engagements, vendors, findings, and 
 
 ---
 
-## 8. Foreign Key Relationship Map
+## 8. Domain 7: Threat Management
 
-32 foreign key relationships across the schema.
+### threat_models
+
+Primary container for a system or feature threat model.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| tm_id | text | NO | | Human-readable ID (e.g., TM-001) |
+| title | text | NO | | |
+| attack_surface_id | uuid | NO | | FK to attack_surfaces |
+| lifecycle_state | text | NO | 'Scope' | Scope/Decomposition/Threat_Analysis/Mitigation_Design/Review/Active/Deprecated |
+| methodology | text | NO | 'STRIDE' | Default categorization method |
+| system_owner_id | uuid | NO | | FK to auth.users |
+| appsec_partner_id | uuid | YES | | FK to auth.users |
+| signoff_at | timestamptz | YES | | |
+| signoff_by | uuid | YES | | |
+| created_by | uuid | YES | | |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+### threat_components
+
+Data Flow Diagram (DFD) components acting as elements in the model.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| threat_model_id | uuid | NO | | FK to threat_models |
+| name | text | NO | | |
+| component_type | text | NO | | Process/Datastore/External_Entity/Data_Flow/Trust_Boundary |
+| description | text | YES | | |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+### threat_scenarios
+
+Identified threats mapped to components. Unmitigated risks above Low escalate to GRC register.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| threat_model_id | uuid | NO | | FK to threat_models |
+| component_id | uuid | NO | | FK to threat_components |
+| category | text | NO | | STRIDE category: Spoofing/Tampering/... |
+| description | text | NO | | |
+| inherent_severity | text | NO | | Critical/High/Medium/Low |
+| status | text | NO | 'Identified' | Identified/Mitigated/Accepted/Promoted_To_Risk |
+| promoted_risk_id | uuid | YES | | FK to risks |
+| created_by | uuid | YES | | |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | |
+
+### threat_mitigation_links
+
+Junction mapping a specific threat to an operational enterprise control, closing the GRC feedback loop.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| threat_scenario_id | uuid | NO | | FK to threat_scenarios |
+| control_id | uuid | NO | | FK to controls |
+| effectiveness_assurance | text | NO | 'Fully_Mitigated' | Fully_Mitigated/Partially_Mitigated |
+| linked_at | timestamptz | NO | now() | |
+| linked_by | uuid | YES | | |
+
+---
+
+## 9. Foreign Key Relationship Map
+
+38 foreign key relationships across the schema.
 
 | Source Table | Source Column | Target Table | Target Column |
 |---|---|---|---|
@@ -838,10 +912,17 @@ Task management for TPRM analysts. Links to engagements, vendors, findings, and 
 | analyst_tasks | finding_id | dd_findings | id |
 | analyst_tasks | ira_id | ira_assessments | id |
 | user_group_members | group_id | user_groups | id |
+| threat_models | attack_surface_id | attack_surfaces | id |
+| threat_components | threat_model_id | threat_models | id |
+| threat_scenarios | threat_model_id | threat_models | id |
+| threat_scenarios | component_id | threat_components | id |
+| threat_scenarios | promoted_risk_id | risks | id |
+| threat_mitigation_links | threat_scenario_id | threat_scenarios | id |
+| threat_mitigation_links | control_id | controls | id |
 
 ---
 
-## 9. Schema-Level Constraint Summary
+## 10. Schema-Level Constraint Summary
 
 | Constraint Type | Count | Purpose |
 |---|---|---|
@@ -874,7 +955,7 @@ Task management for TPRM analysts. Links to engagements, vendors, findings, and 
 
 ---
 
-## 10. Invariant Enforcement at Schema Layer
+## 11. Invariant Enforcement at Schema Layer
 
 Cross-reference to [Invariants Catalogue](../specification/invariants-catalogue.md). Only schema-enforced invariants listed here. Service-layer invariants are enforced in the API and are not visible in the DDL.
 

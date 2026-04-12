@@ -830,6 +830,69 @@ INVARIANT PINV-9:  version history IMMUTABLE — always retained for audit
 
 ---
 
+# PART 5: THREAT MANAGEMENT
+
+## §19 THREAT MODEL LIFECYCLE
+
+### §19.1 Structure and Applicability
+```
+THREAT_MODEL_SCOPE := all { new_features_with_material_impact, architectural_changes, critical_systems }
+
+THREAT_SCENARIO := {
+  category: enum(STRIDE - Spoofing, Tampering, Repudiation, Information_Disclosure, Denial_of_Service, Elevation_of_Privilege),
+  inherent_severity: enum(Critical, High, Medium, Low),
+  status: enum(Identified, Mitigated, Accepted, Promoted_To_Risk)
+}
+```
+
+### §19.2 Lifecycle Phases
+```
+THREAT_MODEL_STATES: Scope, Decomposition, Threat_Analysis, Mitigation_Design, Review, Active, Deprecated
+
+VALID_TRANSITIONS:
+  Scope             → Decomposition      (REQUIRES ≥1 linked asset / attack_surface)
+  Decomposition     → Threat_Analysis    (REQUIRES ≥1 trust boundary or component)
+  Threat_Analysis   → Mitigation_Design  (when ≥1 threat scenario is defined)
+  Mitigation_Design → Review             (all critical/high threats mitigated or decisioned)
+  Review            → Active             (AppSec + System_Owner sign-off)
+```
+
+### §19.3 Invariants & Validation Gates
+```
+INVARIANT TINV-1: Threat Scenario MUST have at least one assigned mitigation OR be accepted locally (Low only) OR promoted to Risk Register (Medium+).
+INVARIANT TINV-2: Threat Model CANNOT proceed from Review to Active without AppSec and System_Owner sign-off.
+INVARIANT TINV-3: Medium, High, or Critical threat scenarios CANNOT be "Accepted" without promotion to the formal GRC risk register.
+INVARIANT TINV-4: Full Mitigation of a threat scenario REQUIRES an active, linked control_deployment. 
+
+VIOLATION(TINV-*) → Blocks state transition.
+```
+
+## §20 THREAT CASCADE ENGINE
+
+### §20.1 Promotion to Risk Register
+```
+PROMOTE_THREAT_TO_RISK WHEN:
+  inherent_severity IN (Medium, High, Critical) AND mitigation is infeasible
+  OR status = Identified AND remediation_timeline exceeds 30 days without interim mitigation
+
+POST_PROMOTE: 
+  create_risk_record + assign_risk_owner(system_owner) 
+  bidirectional_link created between threat_scenario and risk
+```
+
+### §20.2 Control Failure Cascade
+```
+TRIGGER tm_control_failure:
+  WHEN: control_deployment linked via threat_mitigation_links transitions to Failure
+  IF threat_scenario was previously Mitigated:
+    threat_scenario.status = Identified
+    threat_model.lifecycle_state = Review (reopened)
+    notify(System_Owner, AppSec)
+    IF duration > 15bd → PROMOTE_THREAT_TO_RISK
+```
+
+---
+
 # APPENDICES
 
 ## Appendix A: Scoring Matrix (5x5)
@@ -885,6 +948,11 @@ Control_Objective ───── M:M ──── Risk (via risk_controls join)
 Control_Objective ───── M:M ──── Treatment (via control mapping)
 
 Policy_Exception ────── conditional ──── Risk (via promotion)
+
+Threat_Model ────────── 1:N ──── Threat_Component
+Threat_Component ────── 1:N ──── Threat_Scenario
+Threat_Scenario ─────── M:M ──── Control_Deployment (via threat_mitigation_links)
+Threat_Scenario ─────── conditional ──── Risk (via promotion)
 ```
 
 ## Appendix D: Lifecycle State Machines
@@ -901,6 +969,8 @@ POLICY:      [Draft] → [Under_Review] ⇄ [Approved] → [Active] ⇄ [Under_R
 
 EXCEPTION:   [Requested] → [Approved] → [Expired]
                          ↘ [Rejected]
+
+THREAT_MODEL:[Scope] → [Decomposition] → [Threat_Analysis] → [Mitigation_Design] → [Review] ⇄ [Active] → [Deprecated]
 ```
 
 ## Appendix E: NIST RMF Tier Alignment
