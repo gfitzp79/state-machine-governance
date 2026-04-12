@@ -1043,7 +1043,10 @@ POLICY:      [Draft] → [Under_Review] ⇄ [Approved] → [Active] ⇄ [Under_R
 EXCEPTION:   [Requested] → [Approved] → [Expired]
                          ↘ [Rejected]
 
-THREAT_MODEL:[Scope] → [Decomposition] → [Threat_Analysis] → [Mitigation_Design] → [Review] ⇄ [Active] → [Deprecated]
+THREAT_MODEL:[Scope] → [Decomposition] → [Threat_Analysis] → [Mitigation_Design] ⇄ [Review] ⇄ [Active] → [Deprecated]
+                                                                                   ↓
+                                                                              [Abandoned]*
+*(Any state except Active can transition to Abandoned)
 
 ```
 

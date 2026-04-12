@@ -261,9 +261,11 @@ Unscheduled reviews triggered by: regulatory change, incident, audit finding, >5
 ### State Machine Diagram
 
 ```
-[Scope] → [Decomposition] → [Threat_Analysis] → [Mitigation_Design] → [Review] ⇄ [Active]
-                                                                          ↓
-                                                                     [Deprecated]
+[Scope] → [Decomposition] → [Threat_Analysis] → [Mitigation_Design] ⇄ [Review] ⇄ [Active] → [Deprecated]
+                                                                      ↓
+                                                                 [Abandoned]*
+
+* Any state except Active can transition to [Abandoned]
 ```
 
 ### Transition Rules
