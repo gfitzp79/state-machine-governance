@@ -77,7 +77,7 @@ Control failure → linked risk scores frozen. Policy update → mapped controls
 
 ### Threat Management & Engineering Integration
 
-Engineering state (STRIDE threat models) is bidirectionally linked to GRC state. Unmitigated critical threats promote to formal Risk Records. If a production control mitigating a threat fails, the threat automatically reopens.
+Engineering state (STRIDE threat models) is strictly governed through a 9-phase lifecycle bidirectionally linked to GRC state. The platform enforces hard sign-offs from `AppSec` and `System_Owner`, forces active controls for mitigation mappings (`TINV-4`), and automatically promotes unmitigated `Medium+` threats. If a production control mitigating a threat fails, the cascade engine automatically reverts the threat to `Identified` and demands rework.
 
 ### Agent Identity
 

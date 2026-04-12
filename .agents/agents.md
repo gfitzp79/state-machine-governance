@@ -44,6 +44,9 @@ Gates in `@specification/invariants-catalogue.md` are inviolable. A rendering is
 
 Only one module is in scope per session. Do not implement logic for modules not listed in the current prompt. Do not modify pinned modules.
 
+### Active Module Status
+- **[IN PROGRESS] Domain 7: Threat Management:** Specifications and architecture documentation are locked. Backend endpoints, schema migrations, and cross-entity cascade logic remain functionally incomplete. **DO NOT mark as pinned**.
+
 ## File Structure
 
 /

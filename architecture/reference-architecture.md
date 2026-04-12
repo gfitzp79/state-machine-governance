@@ -55,8 +55,10 @@ The following invariants are the architectural core. They are enforced at the AP
 | RINV-11 | Expired risks ALWAYS escalated — no silent expiry | API + scheduled job |
 | RINV-12 | Treatments NEVER at readout without GRC Engineer validation | Workflow gate |
 | RINV-13 | Partial treatment selection ALWAYS documented with rationale | API validation |
+| TINV-4 | Full mitigation of a threat scenario REQUIRES an active, linked control_deployment | Schema + API validation |
+| TINV-5 | Low severity accepted threat scenarios NEVER permanent — always time-bound | API validation gate |
 
-Full invariant catalogue: [Codified Rules §16-18](../specification/codified-rules.md#part-4-invariants-hard-rules--never-violated)
+Full invariant catalogue: [Codified Rules](../specification/codified-rules.md)
 
 ---
 
@@ -72,6 +74,7 @@ The schema is derived directly from the governance specification. 20 tables acro
 | **Control Management** | control_objectives, control_activities, control_deployments, control_implementations | Control hierarchy, CE assessment, testing |
 | **Policy Management** | policies, standards, policy_exceptions, policy_controls | Policy governance, exception management |
 | **Asset Register** | assets, systems, digital_assets, asset_control_mapping | Asset hierarchy, CMDB integration, and deployment targeting |
+| **Threat Management**| threat_models, threat_components, threat_scenarios, threat_mitigation_links | STRIDE models, threat mitigations, risk register promotion |
 | **Platform** | users, roles, audit_log, comments, attachments | RBAC, audit trail, shared infrastructure |
 
 ### 2.2 Key Design Decisions
