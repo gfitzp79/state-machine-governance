@@ -79,9 +79,10 @@
 | ID | Rule | Enforcement Layer | Enforcement Mechanism | Violation Behaviour | Spec Ref |
 |---|---|---|---|---|---|
 | TINV-1 | Threat Scenario MUST have mitigation OR local acceptance (Low) OR risk promotion (Medium+) | Service | Phase validation gate enforces that all scenarios must resolve to an allowed end-state before a threat model can be signed off. | Phase transition from Review to Active blocked | §19.3 |
-| TINV-2 | Threat Model CANNOT proceed from Review to Active without AppSec and System_Owner sign-off | Service | Review gate requires both user identities to explicitly log a signature. | Phase transition blocked until both signatures present | §19.3 |
+| TINV-2 | Threat Model CANNOT proceed from Review to Active without AppSec and System_Owner sign-off | Service | Review gate requires both user identities to explicitly log a signature. AppSec sign-off: satisfied by any user with role = AppSec_Lead or AppSec_Engineer AND user ≠ System_Owner. Team membership, not named individual. RBAC group check at service layer. | Phase transition blocked until both signatures present | §19.3 |
 | TINV-3 | Medium, High, or Critical threat scenarios CANNOT be locally "Accepted" | Service | Rejects any `status = Accepted` change event if `inherent_severity >= Medium`, unless the promotion flag and `promoted_risk_id` are supplied simultaneously. | API returns HTTP 400; promotion required | §19.3 |
 | TINV-4 | Full Mitigation of a threat scenario REQUIRES an active, linked control_deployment | Schema + Service | The `threat_mitigation_links` schema relies on FKs to `controls` table. The service layer verifies the control is active. | Cannot flag scenario as `status = Mitigated` | §19.3 |
+| TINV-5 | Low severity threat scenario accepted locally MUST carry acceptance_expiry ≤ 12 months from acceptance date | Service | Rejects status = Accepted for Low severity if acceptance_expiry is null or > 12 months from now | HTTP 400; expiry required | §19.3 |
 
 ---
 

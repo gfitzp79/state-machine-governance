@@ -858,6 +858,8 @@ Identified threats mapped to components. Unmitigated risks above Low escalate to
 | created_by | uuid | YES | | |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
+| remediation_target_date | date | YES | | Target date for mitigation. Required when status = Identified and severity >= Medium. |
+| acceptance_expiry | date | YES | | Required when severity = Low and status = Accepted. NOT NULL enforced at service layer when acceptance path taken. |
 
 ### threat_mitigation_links
 

@@ -12,6 +12,7 @@
 ## §1 FRAMEWORK SCOPE
 
 ### §1.1 Applicability
+
 ```
 SCOPE := all { organizational_units, systems, environments, business_processes,
                [CUSTOMISE: add third_party_relationships if TPRM module is deployed] }
@@ -20,6 +21,7 @@ SCOPE := all { organizational_units, systems, environments, business_processes,
 ```
 
 ### §1.2 Risk Appetite
+
 ```
 # [CUSTOMISE] Define appetite per risk domain. Recommended: separate enterprise and cyber appetite.
 ENTERPRISE_APPETITE := [CUSTOMISE: e.g. Moderate]
@@ -34,6 +36,7 @@ APPETITE_THRESHOLDS (5x5 matrix):
 ```
 
 ### §1.3 Framework Alignment
+
 ```
 ALIGNED_TO := [CUSTOMISE: e.g. { ISO_27005, NIST_RMF, SOC2_COSO, NIST_CSF, DORA }]
 ```
@@ -43,6 +46,7 @@ ALIGNED_TO := [CUSTOMISE: e.g. { ISO_27005, NIST_RMF, SOC2_COSO, NIST_CSF, DORA 
 ## §2 ROLES AND SEPARATION OF DUTIES
 
 ### §2.1 Role Definitions
+
 ```
 ROLE Risk_Owner:
   type: accountable_decision_maker
@@ -83,6 +87,7 @@ ROLE Security_SME:
 ```
 
 ### §2.2 Separation Rules (MANDATORY)
+
 ```
 RULE SEP-1: Risk_Owner ≠ Risk_Stakeholder
 RULE SEP-2: Risk_Owner ≠ Risk_Treatment_Owner       # decision maker ≠ executor
@@ -94,6 +99,7 @@ VIOLATION(SEP-*) → governance_weakness → ESCALATE
 ```
 
 ### §2.3 Ownership by Severity
+
 ```
 # [CUSTOMISE] Align minimum ownership levels to your organisational hierarchy.
 # RECOMMENDED for regulated financial services:
@@ -110,6 +116,7 @@ OWNERSHIP_MATRIX:
 ## §3 RISK IDENTIFICATION
 
 ### §3.1 Structured Risk Statement (MANDATORY FORMAT)
+
 ```
 RISK_STATEMENT := {
   cause:         string,   # underlying condition or threat source
@@ -123,6 +130,7 @@ RISK_STATEMENT := {
 ```
 
 ### §3.2 Intake Sources (AUTHORITATIVE)
+
 ```
 VALID_INTAKE := {
   risk_assessments,                    # targeted, thematic, or periodic risk assessments
@@ -141,6 +149,7 @@ VALID_INTAKE := {
 ```
 
 ### §3.3 Triage Rules
+
 ```
 TRIAGE(item):
   IF is_true_risk(item) → RISK_REGISTER_ADMISSION
@@ -150,6 +159,7 @@ TRIAGE(item):
 ```
 
 ### §3.4 Out-of-Scope Categories
+
 ```
 # [CUSTOMISE] Adjust categories to match your operating model.
 OUT_OF_SCOPE := {
@@ -164,6 +174,7 @@ OUT_OF_SCOPE := {
 ```
 
 ### §3.5 Promotion to Risk Register
+
 ```
 PROMOTE(out_of_scope_item) WHEN:
   reveals_systemic_control_weakness = TRUE
@@ -175,6 +186,7 @@ POST_PROMOTE: create_risk_record + assign_risk_owner + structured_risk_statement
 ```
 
 ### §3.6 Issue vs Risk
+
 ```
 ISSUE := failed or ineffective control identified through testing, monitoring, audit, or incident
   ROUTE → Issue_Management
@@ -192,6 +204,7 @@ ESCALATE_ISSUE_TO_RISK WHEN:
 ```
 
 ### §3.7 Risk Tier Assignment (NIST RMF Alignment)
+
 ```
 # Aligned to NIST RMF organisational tiers for risk categorisation.
 RISK_TIER (assign BEFORE scoring):
@@ -209,6 +222,7 @@ CONSTRAINT: NOT assigned to Issues or Out-of-Scope items
 ## §4 RISK SCORING
 
 ### §4.1 Preconditions (ALL MUST be satisfied before scoring)
+
 ```
 PRECONDITIONS := {
   true_risk_confirmed,              # per §3.6
@@ -223,6 +237,7 @@ VIOLATION: scoring_without_preconditions → NON_COMPLIANT
 ```
 
 ### §4.2 Inherent Risk Calculation
+
 ```
 INHERENT_RISK_SCORE = IMPACT × LIKELIHOOD     # 5×5 matrix, range 1-25
 
@@ -231,6 +246,7 @@ RULE: Control_Effectiveness informs LIKELIHOOD, NOT Impact
 ```
 
 ### §4.3 Impact Scoring (5-level)
+
 ```
 IMPACT_TABLE:
   5 (Critical):  existential or near-existential (prolonged systemic outage, licence revocation,
@@ -251,6 +267,7 @@ IMPACT_JUSTIFICATION_REQUIRED := {
 ```
 
 ### §4.4 Likelihood Scoring (5-level)
+
 ```
 LIKELIHOOD_TABLE:
   5 (Almost Certain):  expected to occur within the assessment period; has occurred recently
@@ -261,6 +278,7 @@ LIKELIHOOD_TABLE:
 ```
 
 ### §4.5 Control Effectiveness (CE)
+
 ```
 CE_RATINGS:
   CE-High:        effective + consistently operating  | automated, continuous monitoring, strong coverage
@@ -273,6 +291,7 @@ RULE: CE assessment REQUIRES documented evidence (configs, logs, dashboards, aud
 ```
 
 ### §4.6 CE Impact on Likelihood
+
 ```
 CE_LIKELIHOOD_ADJUSTMENT:
   CE-High      → reduce likelihood 1-2 levels (justified by evidence)
@@ -285,6 +304,7 @@ WORST_CASE_RULE: if control has multiple deployments with different CE ratings,
 ```
 
 ### §4.7 Residual Risk Validation Gate (MANDATORY — ALL must pass)
+
 ```
 RESIDUAL_SCORING_GATE:
   □ mitigations fully implemented
@@ -302,6 +322,7 @@ IF any □ = FALSE → residual remains at INHERENT score
 ## §5 TREATMENT AND ACCEPTANCE
 
 ### §5.1 Treatment Decision Types
+
 ```
 TREATMENT_DECISIONS := {
   Mitigate:  reduce likelihood/impact through controls           → REQUIRES linked_controls
@@ -312,6 +333,7 @@ TREATMENT_DECISIONS := {
 ```
 
 ### §5.2 Treatment Design Workflow
+
 ```
 TREATMENT_DESIGN_PHASES:
   Phase_1: Assessment and Feasibility
@@ -337,6 +359,7 @@ CONSTRAINT: treatments CANNOT be presented at governance readout without:
 ```
 
 ### §5.3 Treatment SLAs
+
 ```
 # RECOMMENDED for regulated financial services. Align to your regulatory obligations.
 TREATMENT_DECISION_SLA:
@@ -353,6 +376,7 @@ TREATMENT_EXECUTION_SLA:
 ```
 
 ### §5.4 Re-evaluation Cadence (During Treatment)
+
 ```
 RE_EVAL_CADENCE:
   Critical:      every 14 days
@@ -364,6 +388,7 @@ CONFIRMS: { exposure_not_increased, treatment_on_track, continued_acknowledgemen
 ```
 
 ### §5.5 Acceptance Rules
+
 ```
 # RECOMMENDED: Aggressive acceptance limits aligned to regulated financial services expectations.
 ACCEPTANCE_RULES:
@@ -393,6 +418,7 @@ EXPIRED_ACCEPTANCE:
 ## §6 ESCALATION
 
 ### §6.1 Escalation Triggers
+
 ```
 TRIGGER acceptance_governance_breach:
   condition: exceeds approved {duration, cadence, horizon}
@@ -430,6 +456,7 @@ TRIGGER critical_risk_identified:
 ## §7 MONITORING AND REPORTING
 
 ### §7.1 Executive KPIs
+
 ```
 KPI above_appetite_concentration:       priority=P0, view=above-appetite risks by business_impact_category
 KPI acceptance_threshold_compliance:    priority=P0, view=% within cadence + horizon limits
@@ -442,6 +469,7 @@ KPI risk_drift:                         priority=P2, view=inherent-vs-residual d
 ```
 
 ### §7.2 Operational Metrics
+
 ```
 METRIC evidence_validation_compliance:  % mitigated risks with validated evidence pre-residual update
 METRIC residual_update_integrity:       % updates only after treatment_effectiveness validation
@@ -452,6 +480,7 @@ METRIC issue_remediation_rate:          % of issues remediated within SLA by sev
 ```
 
 ### §7.3 Governance Enforcement Rules (NON-DISCRETIONARY)
+
 ```
 RULE MON-1: residual_risk MUST_NOT update until mitigation complete + validated (§4.7)
 RULE MON-2: risks under mitigation remain "Acknowledged at Inherent Risk"
@@ -462,6 +491,7 @@ RULE MON-6: Critical risks → standing agenda item at every governance forum un
 ```
 
 ### §7.4 Governance Forum
+
 ```
 # [CUSTOMISE] Frequency and attendees to match your governance calendar.
 FORUM:
@@ -489,6 +519,7 @@ AGENDA := [
 ## §8 CONTROL OBJECT MODEL
 
 ### §8.1 Hierarchy
+
 ```
 CONTROL_HIERARCHY:
   Level_1: Control_Objective  ("what we achieve" — measurable security outcome)
@@ -507,6 +538,7 @@ RULES:
 ### §8.2 Control Object Fields
 
 #### Control_Objective (Level 1)
+
 ```
 CONTROL_OBJECTIVE := {
   id:                 string,
@@ -530,6 +562,7 @@ CONTROL_OBJECTIVE := {
 ```
 
 #### Control_Activity (Level 2)
+
 ```
 CONTROL_ACTIVITY := {
   id:                   string,
@@ -548,6 +581,7 @@ CONTROL_ACTIVITY := {
 ```
 
 #### Control_Deployment (Level 3 — join object)
+
 ```
 CONTROL_DEPLOYMENT := {
   id:                    uuid,
@@ -568,6 +602,7 @@ CONTROL_DEPLOYMENT := {
 ```
 
 ### §8.3 Control Families
+
 ```
 # [CUSTOMISE] Align to your control framework. RECOMMENDED baseline (16 families):
 CONTROL_FAMILIES := {
@@ -585,6 +620,7 @@ CONTROL_FAMILIES := {
 ## §9 CONTROL LIFECYCLE STATES
 
 ### §9.1 Control_Objective Lifecycle
+
 ```
 OBJECTIVE_STATES:
   Design, Implementation, Operating, Failure, Redesign, Deprecated
@@ -607,6 +643,7 @@ BLOCKING RULES:
 ```
 
 ### §9.2 Control_Activity Lifecycle
+
 ```
 ACTIVITY_STATES: Draft, Active, Suspended, Retired
 
@@ -615,6 +652,7 @@ RULE AL-2: Draft activities CANNOT be linked to risk records
 ```
 
 ### §9.3 Control_Deployment Lifecycle
+
 ```
 DEPLOYMENT_STATES: Planned, Active, Degraded, Failed, Decommissioned
 
@@ -628,6 +666,7 @@ RULE DL-3: Decommissioned deployments are READ-ONLY
 ## §10 CONTROL TESTING
 
 ### §10.1 Testing Cadence
+
 ```
 TEST_CADENCE:
   Continuous controls:  test every 3 months (RECOMMENDED)
@@ -641,6 +680,7 @@ RULE TST-3: overdue test (> cadence + 30 days) auto-downgrades CE to CE-Unvalida
 ```
 
 ### §10.2 CE Expiry
+
 ```
 CE_EXPIRY:
   Continuous: 2 months | Monthly: 6 months | Quarterly: 12 months | Annual: 24 months
@@ -652,6 +692,7 @@ EXPIRED_CE → auto-downgrade to CE-Unvalidated; no manual override
 ## §11 INTER-MODULE RELATIONSHIPS: CONTROLS
 
 ### §11.1 Controls ↔ Risk Register
+
 ```
 RELATIONSHIP risk_controls:
   type:   M:M (many risks ↔ many control_objectives)
@@ -665,6 +706,7 @@ RELATIONSHIP risk_controls:
 ```
 
 ### §11.2 CE Change → Risk Re-evaluation Trigger
+
 ```
 TRIGGER ce_change_impact:
   WHEN: ce_rating changes on any deployment linked to a risk
@@ -677,6 +719,7 @@ TRIGGER ce_change_impact:
 ```
 
 ### §11.3 Controls ↔ Issues
+
 ```
 RELATIONSHIP control_issues:
   type:   1:N (one control_deployment → many issues)
@@ -692,6 +735,7 @@ RELATIONSHIP control_issues:
 ## §12 POLICY HIERARCHY
 
 ### §12.1 Structure
+
 ```
 POLICY_HIERARCHY:
   Level_1: Policy         "the WHY and WHAT — organisational governance commitment"
@@ -708,6 +752,7 @@ HIERARCHY_RULES:
 ```
 
 ### §12.2 Policy Object Fields
+
 ```
 POLICY := {
   id, title, version (semver), status (see §13.1),
@@ -720,6 +765,7 @@ POLICY := {
 ```
 
 ### §12.3 Policy Exception Fields
+
 ```
 POLICY_EXCEPTION := {
   id, policy_id (FK), title, requestor,
@@ -743,6 +789,7 @@ EXCEPTION_RULES:
 ## §13 POLICY LIFECYCLE STATES
 
 ### §13.1 Policy Lifecycle
+
 ```
 POLICY_STATES: Draft, Under_Review, Approved, Active, Under_Revision, Deprecated
 
@@ -785,6 +832,7 @@ RULE CF-4: annual-audit frameworks MUST have Annual review cycle
 # PART 4: INVARIANTS (HARD RULES — NEVER VIOLATED)
 
 ## §16 Risk Management Invariants
+
 ```
 INVARIANT RINV-1:  residual_risk NEVER updated without validated evidence
 INVARIANT RINV-2:  risk_appetite NEVER downgraded without formal governance
@@ -802,6 +850,7 @@ INVARIANT RINV-13: partial treatment selection ALWAYS documented with rationale
 ```
 
 ## §17 Control Management Invariants
+
 ```
 INVARIANT CINV-1:  CE evidence REQUIRED for any rating other than CE-Unvalidated
 INVARIANT CINV-2:  Design/Implementation controls NEVER used as CE evidence
@@ -816,6 +865,7 @@ INVARIANT CINV-10: CE expiry auto-downgrades to CE-Unvalidated; no override
 ```
 
 ## §18 Policy Management Invariants
+
 ```
 INVARIANT PINV-1:  Active policy MUST have ≥1 linked control_objective
 INVARIANT PINV-2:  policy exceptions NEVER permanent — always time-bound
@@ -835,6 +885,7 @@ INVARIANT PINV-9:  version history IMMUTABLE — always retained for audit
 ## §19 THREAT MODEL LIFECYCLE
 
 ### §19.1 Structure and Applicability
+
 ```
 THREAT_MODEL_SCOPE := all { new_features_with_material_impact, architectural_changes, critical_systems }
 
@@ -846,6 +897,7 @@ THREAT_SCENARIO := {
 ```
 
 ### §19.2 Lifecycle Phases
+
 ```
 THREAT_MODEL_STATES: Scope, Decomposition, Threat_Analysis, Mitigation_Design, Review, Active, Deprecated
 
@@ -858,11 +910,14 @@ VALID_TRANSITIONS:
 ```
 
 ### §19.3 Invariants & Validation Gates
+
 ```
 INVARIANT TINV-1: Threat Scenario MUST have at least one assigned mitigation OR be accepted locally (Low only) OR promoted to Risk Register (Medium+).
 INVARIANT TINV-2: Threat Model CANNOT proceed from Review to Active without AppSec and System_Owner sign-off.
 INVARIANT TINV-3: Medium, High, or Critical threat scenarios CANNOT be "Accepted" without promotion to the formal GRC risk register.
 INVARIANT TINV-4: Full Mitigation of a threat scenario REQUIRES an active, linked control_deployment. 
+INVARIANT TINV-5: Low severity threat scenario accepted locally MUST carry a time-bound acceptance_expiry (max 12 months). Re-evaluation required on expiry. Equivalent to RINV-4 for risk-layer acceptance.
+RULE TM-PARTIAL: threat_scenario.status CANNOT be set to Mitigated if any threat_mitigation_links row for that scenario carries effectiveness_assurance = Partially_Mitigated. Scenario remains Identified. A distinct UI state "Partially Mitigated" may be derived for display purposes from the link table but is not a database status value.
 
 VIOLATION(TINV-*) → Blocks state transition.
 ```
@@ -870,6 +925,7 @@ VIOLATION(TINV-*) → Blocks state transition.
 ## §20 THREAT CASCADE ENGINE
 
 ### §20.1 Promotion to Risk Register
+
 ```
 PROMOTE_THREAT_TO_RISK WHEN:
   inherent_severity IN (Medium, High, Critical) AND mitigation is infeasible
@@ -881,22 +937,33 @@ POST_PROMOTE:
 ```
 
 ### §20.2 Control Failure Cascade
+
 ```
 TRIGGER tm_control_failure:
   WHEN: control_deployment linked via threat_mitigation_links transitions to Failure
   IF threat_scenario was previously Mitigated:
     threat_scenario.status = Identified
     threat_model.lifecycle_state = Review (reopened)
-    notify(System_Owner, AppSec)
+    notify(System_Owner, AppSec, Risk_Owner of any linked promoted risk)
     IF duration > 15bd → PROMOTE_THREAT_TO_RISK
 ```
 
+§20.3 MITIGATION SUCCESS CASCADE
+TRIGGER: threat_scenario.status transitions to Mitigated (all links Fully_Mitigated, TINV-4 satisfied)
+IF threat_scenario.promoted_risk_id IS NOT NULL:
+    linked risk record flagged "Linked Threat Mitigated — Re-evaluation Eligible"
+    Risk_Owner notified
+    Risk_Analyst notified
+    Risk residual score NOT automatically updated — full gate (RINV-1) still required
+
+```
 ---
 
 # APPENDICES
 
 ## Appendix A: Scoring Matrix (5x5)
 ```
+
               Impact →    1(Minimal) 2(Low)   3(Mod)   4(High)  5(Critical)
 Likelihood ↓
 5 (Almost Certain)          5         10       15       20       25
@@ -911,10 +978,12 @@ RATING BANDS:
   10-14: Moderate      (Above Appetite)
   15-19: High          (Above Appetite)
   20-25: Critical      (Above Appetite)
+
 ```
 
 ## Appendix B: SLA Quick Reference (Banking-Aligned)
 ```
+
 TREATMENT DECISION SLA:       Critical: 7bd | High: 15bd | Moderate: 30bd | Mod-Low: 45bd
 TREATMENT EXECUTION SLA:      Critical: 30d | High: 90d | Moderate: 180d | Mod-Low: 360d
 RE-EVALUATION CADENCE:        Critical: 14d | High: 30d | Moderate: 60d | Mod-Low: 90d
@@ -927,10 +996,12 @@ ACCEPTANCE LIMITS:
 RISK OWNER ASSIGNMENT:        Critical: 3bd | All others: 5bd
 CE RE-EVALUATION (degradation): Critical: 5bd | High: 10bd | Moderate: 20bd | Mod-Low: 30bd
 ISSUE REMEDIATION SLA:        Critical: 5bd | High: 15bd | Moderate: 30bd | Mod-Low: 60bd | Low: 90bd
+
 ```
 
 ## Appendix C: Entity Relationship Summary
 ```
+
 Policy ──────────────── 1:N ──── Standard
 Policy ──────────────── M:M ──── Control_Objective
 Policy ──────────────── M:M ──── Risk
@@ -953,10 +1024,12 @@ Threat_Model ────────── 1:N ──── Threat_Component
 Threat_Component ────── 1:N ──── Threat_Scenario
 Threat_Scenario ─────── M:M ──── Control_Deployment (via threat_mitigation_links)
 Threat_Scenario ─────── conditional ──── Risk (via promotion)
+
 ```
 
 ## Appendix D: Lifecycle State Machines
 ```
+
 RISK:        [Intake] → [Preconditions] → [Scoring] → [Treatment] → [Readout] → [Evidence+Residual] → [Monitoring]
 
 OBJECTIVE:   [Design] → [Implementation] → [Operating] ⇄ [Failure] ⇄ [Redesign] → [Deprecated]
@@ -971,14 +1044,17 @@ EXCEPTION:   [Requested] → [Approved] → [Expired]
                          ↘ [Rejected]
 
 THREAT_MODEL:[Scope] → [Decomposition] → [Threat_Analysis] → [Mitigation_Design] → [Review] ⇄ [Active] → [Deprecated]
+
 ```
 
 ## Appendix E: NIST RMF Tier Alignment
 ```
+
   Tier 1 (Organisation):     enterprise-wide, cross-functional, systemic
   Tier 2 (Mission/Process):  business process, mission area, operational domain
   Tier 3 (Information System): specific system, platform, or application
   Tier 4 (Component):        individual component, service, interface
+
 ```
 
 ---

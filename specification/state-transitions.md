@@ -138,6 +138,7 @@
 ### Cascade on Failure
 
 When a Control_Objective transitions to `Failure`:
+
 1. Warning banner added to ALL linked risk records
 2. `residual_score_locked = TRUE` on all linked risks
 3. Risk Analyst notified for each linked risk
