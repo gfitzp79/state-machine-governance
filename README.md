@@ -30,8 +30,8 @@ Teams with precise specifications can now build exact implementations of their s
 
 ```
 ├── README.md
-├── DISCLAIMER.md
-├── APPENDIX.md                     # DORA mapping, VM and Resilience specs, references
+├── disclaimer.md
+├── appendix.md                     # DORA mapping, VM and Resilience specs, references
 │
 ├── /specification
 │   ├── codified-rules.md           # Machine-readable governance rule set
@@ -42,8 +42,8 @@ Teams with precise specifications can now build exact implementations of their s
 ├── /architecture
 │   ├── reference-architecture.md   # Platform overview: schema, lifecycle, cascade, RBAC
 │   ├── data-model.md               # 20-table schema with DDL
-│   ├── deployment-saas.md          # Path 1: Agentic SaaS deployment
-│   ├── deployment-self-hosted.md   # Path 2: Self-hosted cloud infrastructure
+│   ├── architecture-deployment-saas.md          # Path 1: Agentic SaaS deployment
+│   ├── architecture-deployment-self-hosted.md   # Path 2: Self-hosted cloud infrastructure
 │   └── shared-responsibility.md    # SRM analysis across deployment paths
 │
 ├── /methodology
