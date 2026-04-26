@@ -12,6 +12,7 @@ This appendix contains content that supplements the dedicated specification, arc
 | Scoring engine implementation | [specification/scoring-model.md](./specification/scoring-model.md) |
 | 20-table schema with DDL | [architecture/data-model.md](./architecture/data-model.md) |
 | Platform overview (lifecycle, cascade, RBAC) | [architecture/reference-architecture.md](./architecture/reference-architecture.md) |
+| AI tool lifecycle governance | [architecture/ai-tool-lifecycle.md](./architecture/ai-tool-lifecycle.md) |
 | Agentic SaaS deployment | [architecture/deployment-saas.md](./architecture/deployment-saas.md) |
 | Self-hosted deployment | [architecture/deployment-self-hosted.md](./architecture/deployment-self-hosted.md) |
 | Shared responsibility model | [architecture/shared-responsibility.md](./architecture/shared-responsibility.md) |
@@ -32,114 +33,92 @@ Under the Digital Operational Resilience Act, regulated entities must demonstrat
 | Incident management feeds back into risk register | Article 11 | Incident records carry FK to risk records. Incident closure gate requires risk record update. |
 | ICT risk management framework maintained and reviewed | Article 6 | Framework codified as machine-readable rule set. Changes trigger re-assessment cascade on all mapped controls and risks. |
 | Register of information on ICT third-party service providers | Article 28 | Third-party risk module: schema extension defined, state machine specified. See [Third-Party Risk](#third-party-risk) below. |
+| Change management with defined controls | Article 9 | AI Tool Lifecycle: versioning strategy enforced at Build gate. Breaking changes require Pre-Production re-entry before Production promotion. |
+| ICT third-party oversight where vendor-hosted | Article 28 | AI Tool Lifecycle: Pre-Production gate confirms shared responsibility boundary before any user onboarding. |
 
 For firms operating under the Central Bank of Ireland's accountability framework, these are mandatory demonstrable requirements. The cascading state machine architecture is the direct structural implementation of what DORA requires.
 
 ---
 
+## EU AI Act Mapping
+
+For organisations operating AI systems in scope under the EU AI Act, the lifecycle model provides a governance structure that maps to the technical documentation and lifecycle management requirements.
+
+| EU AI Act Requirement | Article | Lifecycle Implementation |
+|---|---|---|
+| Technical documentation for high-risk AI systems | Article 11 | Ideation through Deprecation artefacts: ownership record, security document, architecture decision record, runbook, and disposal plan |
+| Logging and record-keeping obligations | Article 12 | Pre-Production gate: prompt observability pipeline and SIEM integration required before Production. Prompt telemetry treated as audit-grade logging. |
+| Human oversight requirements | Article 14 | Build gate: AI-specific code review policy (dual-review or human-in-the-loop) required for critical paths |
+| Post-market monitoring | Article 72 | Production phase: quarterly ownership review, weekly prompt anomaly review, monthly dependency review |
+| Decommissioning and data disposal | Article 18 | Deprecated phase: data retention and disposal plan, documentation archive, and final security review required before decommission |
+
+These mappings represent the author's interpretation of publicly available regulatory text. They do not constitute legal or compliance advice.
+
+---
+
 ## Vulnerability Management
 
-Five enforced state transitions. Current tooling treats these as loosely linked records.
+Five enforced state transitions.
 
-| Transition | Gate Requirement | Enforcement |
-|---|---|---|
-| **Discovered → Triaged** | Asset criticality AND exploitability context (EPSS, not just CVSS). Medium severity with active exploitation warrants critical SLA. | Gate rejects without both. |
-| **Triaged → Assigned** | Confirmed owner as FK. SLA clock starts here, not at discovery. | No owner, no advance. |
-| **Assigned → In Remediation** | Linked ITSM ticket ID as verifiable reference. | No ticket, no transition. |
-| **In Remediation → Verified Closed** | Re-scan confirmation. Manual status update does not satisfy. | Automated verification or gate holds. |
-| **Any → Exception/Accepted** | Time-bound expiry AND named approver at correct authority level. | No expiry, no save. NOT NULL on both. |
+```
+Discovery --> Verified --> Remediation --> Remediated --> Verified Closed
+                |
+                +--> Accepted (time-bound, risk owner sign-off required)
+```
 
-A critical VM finding on a system underpinning a risk record triggers automatic re-evaluation of the linked risk's residual score. Finding and risk records connected via FK. Finding cannot close without confirmed impact assessment on linked risks.
+**State definitions:**
+
+- **Discovery:** Scan finding ingested. Severity scored. Assigned to remediation owner via FK to asset and team records.
+- **Verified:** AppSec or GRC Engineer confirms the finding is a genuine vulnerability, not a false positive. Duplicate check against open vulnerability register.
+- **Remediation:** Active work in progress. SLA clock running. Linked to internal ticket via FK. Overdue findings propagate to linked risk record.
+- **Remediated:** Fix applied and evidenced. Awaiting verification scan or manual confirmation.
+- **Verified Closed:** Closure confirmed by independent review. Linked risk record updated. Exposure trend adjusted.
+- **Accepted:** Time-bound exception. Risk owner sign-off required. Expiry date enforced. Auto-reopens on expiry.
+
+**Invariants:**
+
+- A finding cannot move to Verified Closed without an independent reviewer distinct from the remediation owner.
+- An Accepted exception requires a named risk owner, a time-bound expiry date, and a linked risk record. Acceptance without all three is rejected at the schema layer.
+- Overdue findings in Remediation automatically cascade to linked risk records and freeze residual scoring until resolved.
+
+**Integration points:** Scanning tool output (CSV or API) ingested at Discovery. Internal ticketing system linked at Remediation via FK. SIEM alert on SLA breach. Executive dashboard exposure trend updated at Verified Closed.
+
+Specification in progress.
 
 ---
 
 ## Resilience
 
-BIA/RPO/RTO as enforced state variables, not standalone spreadsheets.
+BIA, RPO, and RTO as enforced state variables, linked to the risk register via FK.
 
-| Integration | Mechanism | Enforcement |
-|---|---|---|
-| **Asset Register → Resilience** | New assets feed BIA, RPO, RTO assignment automatically. | Asset without resilience classification cannot be marked production-ready. |
-| **Resilience → SIEM** | RPO/RTO exposed as live variables consumed by SIEM runbooks. | Recovery objective changes → SecOps KPIs adjust dynamically. |
-| **Resilience → Risk Register** | BIA outcomes inform risk scoring. Critical service with unmet RTO becomes a risk record. | FK link, not manual update. |
-| **VM Critical Finding → Resilience** | CVE above severity on critical asset triggers automatic resilience review. | Finding cannot close without BIA impact assessment. VM and resilience records linked as FK. Neither closes without the other. |
+**Problem statement:** Resilience requirements (RPO, RTO) are typically documented in BIA spreadsheets and business continuity plans that are disconnected from the live risk register. When a risk materialises and an asset is unavailable, the organisation has to locate the relevant BIA document to understand the recovery obligation. The governance gap is structural.
+
+**Architecture:** Each critical asset carries enforced RPO and RTO values as schema-level constraints. Asset state changes propagate to linked risk records. If a risk affecting a critical asset moves to active, the recovery obligation is surfaced immediately via FK, not retrieved from a document.
+
+**State machine:** Business Impact Assessment phases govern the lifecycle of resilience requirements from identification through annual review.
+
+```
+Identification --> Impact Analysis --> Recovery Definition --> Approved --> Annual Review
+                                                                  |
+                                                                  +--> Triggered (incident active)
+```
+
+**Invariants:**
+
+- An asset classified as critical cannot have a null RPO or RTO. The schema rejects the write.
+- A risk linked to a critical asset cannot move to residual scoring without confirmed recovery controls mapped to that asset's RPO and RTO.
+- Annual Review is time-enforced: assets that have not completed review within 12 months are flagged in the executive dashboard and the associated risks are frozen at their last verified score.
+
+Specification in progress.
 
 ---
 
 ## Third-Party Risk
 
-**Status: Roadmap — schema extension defined, not yet built.**
+Schema extension defined. State machine specified. Integration with the core risk register via FK.
 
-Third-party risk management follows the same state machine architecture as internal risk governance. The governance logic is already codified in [specification/codified-rules.md](./specification/codified-rules.md). The schema extension required is documented below. The methodology is identical to the core build.
+Third-party risk records carry the vendor entity, the services in scope, the criticality classification, and the contractual and technical controls. State transitions enforce assessment cadence: vendors above a defined criticality threshold cannot remain in the Assessed state beyond the agreed review cycle without triggering a cascade to linked risk records.
 
-### Scope
+DORA Article 28 register requirements are satisfied by the vendor record schema: register of ICT third-party service providers, service descriptions, criticality classification, and assessment dates.
 
-Vendor risk assessments, supply chain risk, concentration risk, and DORA Article 28 register of information on ICT third-party service providers.
-
-### Schema Extension
-
-| New Entity | Captures | FK Relationships |
-|---|---|---|
-| `vendor_risk_assessments` | Third-party vendor risk normalised into the same lifecycle as internal risks. Vendor name, contract ref, criticality tier, assessment date, inherent score, residual score, treatment decision. | FK → risks (promoted findings), FK → assets (vendor-managed assets), FK → control_deployments (vendor-managed controls) |
-| `vendors` | Vendor registry: name, category, criticality, contract expiry, primary contact, assessment owner. | Parent of vendor_risk_assessments |
-| `vendor_contracts` | Contract terms, renewal dates, exit clauses, SLA commitments, data processing terms. | FK → vendors |
-| `concentration_risk_links` | Many-to-many: vendors ↔ business processes. Enables concentration risk analysis. | FK → vendors, FK → assets (representing business processes) |
-
-### State Machine
-
-Vendor risk assessments traverse the same 7-phase lifecycle as internal risks. The only additions:
-
-| Phase | Vendor-Specific Gate Condition |
-|---|---|
-| Phase 1 (Intake) | Vendor criticality tier assigned (Tier 1/2/3). DORA Article 28 register entry created. |
-| Phase 3 (Scoring) | Inherent score includes supply chain concentration factor. |
-| Phase 7 (Monitoring) | Monitoring cadence aligned to vendor criticality: Tier 1 quarterly, Tier 2 semi-annually, Tier 3 annually. |
-
-### Cascade Behaviour
-
-| Trigger | Cascade |
-|---|---|
-| Vendor SLA breach | Triggers same escalation path as internal control failure. Risk Owner notified. |
-| Vendor contract expiry approaching | Auto-flag 90 days before expiry. Assessment renewal required. |
-| Vendor finding promoted to risk register | Bidirectional FK maintained between vendor assessment and internal risk record. |
-| Concentration risk threshold exceeded | Flag when >X% of critical business processes depend on a single vendor. Threshold configurable. |
-
-### DORA Article 28 Alignment
-
-The vendor_risk_assessments table, when populated with the fields required by DORA Article 28, constitutes the Register of Information on ICT third-party service providers. The platform's lifecycle enforcement ensures the register is maintained, not just created.
-
-### Build Sequence (When Scheduled)
-
-```
-1. vendors table + CRUD
-2. vendor_contracts table + FK
-3. vendor_risk_assessments table + RLS
-4. concentration_risk_links junction table
-5. Extend risk lifecycle to accept vendor_assessment_id as intake source
-6. Phase gate modifications (vendor-specific preconditions)
-7. Cascade rules (vendor SLA breach → risk flag)
-8. DORA Article 28 export view
-```
-
----
-
-## References
-
-| Framework / Standard | Relevance |
-|---|---|
-| **NIST SP 800-207** — Zero Trust Architecture | Agent identity: continuous auth for all entities |
-| **NIST Cybersecurity Framework (CSF)** | Risk management lifecycle mapping |
-| **NIST RMF** | Organisational risk tiering (Tier 1-4) |
-| **DORA** — Digital Operational Resilience Act | Articles 6, 9, 11, 28: integrated ICT risk management |
-| **Central Bank of Ireland** — PCF Accountability | Mandatory demonstrable requirements for integrated risk management |
-| **OWASP Agentic Security** | Excessive agency prevention, agent permission scoping |
-| **OWASP State of Agentic AI Security 1.0** (Jul 2025) | Agentic security landscape assessment |
-| **IMDA Model AI Governance for Agentic AI** (Jan 2026) | Governance for multi-agent systems in regulated environments |
-| **WEF AI Agents in Action** (Nov 2025) | Enterprise deployment patterns |
-| **FAIR Risk Methodology** | Quantitative risk scoring applicable to scoring module |
-| **ISO 27005** | Risk management process alignment |
-| **SOC 2 / COSO** | Control framework and trust services criteria |
-
----
-
-*All content developed independently. See [DISCLAIMER.md](./DISCLAIMER.md).*
+Full specification planned as a dedicated architecture document.
