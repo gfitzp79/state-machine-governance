@@ -1,205 +1,175 @@
-# Deployment Path 1: Agentic SaaS Platforms
+# Deployment Path 2: Self-Hosted Cloud Infrastructure
 
-**Version:** 3.0-template | **License:** CC BY 4.0
+**Version:** 2.0-template | **License:** CC BY 4.0
 **Source:** Derived from [Reference Architecture](./reference-architecture.md) §6 and [Shared Responsibility Model](./shared-responsibility.md)
-**Purpose:** Architecture guide for deploying the governance platform onto agentic SaaS platforms. Covers two distinct operating models, cost dynamics, security boundaries, observed failure patterns, and decision criteria.
+**Purpose:** Architecture guide for deploying the governance platform onto your own managed cloud infrastructure using an AI coding agent for development. Covers the target architecture, production pivot from prototype, cost model, security responsibilities, and decision criteria.
 
 ---
 
 ## Overview
 
-Agentic SaaS platforms accept a specification and prompt package, generate the application, and host it with out-of-the-box infrastructure: authentication, database, deployment pipeline, and a shareable URL. The builder provides the governance logic. The platform provides the runtime.
+An AI coding agent drafts and executes code against the codified specification. The build runs locally during development, then deploys onto your own cloud infrastructure: container orchestration, managed PostgreSQL, serverless functions, and Infrastructure as Code. You own everything.
 
-**What you get:** Speed to deployment. A shareable URL for stakeholder review. Authentication, database hosting, and TLS without infrastructure provisioning. Iteration via prompts rather than deployment pipelines.
+**What you get:** Full data sovereignty, network-level isolation, complete governance over the CI/CD pipeline, and the ability to integrate with any internal system without platform constraints.
 
-**What you own:** The application logic, the data model, the agent's permission scope, the RBAC and RLS configuration, the invariant enforcement, and the AppSec validation of all generated code.
+**What you own:** Everything. Infrastructure, application code, data, agent behaviour, invariant enforcement, security tooling, and the deployment pipeline.
 
-**What the platform owns:** Hosting infrastructure, database engine, TLS certificates, uptime SLA, deployment pipeline, and platform-level security controls.
-
----
-
-## Two Operating Models
-
-This path splits into two distinct operating models with different risk profiles, workflows, and technical requirements. Choose before you start the build — switching models mid-build is possible but disruptive.
+**What the cloud provider owns:** Physical infrastructure, hypervisor, and managed service engine uptime (compute, database engine, networking fabric).
 
 ---
 
-### Model A: GitHub-Connected Build (Recommended)
+## Target Architecture
 
-**Who this suits:** Practitioners with GitHub familiarity, teams collaborating with engineers, or anyone prioritising codebase portability and reduced vendor lock-in.
+### Component Stack
 
-In this model, the agentic SaaS platform is a code generation and hosting layer. Your codebase lives in GitHub as the single source of truth. Two-way sync means edits in the platform appear in GitHub and edits in GitHub sync back to the platform on the default branch.
-
-**Key properties:**
-- Full commit history and change attribution
-- AppSec scanning integrated into CI/CD pipeline (not dependent on platform tooling)
-- Codebase is portable: migrate to self-hosted without data loss or code reconstruction
-- Platform is a generation and hosting layer, not a lock-in dependency
-- Every agent-generated change is a visible, attributable commit
-
-**Build workflow:**
-
-```
-1. Codified specification            → prepared offline (no platform cost)
-2. GitHub repository                 → created and connected before first prompt
-3. Prompt validation                 → validate prompts locally before pushing
-4. Platform build                    → each prompt consumes credits (prompt + DB operations + code generation)
-5. Validation                        → acceptance criteria checked per prompt; pin or revert
-6. Deployment                        → platform auto-deploys from GitHub; shareable URL generated
-7. CI/CD scanning                    → AppSec scan runs on each commit in GitHub Actions
-```
-
-**Context management:** Session-level context window degradation still applies — the re-grounding disciplines in [context-management.md](../methodology/context-management.md) remain relevant and should not be skipped. But the GitHub-connected model removes the risk of the agent working against a stale snapshot of the codebase.
-
----
-
-### Model B: Platform-Native Build
-
-**Who this suits:** Non-engineers, practitioners without GitHub familiarity, or rapid prototyping where portability is not the immediate priority.
-
-In this model, the platform is the complete environment: prompt interface, codebase, database, auth, and deployment. Everything lives inside the platform. This is faster to start and has no external tooling dependencies, but carries higher vendor lock-in risk and requires deliberate data portability planning.
-
-**Key properties:**
-- No GitHub account or setup required
-- Lower barrier to entry for non-engineers
-- Single environment for all build and iteration work
-- Higher vendor lock-in: codebase is platform-native until manually exported
-- Data portability requires explicit planning; confirm export capability before committing production data
-- Context management relies entirely on briefing files, prompt discipline, and regular data model exports
-
-**Build workflow:**
-
-```
-1. Codified specification            → prepared offline (no platform cost)
-2. Platform prompt agent             → build optimised agent within the platform using vendor docs
-3. Platform build                    → each prompt consumes credits (prompt + DB operations + code generation)
-4. Validation                        → acceptance criteria checked per prompt; pin or revert
-5. Deployment                        → platform auto-deploys; shareable URL generated
-6. Iteration                         → further prompts for refinement, each consuming credits
-7. Export regularly                  → export codebase and data model periodically for portability
-```
-
-**Context management requirement:**
-Without GitHub sync, context degradation is a higher operational risk. The full re-grounding methodology in [context-management.md](../methodology/context-management.md) applies without mitigation. Regularly export the data model and architecture artefacts and re-import them into your prompt agent to maintain external context across sessions.
-
----
-
-## Cost Dynamics (Both Models)
-
-The consumption model is not linear. Every prompt processed, every database table created, every row updated, and every code optimisation consumes credits. On a multi-module platform (risk, controls, policy, asset register, dashboards), credit consumption compounds.
-
-| Phase | Cost Driver | Mitigation |
+| Component | Implementation | Notes |
 |---|---|---|
-| Initial build | Prompt volume × complexity | Validate prompts locally before pushing. Batch related changes into single prompts. |
-| Schema changes | Table creation, column addition, constraint modification | Design the full schema before starting the build. Avoid iterative schema discovery on-platform. |
-| Data operations | Seed data, test records, bulk operations | Minimise test data operations during build. Import seed data in a single operation. |
-| Iteration | Refinement prompts, bug fixes, UI adjustments | Pin stable versions. Revert and rebuild from spec rather than patching. |
-| Steady state | Hosting, database, user sessions | Generally low. Platform pricing models vary: review per-seat vs. per-usage terms. |
+| **Frontend** | React (or equivalent SPA) | Served via Nginx in container. Static build artefact. |
+| **Backend** | Python FastAPI (or equivalent) | API-layer gate enforcement. All invariants checked here. |
+| **Database** | PostgreSQL on managed relational database service | RLS policies, schema-level constraints, generated columns for computed scores. |
+| **Container orchestration** | ECS Fargate / EKS / GKE / equivalent | Serverless containers preferred. No node management overhead. |
+| **Load balancer** | Application Load Balancer | HTTPS termination. Health checks on backend containers. |
+| **File storage** | S3-compatible object storage | Evidence attachments, audit artefact exports. Presigned URL upload/download. |
+| **Identity** | OIDC provider (Okta, Azure AD, Cognito, etc.) | Abstracted behind a provider interface. Group claims mapped to platform roles. |
+| **Secrets** | Managed secrets service | DB credentials, OIDC config, API keys. Injected into container environment. |
+| **Infrastructure as Code** | Terraform / CDK / Pulumi | Entire environment reproducible and auditable. No manual provisioning. |
+| **CI/CD** | GitHub Actions / GitLab CI / equivalent | Automated build, test, scan, deploy pipeline. |
 
-**Model A cost note:** Prompts validated locally against your specification before pushing reduce wasted credit spend materially. The GitHub connection itself does not add platform cost.
+### Architecture Diagram (Logical)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      Internet                           │
+└──────────────────────┬──────────────────────────────────┘
+                       │ HTTPS
+                       ↓
+              ┌────────────────┐
+              │  Load Balancer │  ← TLS termination, health checks
+              └───────┬────────┘
+                      │
+         ┌────────────┴────────────┐
+         ↓                         ↓
+┌────────────────┐        ┌────────────────┐
+│   Frontend     │        │    Backend     │  ← API-layer gate enforcement
+│   (Container)  │        │   (Container)  │  ← RBAC middleware
+└────────────────┘        └───────┬────────┘
+                                  │
+                    ┌─────────────┼─────────────┐
+                    ↓             ↓              ↓
+           ┌──────────────┐ ┌─────────┐  ┌──────────────┐
+           │  PostgreSQL  │ │   S3    │  │ OIDC Provider│
+           │  (Managed)   │ │(Object) │  │  (External)  │
+           └──────────────┘ └─────────┘  └──────────────┘
+                  │
+                  ↓
+           ┌──────────────┐
+           │ Secrets Mgr  │
+           └──────────────┘
+```
 
 ---
 
-## Infrastructure Provided (Both Models)
+## Production Pivot from Prototype
 
-| Component | Platform Provides | Your Responsibility |
+The application is designed to minimise production code changes. A local prototype using SQLite and local file storage requires changes to exactly four files to pivot to cloud-hosted PostgreSQL.
+
+### 4-File Pivot
+
+| File | Change | Effort |
 |---|---|---|
-| Database | Managed PostgreSQL (or equivalent) | Schema design, RLS policies, data integrity, backup verification |
-| Authentication | Built-in auth (email/password, social, or OIDC) | RBAC configuration, role assignment, session management validation |
-| Hosting | Container or serverless deployment | Application logic correctness, API security, error handling |
-| TLS | HTTPS by default | Custom domain configuration (if required) |
-| Storage | File storage for attachments | Access control on stored files, encryption-at-rest configuration |
+| `database.py` (or equivalent) | Read `DATABASE_URL` from environment variable instead of hardcoded SQLite path | Low |
+| `attachments.py` (or equivalent) | Replace local file writes with S3-compatible presigned URL upload and download | Medium |
+| `auth/provider.py` (or equivalent) | Implement OIDC token validation using JWKS endpoint (stub already in place from prototype) | Medium |
+| `main.py` (or equivalent) | Read `ALLOWED_ORIGINS` from environment variable; set `COOKIE_SECURE=true` for HTTPS | Low |
+
+**Critical constraint:** No changes to models, schemas, CRUD operations, or governance logic are required. If the pivot requires modifying business logic, the prototype's abstraction boundaries were not clean enough.
+
+### 7-Step Deployment Sequence
+
+| Step | Task | Effort | Details |
+|---|---|---|---|
+| 1. Containerise | Add Dockerfile for backend (FastAPI + uvicorn) and frontend (React + Nginx). Create docker-compose.yml for local dev with PostgreSQL. | Low | Test full lifecycle locally against PostgreSQL before cloud deployment. |
+| 2. Database | Replace local DB with managed PostgreSQL via `DATABASE_URL` env var. Run full migration. Seed with initial roles and test data. | Low | Validate all constraints, generated columns, and RLS policies work on PostgreSQL. |
+| 3. File storage | Replace local `/uploads` with S3-compatible presigned URL upload and download. Update attachment endpoints. | Medium | Configure bucket policies, encryption-at-rest, and access logging. |
+| 4. Secrets | Move all secrets to managed secrets service (DB URL, SECRET_KEY, OIDC vars). Inject into container task definition. | Low | No secrets in code, environment files, or container images. |
+| 5. Infrastructure | Push Docker images to container registry. Create cluster and task definitions. Configure load balancer with HTTPS listener. Set DNS. | Medium | Use IaC (Terraform/CDK). No manual console provisioning. |
+| 6. Auth | Set `AUTH_PROVIDER=oidc` in secrets. Configure OIDC app in identity provider. Map group claims to platform role groups. Implement `OIDCProvider.validate_token()`. | Medium | Test role sync with at least 3 different role groups before go-live. |
+| 7. CORS | Update `ALLOWED_ORIGINS` to production domain. Set `COOKIE_SECURE=true`. Verify cross-origin behaviour. | Low | Test from a different origin to confirm CORS is enforced. |
 
 ---
 
-## Security Boundary
+## Cost Model (Reference)
 
-The platform's security certification does not extend to your application. Two failure patterns apply to both models.
+Estimated monthly cost for a low-traffic, single-environment deployment. Actual costs vary by cloud provider, region, and usage patterns.
 
-### Failure Pattern 1: Agent Permission Overreach
+| Service | Configuration | Estimated Monthly Cost |
+|---|---|---|
+| Container compute | 2 tasks × 0.25 vCPU / 0.5 GB each (frontend + backend) | ~$15-20 |
+| Managed PostgreSQL | Smallest instance, 20 GB SSD, single-AZ | ~$15-20 |
+| Application Load Balancer | Low traffic, HTTPS listener | ~$18 |
+| Object storage | < 10 GB for attachments and evidence | ~$2-3 |
+| TLS certificate | Managed (e.g. ACM) | Free |
+| DNS | 1 hosted zone | ~$0.50 |
+| Container registry | Docker image storage | ~$1-2 |
+| Secrets manager | ~10 secrets | ~$0.40 |
+| **Total** | | **~$52-64/month** |
 
-Without explicit scope constraints defined in the specification, agents default to broad database privileges. Observed behaviours include:
+### Cost Scaling Considerations
 
-- Bulk delete operations on production data executed by the agent during a "cleanup" prompt
-- Record fabrication where the agent creates test data that persists in production tables
-- Schema modifications where the agent adds, removes, or alters columns without explicit instruction
+| Growth Factor | Impact | Mitigation |
+|---|---|---|
+| More users | Minimal until >50 concurrent. Container scaling is incremental. | Auto-scaling policy on container tasks. |
+| More data | PostgreSQL storage grows linearly. Evidence attachments grow in S3. | Monitor storage. Upgrade instance tier when approaching limits. |
+| Multi-environment | Each environment (dev, staging, prod) duplicates infrastructure cost. | Use smaller instances for non-prod. |
 
-**Root cause:** The specification did not define what the agent is permitted to do. The platform executed the agent's actions correctly. The governance failure is in the specification, not the platform.
+---
 
-**Mitigation:** Define agent permission scope in the specification before the first build prompt. Explicitly declare which tables the agent may modify, which operations are permitted (CREATE, READ, UPDATE, DELETE per table), and which operations are prohibited.
+## Security Responsibilities
 
-**Model A note:** GitHub sync records every agent-generated commit. This creates a full audit trail and makes it straightforward to identify and revert unintended schema modifications.
+### Technical Controls
 
-### Failure Pattern 2: Misconfigured Application-Layer Controls
+| Control | Implementation |
+|---|---|
+| **Network isolation** | Load balancer is the only ingress point. Database in private subnet. |
+| **Encryption** | TLS in transit (enforced at load balancer). Encryption at rest on database and object storage (provider-managed or customer-managed keys). |
+| **Access control** | IAM roles scoped to least privilege. No shared credentials. Service accounts for CI/CD with minimal permissions. |
+| **Logging and monitoring** | Access logs on load balancer. Query logs on database. CloudTrail or equivalent for infrastructure changes. Application-level audit_log table for governance events. |
+| **Backup and recovery** | Automated database backups with tested restore procedure. RTO and RPO defined and validated. |
 
-AI-generated scaffolding creates authentication flows, database structures, and API endpoints quickly. The following require explicit validation because their existence does not confirm their correctness:
+### Governance Controls
 
-- **Row Level Security (RLS):** Policies may exist but not enforce the correct data isolation boundaries. A user in Role A may be able to read records belonging to Role B if RLS policies are generated but not validated against the RBAC specification.
-- **API key scoping:** Generated API endpoints may not enforce role-based access at the API layer, relying instead on UI-level hiding which can be bypassed.
-- **Role definitions:** The platform may create role structures that do not match the 9-role RBAC model in the specification. Validation against the spec is required.
-
-**Root cause:** The platform generated controls. The specification did not define the expected behaviour of those controls precisely enough for validation.
-
-**Mitigation:** After initial build, validate every RLS policy, every API endpoint's role check, and every role definition against the codified specification. Treat this as a mandatory gate before sharing the URL with any stakeholder.
-
-**Model A note:** In the GitHub-connected model, AppSec scanning can be integrated into the CI/CD pipeline, providing automated validation on every commit rather than manual post-build inspection.
+| Responsibility | Detail |
+|---|---|
+| **IaC governance** | All infrastructure changes via IaC. No manual console changes in production. Code review required for IaC changes. |
+| **Change management** | Deployment pipeline enforces: build → test → scan → approve → deploy. No direct pushes to production. |
+| **Incident response** | Runbook for platform incidents (database failure, container crash, auth outage). Tested at least annually. |
 
 ---
 
 ## Vendor Lock-in
 
-| Model | Overall Risk | Specification | Codebase | Database | Auth |
-|---|---|---|---|---|---|
-| **Model A: GitHub-Connected** | MEDIUM | Portable | Portable (GitHub) | Platform-native | Platform-native |
-| **Model B: Platform-Native** | HIGH | Portable | Platform-native | Platform-native | Platform-native |
-
-In both models, the specification is portable. The codebase portability difference is the primary distinction. For full data and infrastructure portability, Path 2 (self-hosted) remains the lowest lock-in option.
-
-Full assessment: [Shared Responsibility Model](./shared-responsibility.md#6-vendor-lock-in-comparison).
+**Overall risk: LOW.** Specification is portable. IaC is reproducible. PostgreSQL is standard. Moving providers requires IaC rewrite, not application rewrite. Full assessment: [Shared Responsibility Model](./shared-responsibility.md#6-vendor-lock-in-comparison).
 
 ---
 
 ## Decision Gate
 
-**Model A: GitHub-Connected**
-
-Before starting the build, confirm:
+Before committing to self-hosted production deployment, confirm:
 
 ```
-□ AI tool lifecycle ownership assigned and documented before first prompt (see ai-tool-lifecycle.md)
-□ GitHub repository created and connected to platform before first prompt
-□ Shared responsibility boundary documented and accepted by risk owner
-□ Agent permission scope defined in specification
-□ CI/CD pipeline configured for AppSec scanning on commits
-□ RLS policies validated against RBAC specification post-build
-□ Data processing terms reviewed (residency, encryption, model API usage)
-□ Cost model projected for 12-month steady state
+□ AI tool lifecycle ownership assigned and documented before infrastructure is provisioned (see ai-tool-lifecycle.md)
+□ Infrastructure engineering capacity identified (internal or contracted)
+□ IaC tooling selected and team is proficient
+□ CI/CD pipeline designed with AppSec scanning integrated
+□ OIDC provider selected and group-to-role mapping designed
+□ Cost model projected for 12-month steady state including multi-environment
+□ Backup and recovery RTO/RPO defined and testable
+□ Incident response runbook drafted for platform-level failures
 ```
 
-For post-deployment lifecycle governance including prompt observability requirements, production readiness gates, and decommissioning criteria: [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
+For post-deployment lifecycle governance including incident response requirements, prompt observability, and decommissioning criteria: [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
 
-For guidance on when this path is appropriate vs. self-hosted or vendor platforms: [Shared Responsibility Model §7](./shared-responsibility.md#7-decision-framework).
-
----
-
-**Model B: Platform-Native**
-
-Before deploying production data, confirm:
-
-```
-□ AI tool lifecycle ownership assigned and documented before first prompt (see ai-tool-lifecycle.md)
-□ Shared responsibility boundary documented and accepted by risk owner
-□ Agent permission scope defined in specification
-□ RLS policies validated against RBAC specification post-build
-□ Data processing terms reviewed (residency, encryption, model API usage)
-□ Export capability confirmed for data and codebase portability
-□ Cost model projected for 12-month steady state
-□ Re-grounding methodology from context-management.md in place
-```
-
-For post-deployment lifecycle governance including prompt observability requirements, production readiness gates, and decommissioning criteria: [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
-
-For guidance on when this path is appropriate vs. self-hosted or vendor platforms: [Shared Responsibility Model §7](./shared-responsibility.md#7-decision-framework).
+For guidance on when this path is appropriate vs. SaaS or vendor platforms: [Shared Responsibility Model §7](./shared-responsibility.md#7-decision-framework).
 
 ---
 
