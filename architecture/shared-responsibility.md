@@ -34,6 +34,8 @@ Three deployment paths are available. Each shifts the responsibility boundary di
 
 In both paths, the agent generates the same artefacts. The difference is who operates and secures the runtime.
 
+This document defines the boundary between what the platform or provider secures and what you own at the point of deployment. For governance of your side of that boundary across the full operational life of the tool — from ideation through decommissioning — see [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
+
 ---
 
 ## 2. Deployment Path Comparison
@@ -217,6 +219,13 @@ Full detail: [Deployment Path 2: Self-Hosted](./deployment-self-hosted.md)
 **Description:** Builder discovers after significant data entry that the platform does not support bulk data export, or that exported data lacks relational integrity (IDs change, FKs break).
 **Root cause:** Portability was not tested before committing production data.
 **Mitigation:** Confirm export capability before the first production record is created. Export a test dataset and verify relational integrity is preserved.
+
+### Pattern 5: Post-Launch Ownership Gap
+
+**Observed in:** Both paths
+**Description:** Tool ships, is used, becomes operationally important. The builder has moved to the next project. No named owner, no runbook, no incident response plan. The tool breaks. Nobody knows how it works.
+**Root cause:** Ownership was assumed, not assigned. The shared responsibility model defines what the platform secures. It does not define who in your organisation owns the tool after go-live.
+**Mitigation:** Ownership must be assigned and documented before the build starts, not after go-live. See [ai-tool-lifecycle.md](./ai-tool-lifecycle.md) for the gate conditions that enforce this structurally.
 
 ---
 
