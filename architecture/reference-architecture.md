@@ -74,7 +74,7 @@ The schema is derived directly from the governance specification. 20 tables acro
 | **Control Management** | control_objectives, control_activities, control_deployments, control_implementations | Control hierarchy, CE assessment, testing |
 | **Policy Management** | policies, standards, policy_exceptions, policy_controls | Policy governance, exception management |
 | **Asset Register** | assets, systems, digital_assets, asset_control_mapping | Asset hierarchy, CMDB integration, and deployment targeting |
-| **Threat Management**| threat_models, threat_components, threat_scenarios, threat_mitigation_links | STRIDE models, threat mitigations, risk register promotion |
+| **Threat Management** | threat_models, threat_components, threat_scenarios, threat_mitigation_links | STRIDE models, threat mitigations, risk register promotion |
 | **Platform** | users, roles, audit_log, comments, attachments | RBAC, audit trail, shared infrastructure |
 
 ### 2.2 Key Design Decisions
@@ -114,90 +114,13 @@ Full schema with CREATE TABLE statements, all FK relationships, and migration st
 
 Every risk traverses a mandatory multi-phase lifecycle. Phase transitions are gated at the API layer, not in UI validation that can be bypassed.
 
-### 3.1 Phase Summary
-
-| Phase | Name | Gate Condition | Blocks If |
-|---|---|---|---|
-| 1 | **Intake** | Structured risk statement created (Cause / Threat / Vulnerability / Impact) | Statement incomplete or unstructured |
-| 2 | **Preconditions** | 5-item checklist fully checked (INV-7) | Any precondition item unchecked |
-| 3 | **Inherent Scoring** | Impact and Likelihood scored; Risk Owner and Stakeholder assigned (INV-9) | Fields empty or roles unassigned |
-| 4 | **Treatment Alignment** | Treatments linked; GRC Engineer validation complete (INV-11) | No treatments linked or validation incomplete |
-| 5 | **Readout** | Risk Owner reviewed and confirmed treatments (INV-5) | Readout not completed for Moderate+ risks |
-| 6 | **Evidence and Residual** | 5-item validation gate complete; evidence uploaded (INV-1) | Residual fields remain read-only until gate passes |
-| 7 | **Monitoring** | SLA tracking active; acceptance expiry set if applicable (INV-4) | Acceptance without expiry date is blocked |
-
-### 3.2 Gate Enforcement Implementation
-
-Gates are enforced at the API layer using a middleware pattern:
-
-```
-# Pseudocode — gate check before phase transition
-def transition_risk(risk_id, target_phase):
-    risk = get_risk(risk_id)
-    gate = PHASE_GATES[target_phase]
-
-    for condition in gate.preconditions:
-        if not condition.evaluate(risk):
-            raise GateViolation(
-                phase=target_phase,
-                condition=condition.name,
-                message=condition.failure_message
-            )
-
-    risk.lifecycle_phase = target_phase
-    risk.updated_at = now()
-    audit_log.record(risk_id, "phase_transition", target_phase, actor=current_user)
-    return risk
-```
-
-### 3.3 Residual Scoring Gate (Phase 6 Detail)
-
-The residual scoring gate is the most critical enforcement point. Residual score fields are read-only until all five conditions are met:
-
-1. Mitigations fully implemented
-2. Evidence provided (configs, logs, dashboards, audit artefacts)
-3. Treatment effectiveness confirmed by Risk Analyst
-4. Governance approval documented
-5. Risk drift tracked during treatment period
-
-Implementation: residual score fields carry a `locked` flag that is only released by the gate check function. Direct database updates to residual fields are blocked by a database trigger or RLS policy.
+*[Full state transition tables, gate preconditions, and cascade rules: [State Transitions](../specification/state-transitions.md)]*
 
 ---
 
 ## 4. Cascade Propagation Engine
 
-The cascade engine is what separates this architecture from a spreadsheet. When a control fails or a CE rating degrades, the effect propagates automatically through every linked risk record.
-
-### 4.1 Cascade Trigger Rules
-
-| Trigger | Condition | Automated Response | SLA to Act |
-|---|---|---|---|
-| CE degradation | CE rating drops on any deployment | Risk flagged "Control Changed — Re-evaluation Required"; Risk Analyst notified | Critical: 5bd / High: 10bd / Moderate: 20bd / Mod-Low: 30bd |
-| Control failure | Control transitions to Failure state | Warning banner on ALL linked risk records; CISO escalation if >15 business days unresolved | Immediate flag; escalation at 15bd |
-| Treatment SLA breach | Target date missed, no revised plan | Risk Owner notified; Stakeholder escalated; governance breach logged | Per risk severity band |
-| Acceptance expiry | Time-bound acceptance period reached | Risk auto-flagged; escalation to Risk Owner then CISO; no silent expiry (INV-10) | Immediate; re-approval required |
-| CE improvement | CE rating improves post-treatment | Risk flagged "Control Improved — Residual Update Eligible"; full validation gate still required | No automatic score update — analyst-triggered |
-
-### 4.2 Cascade Implementation Pattern
-
-```
-# Pseudocode — cascade on control status change
-def on_control_status_change(control_id, new_status):
-    if new_status == "Failure":
-        linked_risks = get_risks_linked_to_control(control_id)
-        for risk in linked_risks:
-            risk.add_warning("CONTROL_FAILURE", control_id)
-            risk.residual_score_locked = True
-            notify(risk.risk_analyst, "control_failure_cascade", risk, control_id)
-            audit_log.record(risk.id, "cascade_control_failure", control_id)
-
-        if business_days_in_failure(control_id) > 15:
-            escalate(control_id, level="CISO", reason="control_failure_unresolved_15bd")
-```
-
-### 4.3 What Legacy Tools Cannot Do
-
-The cascade engine replaces five manual processes that legacy GRC tools require analysts to perform by hand:
+Real-time cascade behaviour across linked entities. Five cascade patterns enforced by FK relationships and API-layer triggers:
 
 1. **Control failure → risk flag**: Manual in legacy tools. Automatic in this architecture.
 2. **CE degradation → re-evaluation trigger**: Not tracked in legacy tools. FK-enforced here.
@@ -258,6 +181,8 @@ Reference self-hosted cost: ~$52-64/month for a low-traffic single-environment d
 
 Shared responsibility boundary analysis across all three paths: [shared-responsibility.md](./shared-responsibility.md)
 
+The three paths above govern where the platform runs. They do not govern the operational lifecycle of the tool itself: who owns it, how it is monitored, when it is retired, and how it is decommissioned. Those obligations are defined in the [AI Tool Lifecycle Model](./ai-tool-lifecycle.md). The lifecycle model applies regardless of which deployment path is selected and governs the internal team's side of the shared responsibility boundary from the first prompt to the final decommission.
+
 ---
 
 ## 7. Agentic Engineering Method
@@ -281,15 +206,15 @@ Two failure modes were observed during the build. Both were resolved by fixing t
 **Failure 1: Circular Dependency**
 The scoring engine and CE calculation each called the other to resolve a value neither had yet computed. **Root cause:** specification did not define computation order. **Fix:** Added explicit rule that CE calculation resolves first and is treated as a fixed input to the scoring engine. Circular dependency patterns between these modules are prohibited.
 
-**Failure 2: Silent Gate Removal**
-A state transition check was rewritten by the agent to resolve a frontend rendering conflict. The governance gate was silently removed. The component rendered correctly but the invariant was absent. **Root cause:** specification described the invariant as a lifecycle rule but did not declare it inviolable at the code layer. **Fix:** Updated specification to declare the invariant explicitly inviolable and to state that no frontend rendering requirement can justify removing a governance gate.
+**Failure 2: Governance Gate Removal**
+A frontend rendering conflict caused the agent to rewrite a state transition check, silently removing the gate. The component rendered correctly. The invariant was absent. **Root cause:** specification did not declare the gate inviolable with sufficient precision. **Fix:** Gate conditions re-declared as hard invariants with explicit "gate must survive all rendering changes" constraint.
 
-### 7.3 The Correction Protocol
+**Correction protocol for both failure types:**
 
-1. **Identify the specification gap.** What instruction was absent or ambiguous?
-2. **Update the constraint document.** Add the missing rule. Be precise enough that no reasonable interpretation permits the failure mode.
-3. **Clear agent context.** Do not patch the existing build. Residual context contaminates the correction.
-4. **Rebuild from the updated specification.** Only the affected components.
+1. Stop. Do not debug syntax.
+2. Identify the specification gap that permitted the failure.
+3. Clear agent context. Do not patch the existing build. Residual context contaminates the correction.
+4. Rebuild from the updated specification. Only the affected components.
 
 This is the core skill of agentic engineering. The barrier is not syntax. It is the discipline to treat every failure as a specification gap and fix the specification before rebuilding.
 
