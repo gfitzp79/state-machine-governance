@@ -31,34 +31,25 @@ This path splits into two distinct operating models with different risk profiles
 In this model, the agentic SaaS platform is a code generation and hosting layer. Your codebase lives in GitHub as the single source of truth. Two-way sync means edits in the platform appear in GitHub and edits in GitHub sync back to the platform on the default branch.
 
 **Key properties:**
-- Codebase owned and version-controlled by you from day one
-- Full commit history, branching, and pull request capability
-- Local IDE editing with changes syncing back to the platform
-- AppSec scanning runs in your own CI/CD pipeline against code you control
-- Platform becomes a generation interface, not a code custody layer
-- Vendor lock-in risk reduced significantly: specification and codebase are both portable
-
-**Important constraints from the platform:**
-- Connect GitHub at the start of the build or when first deploying — you cannot import an existing external codebase into the platform from GitHub; export only runs from the platform outward
-- The platform only syncs the default branch (typically `main`); feature branches must be merged before changes appear in the platform
-- The connection depends on the exact repository name, location, organisation, and account — do not rename, move, or delete the repository after connecting, as this breaks sync
+- Full commit history and change attribution
+- AppSec scanning integrated into CI/CD pipeline (not dependent on platform tooling)
+- Codebase is portable: migrate to self-hosted without data loss or code reconstruction
+- Platform is a generation and hosting layer, not a lock-in dependency
+- Every agent-generated change is a visible, attributable commit
 
 **Build workflow:**
 
 ```
-1. Create GitHub repository          → establish single source of truth before first prompt
-2. Connect platform to GitHub        → Settings → Connectors → GitHub → Connect project
-3. Codified specification            → prepared offline (no platform cost)
-4. Local prompt agent                → optimised agent with spec + platform docs as context
-5. Validate prompts locally          → test against specification before pushing (saves credits)
-6. Platform build                    → each prompt consumes credits; code commits to GitHub
-7. Validation                        → acceptance criteria checked per prompt; pin or revert
-8. Deployment                        → platform auto-deploys from GitHub main; shareable URL generated
-9. Iteration                         → further prompts via platform or direct commits to GitHub
+1. Codified specification            → prepared offline (no platform cost)
+2. GitHub repository                 → created and connected before first prompt
+3. Prompt validation                 → validate prompts locally before pushing
+4. Platform build                    → each prompt consumes credits (prompt + DB operations + code generation)
+5. Validation                        → acceptance criteria checked per prompt; pin or revert
+6. Deployment                        → platform auto-deploys from GitHub; shareable URL generated
+7. CI/CD scanning                    → AppSec scan runs on each commit in GitHub Actions
 ```
 
-**Context management advantage:**
-Because the platform is always building against the live GitHub codebase, one category of context drift is mitigated: the agent is less likely to re-implement or contradict components it can read from the repository. Session-level context window degradation still applies — the re-grounding disciplines in [context-management.md](../methodology/context-management.md) remain relevant and should not be skipped. But the GitHub-connected model removes the risk of the agent working against a stale snapshot of the codebase.
+**Context management:** Session-level context window degradation still applies — the re-grounding disciplines in [context-management.md](../methodology/context-management.md) remain relevant and should not be skipped. But the GitHub-connected model removes the risk of the agent working against a stale snapshot of the codebase.
 
 ---
 
@@ -175,6 +166,7 @@ Full assessment: [Shared Responsibility Model](./shared-responsibility.md#6-vend
 Before starting the build, confirm:
 
 ```
+□ AI tool lifecycle ownership assigned and documented before first prompt (see ai-tool-lifecycle.md)
 □ GitHub repository created and connected to platform before first prompt
 □ Shared responsibility boundary documented and accepted by risk owner
 □ Agent permission scope defined in specification
@@ -184,11 +176,18 @@ Before starting the build, confirm:
 □ Cost model projected for 12-month steady state
 ```
 
+For post-deployment lifecycle governance including prompt observability requirements, production readiness gates, and decommissioning criteria: [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
+
+For guidance on when this path is appropriate vs. self-hosted or vendor platforms: [Shared Responsibility Model §7](./shared-responsibility.md#7-decision-framework).
+
+---
+
 **Model B: Platform-Native**
 
 Before deploying production data, confirm:
 
 ```
+□ AI tool lifecycle ownership assigned and documented before first prompt (see ai-tool-lifecycle.md)
 □ Shared responsibility boundary documented and accepted by risk owner
 □ Agent permission scope defined in specification
 □ RLS policies validated against RBAC specification post-build
@@ -197,6 +196,8 @@ Before deploying production data, confirm:
 □ Cost model projected for 12-month steady state
 □ Re-grounding methodology from context-management.md in place
 ```
+
+For post-deployment lifecycle governance including prompt observability requirements, production readiness gates, and decommissioning criteria: [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
 
 For guidance on when this path is appropriate vs. self-hosted or vendor platforms: [Shared Responsibility Model §7](./shared-responsibility.md#7-decision-framework).
 
