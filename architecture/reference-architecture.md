@@ -66,16 +66,9 @@ Full invariant catalogue: [Codified Rules](../specification/codified-rules.md)
 
 ### 2.1 Schema Overview
 
-The schema is derived directly from the governance specification. 20 tables across 5 modules:
+The schema is derived directly from the governance specification. 39 tables across 7 domains: Platform and Identity, Risk Management, Control Management, Treatment Management, Policy and Standards, Vendor and Third-Party Risk, and Threat Management.
 
-| Module | Tables | Purpose |
-|---|---|---|
-| **Risk Management** | risks, risk_controls, risk_treatments, risk_stakeholders | Risk lifecycle, scoring, treatment tracking |
-| **Control Management** | control_objectives, control_activities, control_deployments, control_implementations | Control hierarchy, CE assessment, testing |
-| **Policy Management** | policies, standards, policy_exceptions, policy_controls | Policy governance, exception management |
-| **Asset Register** | assets, systems, digital_assets, asset_control_mapping | Asset hierarchy, CMDB integration, and deployment targeting |
-| **Threat Management** | threat_models, threat_components, threat_scenarios, threat_mitigation_links | STRIDE models, threat mitigations, risk register promotion |
-| **Platform** | users, roles, audit_log, comments, attachments | RBAC, audit trail, shared infrastructure |
+Full schema with all table definitions, column specifications, FK relationships, named constraints, and schema-level invariant enforcement: [Data Model](./data-model.md).
 
 ### 2.2 Key Design Decisions
 
