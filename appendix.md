@@ -36,13 +36,11 @@ Under the Digital Operational Resilience Act, regulated entities must demonstrat
 | Change management with defined controls | Article 9 | AI Tool Lifecycle: versioning strategy enforced at Build gate. Breaking changes require Pre-Production re-entry before Production promotion. |
 | ICT third-party oversight where vendor-hosted | Article 28 | AI Tool Lifecycle: Pre-Production gate confirms shared responsibility boundary before any user onboarding. |
 
-For firms operating under the Central Bank of Ireland's accountability framework, these are mandatory demonstrable requirements. The cascading state machine architecture is the direct structural implementation of what DORA requires.
-
 ---
 
 ## EU AI Act Mapping
 
-For organisations operating AI systems in scope under the EU AI Act, the lifecycle model provides a governance structure that maps to the technical documentation and lifecycle management requirements.
+For organisations operating AI systems in scope under the EU AI Act, the lifecycle model provides a governance structure that maps to the technical documentation and lifecycle management requirements. These mappings apply where an organisation's AI tools meet the definition of high-risk systems under EU AI Act Article 6 and Annex III. Scope determination requires independent legal assessment.
 
 | EU AI Act Requirement | Article | Lifecycle Implementation |
 |---|---|---|
