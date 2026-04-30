@@ -30,7 +30,7 @@ Under the Digital Operational Resilience Act, regulated entities must demonstrat
 | DORA Requirement | Article | State Machine Implementation |
 |---|---|---|
 | Continuous ICT risk monitoring with documented response | Article 9 | Cross-entity FK propagation: issues and findings cascade to risk records. Response enforced by phase gate. |
-| Incident management feeds back into risk register | Article 11 | Incident records carry FK to risk records. Incident closure gate requires risk record update. |
+| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress — see [APPENDIX.md#vulnerability-management](./APPENDIX.md#vulnerability-management) for the adjacent pattern. |
 | ICT risk management framework maintained and reviewed | Article 6 | Framework codified as machine-readable rule set. Changes trigger re-assessment cascade on all mapped controls and risks. |
 | Register of information on ICT third-party service providers | Article 28 | Third-party risk module: schema extension defined, state machine specified. See [Third-Party Risk](#third-party-risk) below. |
 | Change management with defined controls | Article 9 | AI Tool Lifecycle: versioning strategy enforced at Build gate. Breaking changes require Pre-Production re-entry before Production promotion. |
