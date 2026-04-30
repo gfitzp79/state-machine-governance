@@ -10,7 +10,7 @@ This appendix contains content that supplements the dedicated specification, arc
 | System invariants with enforcement detail | [specification/invariants-catalogue.md](./specification/invariants-catalogue.md) |
 | State transitions and phase gates | [specification/state-transitions.md](./specification/state-transitions.md) |
 | Scoring engine implementation | [specification/scoring-model.md](./specification/scoring-model.md) |
-| 20-table schema with DDL | [architecture/data-model.md](./architecture/data-model.md) |
+| Full relational schema with DDL (39 tables, 7 domains) | [architecture/data-model.md](./architecture/data-model.md) |
 | Platform overview (lifecycle, cascade, RBAC) | [architecture/reference-architecture.md](./architecture/reference-architecture.md) |
 | AI tool lifecycle governance | [architecture/ai-tool-lifecycle.md](./architecture/ai-tool-lifecycle.md) |
 | Agentic SaaS deployment | [architecture/deployment-saas.md](./architecture/deployment-saas.md) |
