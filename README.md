@@ -80,7 +80,7 @@ Core principle: fix the specification, not the code. Full detail: [/methodology]
 | Requirement | Regulation | Implementation |
 |---|---|---|
 | Continuous ICT risk monitoring with documented response | DORA Article 9 | Cross-entity FK propagation: issues and findings cascade to risk records |
-| Incident management feeds back into risk register | DORA Article 11 | Incident records carry FK to risk records. Closure gate requires risk record update |
+| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress — see [APPENDIX.md#vulnerability-management](./APPENDIX.md#vulnerability-management) for the adjacent pattern. |
 | ICT risk management framework maintained and reviewed | DORA Article 6 | Framework codified as machine-readable rule set. Changes trigger re-assessment cascade |
 | ICT third-party register | DORA Article 28 | Third-party risk module: schema extension defined, state machine specified |
 | AI system lifecycle documentation | EU AI Act Article 18 | Lifecycle model: Ideation through Deprecation artefacts satisfy technical documentation requirements |
