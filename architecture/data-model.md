@@ -2,7 +2,7 @@
 
 **Version:** 1.0 | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](../specification/codified-rules.md) and validated against a working Supabase implementation.
-**Purpose:** Complete relational schema for the governance platform. 35 tables across 6 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
+**Purpose:** Complete relational schema for the governance platform. 39 tables across 7 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
 
 > **Design principle:** The schema is the first line of enforcement. Every NOT NULL, CHECK, UNIQUE, and FK constraint exists because a codified rule requires it. If a constraint is absent, the rule is not enforced at the data layer and must be enforced at the service layer. See [Invariants Catalogue](../specification/invariants-catalogue.md) for the complete enforcement mapping.
 
