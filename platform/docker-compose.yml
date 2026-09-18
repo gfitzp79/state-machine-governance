@@ -1,0 +1,53 @@
+# State Machine Governance - reference implementation
+#
+#   cp .env.example .env     (then change JWT_SECRET)
+#   docker compose up -d
+#
+# The API reads config/governance.yml at boot. It is bind-mounted rather than
+# baked into the image, so editing your operating model is a file edit and a
+# restart, not a rebuild.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-grc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grc}
+      POSTGRES_DB: ${POSTGRES_DB:-grc}
+    volumes:
+      - grc-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-grc} -d ${POSTGRES_DB:-grc}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-grc}:${POSTGRES_PASSWORD:-grc}@db:5432/${POSTGRES_DB:-grc}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-720}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      GOVERNANCE_CONFIG: /srv/config/governance.yml
+    volumes:
+      # Your operating model. Edit and `docker compose restart api` to apply.
+      - ${GOVERNANCE_CONFIG_FILE:-./config/governance.yml}:/srv/config/governance.yml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  grc-data:

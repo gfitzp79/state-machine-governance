@@ -1,0 +1,311 @@
+# ---------------------------------------------------------------------------
+# Governance configuration
+# ---------------------------------------------------------------------------
+#
+# This file is the enterprise-facing half of the platform. Everything the
+# specification marks [CUSTOMISE] lives here, so aligning the tool to your
+# operating model is a configuration change, not a code change.
+#
+# The values shipped below are the framework's recommended baseline, aligned to
+# regulated financial services. Edit them to match your own framework.
+#
+#   docker compose restart api      # picks up changes to thresholds and lists
+#
+# WHAT IS NOT CONFIGURABLE, AND WHY
+#
+# Lifecycle state names, the 1-5 impact and likelihood scales, control
+# effectiveness rating names, treatment strategies and the five rating band
+# names are fixed. The invariants and the database constraints reference them by
+# name: RINV-5 says a Critical risk cannot be accepted, and there is a CHECK
+# constraint that enforces exactly that. Renaming them at runtime would break
+# the enforcement they exist to provide. Band *boundaries* are configurable;
+# band names are not.
+#
+# ---------------------------------------------------------------------------
+
+organisation:
+  # Shown in the UI header and on the sign-in page.
+  name: Example Corporation
+  short_name: Example
+  # Optional: displayed under the organisation name.
+  tagline: Governance platform
+
+# ---------------------------------------------------------------------------
+# Risk appetite and scoring
+# Specification: codified-rules section 1.2, scoring-model section 1
+# ---------------------------------------------------------------------------
+scoring:
+  # Score boundaries for each rating band. Scores run 1-25 (impact x likelihood).
+  # The five band names are fixed; move the boundaries to match your appetite.
+  # Bands must be contiguous and cover 1-25 with no gaps or overlaps.
+  rating_bands:
+    - { rating: Critical,     min: 20, max: 25, appetite: Above Appetite }
+    - { rating: High,         min: 15, max: 19, appetite: Above Appetite }
+    - { rating: Moderate,     min: 10, max: 14, appetite: Above Appetite }
+    - { rating: Moderate-Low, min: 5,  max: 9,  appetite: At Appetite }
+    - { rating: Low,          min: 1,  max: 4,  appetite: Within Appetite }
+
+  # Re-evaluation cadence in calendar days, by reported rating.
+  # Specification: codified-rules section 5.4
+  review_cadence_days:
+    Critical: 14
+    High: 30
+    Moderate: 60
+    Moderate-Low: 90
+    Low: 180
+
+# ---------------------------------------------------------------------------
+# Acceptance rules
+# Specification: codified-rules section 5.5
+#
+# `acceptable: false` on a band makes RINV-5 refuse acceptance at that rating.
+# The baseline refuses it at Critical only. Setting it false on High as well is
+# a legitimate tightening; the invariant picks it up with no code change.
+# ---------------------------------------------------------------------------
+acceptance:
+  Critical:     { acceptable: false, max_days: 0,   approver: null }
+  High:         { acceptable: true,  max_days: 90,  approver: C-level }
+  Moderate:     { acceptable: true,  max_days: 180, approver: VP }
+  Moderate-Low: { acceptable: true,  max_days: 360, approver: Director }
+  Low:          { acceptable: true,  max_days: 365, approver: Risk_Owner }
+
+# ---------------------------------------------------------------------------
+# Control effectiveness
+# Specification: codified-rules section 4.5-4.6, section 10.2
+# ---------------------------------------------------------------------------
+control_effectiveness:
+  # The ceiling on how far residual likelihood may fall below inherent, per
+  # resolved CE rating (LKH-1). Raising these weakens RINV-9; lowering them
+  # tightens it. Setting CE-High to 1 means no control can ever buy more than
+  # one level of likelihood reduction.
+  likelihood_reduction:
+    CE-High: 2
+    CE-Medium: 1
+    CE-Low: 0
+    CE-Unvalidated: 0
+
+  # How long evidence stays valid, by the control's test cadence (CE-6 / CINV-10).
+  # Expired evidence auto-downgrades to CE-Unvalidated with no manual override.
+  expiry_months:
+    Continuous: 2
+    Monthly: 6
+    Quarterly: 12
+    Annual: 24
+
+  # Response SLA in business days when a linked control degrades, by risk rating.
+  degradation_sla_days:
+    Critical: 5
+    High: 10
+    Moderate: 20
+    Moderate-Low: 30
+    Low: 30
+
+# ---------------------------------------------------------------------------
+# Risk taxonomy
+# Specification: codified-rules sections 3.2, 3.7
+# ---------------------------------------------------------------------------
+risk:
+  # NIST RMF organisational tiers. Rename or reduce to match your model; impact
+  # is scored within the selected tier's scope boundary (IMP-1).
+  tiers:
+    - { id: Tier_1, label: Organisation,       description: Enterprise-wide or cross-functional systemic risk }
+    - { id: Tier_2, label: Mission/Process,    description: Business process, mission area, or operational domain }
+    - { id: Tier_3, label: Information System, description: Specific system, platform, or application }
+    - { id: Tier_4, label: Component,          description: Individual component, service, or interface }
+
+  # Authoritative intake sources. Items arriving by any other route are triaged
+  # into alternate governance rather than the register.
+  intake_sources:
+    - Assessment
+    - Audit_Finding
+    - Incident
+    - Threat_Intelligence
+    - Control_Test_Failure
+    - Issue_Promotion
+    - Threat_Model
+    - Vendor_Assessment
+    - Regulatory_Change
+    - Self_Identified
+
+# ---------------------------------------------------------------------------
+# Control taxonomy
+# Specification: codified-rules section 8.3
+# ---------------------------------------------------------------------------
+controls:
+  # Baseline of 16 families. Replace wholesale with your own control framework;
+  # nothing else in the platform depends on these names.
+  families:
+    - Access_Control
+    - Asset_Management
+    - Application_Security
+    - Business_Continuity
+    - Cryptography
+    - Data_Protection
+    - Endpoint_Security
+    - Governance
+    - Human_Resources
+    - Identity_Management
+    - Incident_Response
+    - Logging_Monitoring
+    - Network_Security
+    - Physical_Security
+    - Third_Party_Risk
+    - Vulnerability_Management
+
+  types:
+    - Preventive
+    - Detective
+    - Corrective
+
+  test_frequencies:
+    - Continuous
+    - Monthly
+    - Quarterly
+    - Annual
+
+  # Asset criticality tiers used by the asset register and threat model scoping.
+  asset_tiers:
+    - Tier_1
+    - Tier_2
+    - Tier_3
+    - Tier_4
+
+# ---------------------------------------------------------------------------
+# Policy governance
+# Specification: codified-rules sections 12-15
+# ---------------------------------------------------------------------------
+policy:
+  types:
+    - Information_Security
+    - Data_Protection
+    - Operational_Resilience
+    - Third_Party
+    - Acceptable_Use
+    - AI_Governance
+
+  review_cycles:
+    - Annual
+    - Biennial
+
+  # Every framework selectable as a compliance mapping on a policy or standard.
+  compliance_frameworks:
+    - ISO27001
+    - SOC2
+    - PCI-DSS
+    - DORA
+    - NIS2
+    - NIST-CSF
+    - NIST-800-53
+    - EU-AI-Act
+    - GDPR
+
+  # Frameworks whose audit cadence forces an Annual review cycle (CF-4 / PINV-4).
+  # A policy mapped to any of these cannot be set to Biennial.
+  annual_audit_frameworks:
+    - ISO27001
+    - SOC2
+    - PCI-DSS
+    - DORA
+    - NIS2
+
+  exceptions:
+    # PE-1: standard maximum exception window, in days.
+    max_days: 365
+    # PE-1: extended window, available only with CISO approval.
+    extended_max_days: 730
+    # Active exception count on one policy that triggers an unscheduled review.
+    review_trigger_count: 5
+    # PE-4: notify the requestor this many days before expiry.
+    expiry_warning_days: 30
+
+# ---------------------------------------------------------------------------
+# Threat management
+# Specification: codified-rules section 19
+# ---------------------------------------------------------------------------
+threat:
+  # TINV-5: maximum window for a local acceptance of a Low severity scenario.
+  local_acceptance_max_days: 365
+  # TINV-3: severities at or above this cannot be accepted locally and must be
+  # promoted to the risk register. Order is Low, Medium, High, Critical.
+  minimum_promotable_severity: Medium
+  # Days an unaddressed Medium+ scenario may sit before auto-promotion.
+  auto_promotion_days: 15
+
+# ---------------------------------------------------------------------------
+# Roles and separation of duties
+# Specification: codified-rules sections 2.1-2.3
+#
+# `level` orders the roles for checks that need seniority, such as PINV-5
+# (policy approval requires CISO or above). Adding a role here makes it
+# assignable; referencing it in a transition's role list makes it meaningful.
+# ---------------------------------------------------------------------------
+roles:
+  definitions:
+    - { id: Auditor,              level: 0, description: Read-only assurance access }
+    - { id: Control_Operator,     level: 1, description: Implements and operates controls }
+    - { id: Control_Owner,        level: 2, description: Owns control design and effectiveness evidence }
+    - { id: Risk_Treatment_Owner, level: 2, description: Accountable for treatment delivery }
+    - { id: AppSec_Engineer,      level: 2, description: Application security engineering }
+    - { id: Risk_Analyst,         level: 3, description: Assessment, scoring, validation, SLA tracking }
+    - { id: GRC_Engineer,         level: 3, description: Treatment feasibility, tooling, specification }
+    - { id: Security_SME,         level: 3, description: Threat landscape and architecture advisory }
+    - { id: System_Owner,         level: 3, description: Accountable for a system or service }
+    - { id: Policy_Owner,         level: 3, description: Owns policy content and review cycle }
+    - { id: AppSec_Lead,          level: 4, description: Application security leadership and sign-off }
+    - { id: Risk_Owner,           level: 4, description: Owns the risk decision and the residual }
+    - { id: Risk_Stakeholder,     level: 5, description: Senior oversight and escalation }
+    - { id: CISO,                 level: 6, description: Policy approval and governance authority }
+    - { id: Admin,                level: 7, description: Platform administration }
+
+  # Organisational seniority, ordered lowest to highest. Distinct from functional
+  # role: it drives the ownership-by-severity matrix below.
+  seniority_ladder:
+    - Individual
+    - Manager
+    - Director
+    - Senior_Director
+    - VP
+    - C-level
+
+  # Minimum seniority to own a risk at each rating.
+  # Specification: codified-rules section 2.3
+  ownership_by_severity:
+    Critical: C-level
+    High: VP
+    Moderate: Senior_Director
+    Moderate-Low: Director
+    Low: Director
+
+# ---------------------------------------------------------------------------
+# Escalation and SLA windows, in calendar days
+# Specification: codified-rules section 6, state-transitions section 8
+# ---------------------------------------------------------------------------
+escalation:
+  # CINV-5: a control in Failure this long without a remediation plan escalates.
+  control_failure_escalation_days: 21
+  # PINV-7: control alignment confirmation window after a policy revision.
+  policy_realignment_days: 30
+  # PINV-3: control re-mapping window after a policy deprecation.
+  policy_remapping_days: 60
+  # Risk re-assessment window after a contributing control is retired.
+  control_retirement_reassessment_days: 30
+
+# ---------------------------------------------------------------------------
+# Treatment planning
+# Specification: codified-rules section 5.2-5.3
+# ---------------------------------------------------------------------------
+treatment:
+  # Level-of-effort bands offered when planning a treatment.
+  loe_bands: [XS, S, M, L, XL]
+
+  checkin_frequencies:
+    - Weekly
+    - Fortnightly
+    - Monthly
+    - Quarterly
+
+  checkin_statuses:
+    - On_Track
+    - At_Risk
+    - Blocked
+    - Delivered

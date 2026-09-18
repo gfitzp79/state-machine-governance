@@ -31,6 +31,34 @@ The same capability that makes internal builds fast also removes the operational
 
 ---
 
+## Run It
+
+The reference implementation is in [`/platform`](./platform). It is a working,
+open-source GRC platform: modular, object-oriented, dockerised, and licensed
+Apache-2.0.
+
+```bash
+git clone https://github.com/gfitzp79/state-machine-governance.git
+cd state-machine-governance/platform
+cp .env.example .env
+docker compose up -d
+```
+
+Open <http://localhost:8080> and sign in as `analyst@example.com` / `changeme123`.
+Docker is the only prerequisite.
+
+**8 state machines · 53 gated transitions · 40 invariants · 23 cascade events**,
+served live from the running engine at `/api/engine/*` rather than transcribed
+into a document that can drift.
+
+Your operating model — appetite bands, control families, roles, acceptance
+windows, escalation SLAs, everything this specification marks `[CUSTOMISE]` —
+lives in [`platform/config/governance.yml`](./platform/config/governance.yml).
+Aligning the platform to your framework is a file edit and a restart, not a fork.
+See the [configuration guide](./platform/docs/CONFIGURATION.md).
+
+---
+
 ## The GRC Platform
 
 The reference implementation demonstrates state machine governance applied to a multi-module GRC platform.
@@ -94,6 +122,21 @@ Core principle: fix the specification, not the code. Full detail: [/methodology]
 **Vulnerability Management** — Five enforced state transitions: Discovery through Verified Closed. Specification in progress. [Detail](./APPENDIX.md#vulnerability-management).
 
 **Resilience** — BIA/RPO/RTO as enforced state variables linked to risk register via FK. [Detail](./APPENDIX.md#resilience).
+
+---
+
+## Licensing
+
+This repository carries two licences, deliberately.
+
+| | Covers | Licence |
+|---|---|---|
+| Repository root | The framework: specification, architecture, methodology | [CC BY 4.0](./LICENSE) |
+| [`/platform`](./platform) | The reference implementation (software) | [Apache 2.0](./platform/LICENSE) |
+
+Creative Commons advises against applying its licences to software, so the
+implementation carries a licence built for code: permissive, with an explicit
+patent grant and contributor terms.
 
 ---
 
