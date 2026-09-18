@@ -1,10 +1,10 @@
 ---
 name: state-machine-governance
-description: "Maintains and extends a markdown-based GRC reference architecture repository. Use this skill when adding a new governance domain (e.g., threat management, vulnerability management, resilience), adding or modifying invariants, extending state machine lifecycles, updating data model tables, or reviewing cross-document consistency across specification, architecture, and methodology documents. This repo contains no source code — all outputs are markdown specification documents. Do NOT use for source code generation, deployment configuration, or any task unrelated to GRC specification authoring."
-license: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/
+description: "Maintains and extends a markdown-based GRC reference architecture repository. Use this skill when adding a new governance domain (e.g., threat management, vulnerability management, resilience), adding or modifying invariants, extending state machine lifecycles, updating data model tables, or reviewing cross-document consistency across specification, architecture, and methodology documents. This repo contains no source code: all outputs are markdown specification documents. Do NOT use for source code generation, deployment configuration, or any task unrelated to GRC specification authoring."
+license: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
 ---
 
-# State Machine Governance — Specification Maintenance Skill
+# State Machine Governance: Specification Maintenance Skill
 
 ## What This Skill Covers
 
@@ -23,7 +23,7 @@ No source code is produced. The specification documents are the deliverable.
 
 Read `@.agents/agents.md` in full. It contains the document map, cross-document dependency rules, editorial standards, and the list of things the agent must not do. These apply to every task regardless of scope.
 
-Then read the specific documents relevant to the task. Do not rely on training knowledge about what these documents contain — read them.
+Then read the specific documents relevant to the task. Do not rely on training knowledge about what these documents contain. Read them.
 
 ---
 
@@ -70,7 +70,7 @@ What are you doing?
 │
 ├── Cross-document consistency review
 │   Read:  All documents in scope for the review
-│   Produce: Structured gap report — see Consistency Review section below
+│   Produce: Structured gap report (see Consistency Review section below)
 │
 └── Extending an existing section (adding content to an established domain)
     Read:  The specific document and section
@@ -83,7 +83,7 @@ What are you doing?
 
 When adding a new invariant, confirm these before writing:
 
-1. Check `@specification/invariants-catalogue.md` — is the proposed ID already in use?
+1. Check `@specification/invariants-catalogue.md`: is the proposed ID already in use?
 2. New RINV, CINV, PINV, or TINV? Match the prefix to the domain.
 3. Every invariant entry in `invariants-catalogue.md` requires all six columns: ID, Rule, Enforcement Layer, Enforcement Mechanism, Violation Behaviour, Spec Reference.
 4. Enforcement Layer must be one of: `Schema`, `Service`, `Both`. No other values.
@@ -123,7 +123,7 @@ When adding or modifying tables:
 When asked to perform a cross-document consistency review, produce output in this structure:
 
 ```
-## Consistency Review — [Scope]
+## Consistency Review: [Scope]
 
 ### PASS
 - [Document A §Section] ↔ [Document B §Section]: [what matches and why it matters]
@@ -137,7 +137,7 @@ When asked to perform a cross-document consistency review, produce output in thi
   Addition required: [what needs to be added and where]
 
 ### EDITORIAL
-- [Document] [location]: [violation — em dash / unverifiable claim / non-standard naming / etc.]
+- [Document] [location]: [violation type, e.g. em dash, unverifiable claim, non-standard naming]
 ```
 
 Do not mix categories. A GAP is a contradiction between two documents. MISSING is an omission in one document. PASS is explicit confirmation, not assumed.

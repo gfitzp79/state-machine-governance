@@ -34,7 +34,7 @@ Three deployment paths are available. Each shifts the responsibility boundary di
 
 In both paths, the agent generates the same artefacts. The difference is who operates and secures the runtime.
 
-This document defines the boundary between what the platform or provider secures and what you own at the point of deployment. For governance of your side of that boundary across the full operational life of the tool — from ideation through decommissioning — see [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
+This document defines the boundary between what the platform or provider secures and what you own at the point of deployment. For governance of your side of that boundary across the full operational life of the tool, from ideation through decommissioning, see [ai-tool-lifecycle.md](./ai-tool-lifecycle.md).
 
 ---
 

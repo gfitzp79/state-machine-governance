@@ -4,7 +4,7 @@
 **Source:** Derived from patterns proven in a production GRC platform build on an agentic SaaS deployment path (Lovable + Supabase).
 **Purpose:** A reference library of copy-paste-ready prompt patterns for building governance platform modules. Each pattern is derived from a working implementation, not a hypothetical. Adapt the bracketed values to your entity, schema, and role model.
 
-> **Companion to:** [Prompt Cycle](./prompt-cycle.md) (architectural guidance) and [Context Management](./context-management.md) (session discipline). This document is the implementation layer — what to type. Those documents explain when, why, and in what order.
+> **Companion to:** [Prompt Cycle](./prompt-cycle.md) (architectural guidance) and [Context Management](./context-management.md) (session discipline). This document is the implementation layer: what to type. Those documents explain when, why, and in what order.
 
 > **Platform assumptions:** These prompts were developed and validated on a Lovable + Supabase stack. Core patterns (RLS, edge functions, React Query, phase gates) are portable to other agentic SaaS platforms. Schema conventions (uuid PKs, `gen_random_uuid()`, `has_role()`) are Supabase-specific and should be adapted for other database backends.
 
@@ -31,17 +31,17 @@
 
 ### 1.1 Create a New Entity Table with RLS
 
-**When to use:** Scaffolding any new governance entity (risk, control, policy, treatment, exception). This is the baseline pattern — all governance entities share this structure.
+**When to use:** Scaffolding any new governance entity (risk, control, policy, treatment, exception). This is the baseline pattern: all governance entities share this structure.
 
 **Preconditions:** `user_roles` table and `has_role()` function exist. `app_role` enum is defined. Supabase client is connected.
 
-**Why it works:** The `lifecycle_state` default of `'draft'` enforces the state machine's initial state at the schema level, not the application layer. Human-readable IDs (`RISK-001`, `CTL-042`) are essential for audit trails and governance reporting — UUIDs alone are not adequate for regulatory documentation.
+**Why it works:** The `lifecycle_state` default of `'draft'` enforces the state machine's initial state at the schema level, not the application layer. Human-readable IDs (`RISK-001`, `CTL-042`) are essential for audit trails and governance reporting: UUIDs alone are not adequate for regulatory documentation.
 
 ```
 Create a new database table called `[table_name]` with the following columns:
 
 - `id` (uuid, PK, default `gen_random_uuid()`)
-- `[human_readable_id]` (text, unique, not null) — a short human-readable identifier like `RISK-001`
+- `[human_readable_id]` (text, unique, not null): a short human-readable identifier like `RISK-001`
 - `title` (text, not null)
 - `description` (text, nullable)
 - `lifecycle_state` (text, default `'draft'`)
@@ -62,7 +62,7 @@ Use the `has_role(auth.uid(), '[role]')` function for all policy checks.
 
 ### 1.2 Add a Junction Table
 
-**When to use:** Any many-to-many relationship between governance entities — risk ↔ control, policy ↔ control, risk ↔ treatment.
+**When to use:** Any many-to-many relationship between governance entities: risk ↔ control, policy ↔ control, risk ↔ treatment.
 
 **Preconditions:** Both parent tables exist. `has_role()` is available.
 
@@ -87,11 +87,11 @@ RLS: SELECT for all authenticated users. INSERT/DELETE for `[allowed_role]`.
 
 ### 2.1 Filterable Registry Page
 
-**When to use:** Any module-level list view — Risk Register, Controls Library, Policy Register, Treatment Library.
+**When to use:** Any module-level list view: Risk Register, Controls Library, Policy Register, Treatment Library.
 
 **Preconditions:** Table exists in Supabase. React Query, shadcn/ui, and React Router are available.
 
-**Why it works:** The `lifecycle_state` dropdown filter is the single most-used filter in governance platforms — analysts spend most of their time looking at records in a specific phase. Putting it in the top bar rather than a sidebar makes it immediately accessible. The role gate on the Create button enforces RBAC at the UI layer while schema-level RLS enforces it at the data layer.
+**Why it works:** The `lifecycle_state` dropdown filter is the single most-used filter in governance platforms: analysts spend most of their time looking at records in a specific phase. Putting it in the top bar rather than a sidebar makes it immediately accessible. The role gate on the Create button enforces RBAC at the UI layer while schema-level RLS enforces it at the data layer.
 
 ```
 Create a new page at route `/[entity-plural]` that displays all rows from the `[table_name]` table.
@@ -100,10 +100,10 @@ Layout:
 - Page title: "[Entity] Register" with a subtitle describing the purpose.
 - Top bar: search input (filters by `title`), a dropdown filter for `lifecycle_state`, and a "Create [Entity]" button (visible only to `[creator_role]`).
 - Data table with columns:
-  1. `[human_id]` — left-aligned, monospace, clickable link to `/[entity-plural]/:id`.
-  2. `title` — primary text.
-  3. `lifecycle_state` — rendered as a Badge with colour per state (draft=gray, active=green, retired=amber, closed=red).
-  4. `created_at` — formatted as `YYYY-MM-DD`.
+  1. `[human_id]`: left-aligned, monospace, clickable link to `/[entity-plural]/:id`.
+  2. `title`: primary text.
+  3. `lifecycle_state`: rendered as a Badge with colour per state (draft=gray, active=green, retired=amber, closed=red).
+  4. `created_at`: formatted as `YYYY-MM-DD`.
   5. Row action: kebab menu with "View details".
 - Default sort: `created_at` descending.
 - States: loading skeleton rows, empty state with guidance text and CTA button, error toast on fetch failure.
@@ -127,11 +127,11 @@ Create a detail page at route `/[entity-plural]/:id` that loads a single row fro
 
 Layout:
 - Breadcrumb: `[Module] > [Entity Register] > [title]`.
-- Header: `[human_id]` as subtitle, `title` as H1, lifecycle badge, and action buttons (Edit, Delete — role-gated).
+- Header: `[human_id]` as subtitle, `title` as H1, lifecycle badge, and action buttons (Edit, Delete, role-gated).
 - Tabs:
-  1. **Overview** — Card grid showing key fields: `[field_1]`, `[field_2]`, `lifecycle_state`, `created_at`, owner info.
-  2. **Linked [Related Entity]** — Table of linked items from `[junction_table]` with add/remove capability for `[allowed_role]`.
-  3. **History** — Audit log entries filtered by `entity_type = '[entity]'` and `entity_id = :id`, ordered newest first.
+  1. **Overview**: Card grid showing key fields: `[field_1]`, `[field_2]`, `lifecycle_state`, `created_at`, owner info.
+  2. **Linked [Related Entity]**: Table of linked items from `[junction_table]` with add/remove capability for `[allowed_role]`.
+  3. **History**: Audit log entries filtered by `entity_type = '[entity]'` and `entity_id = :id`, ordered newest first.
 
 - Loading: full skeleton.
 - Not found: "Entity not found" message with back link.
@@ -144,7 +144,7 @@ Layout:
 
 ### 4.1 Admin Settings Section with Cards
 
-**When to use:** Platform configuration areas — RBAC settings, integration configuration, framework management.
+**When to use:** Platform configuration areas: RBAC settings, integration configuration, framework management.
 
 **Preconditions:** Settings page exists. User has admin role. shadcn Card, Table, Dialog components.
 
@@ -179,21 +179,21 @@ Only visible to `site_admin` role.
 
 ### 5.1 Create/Edit Entity Modal
 
-**When to use:** Creating or editing any governance entity. This is the standard form pattern — use it consistently across all modules.
+**When to use:** Creating or editing any governance entity. This is the standard form pattern: use it consistently across all modules.
 
 **Preconditions:** shadcn Dialog, react-hook-form with zod validation, React Query mutations.
 
-**Critical note on governance forms:** The `[owner_field]` pattern (populating from the `profiles` table) is essential for assigning Risk Owners, Control Owners, and Treatment Owners. These assignments have governance consequences — the platform must track named individuals, not just role labels. See [Codified Rules §2.1](../specification/codified-rules.md#21-role-definitions) for role assignment constraints.
+**Critical note on governance forms:** The `[owner_field]` pattern (populating from the `profiles` table) is essential for assigning Risk Owners, Control Owners, and Treatment Owners. These assignments have governance consequences: the platform must track named individuals, not just role labels. See [Codified Rules §2.1](../specification/codified-rules.md#21-role-definitions) for role assignment constraints.
 
 ```
 Create a modal dialog for creating a new `[entity]`.
 
 - Title: "Create [Entity]"
 - Form fields:
-  1. `title` — text input, required, max 200 chars.
-  2. `description` — textarea, optional, max 2000 chars.
-  3. `[category_field]` — Select dropdown populated from `[enum or lookup table]`.
-  4. `[owner_field]` — Select dropdown populated from `profiles` table (show `full_name`).
+  1. `title`: text input, required, max 200 chars.
+  2. `description`: textarea, optional, max 2000 chars.
+  3. `[category_field]`: Select dropdown populated from `[enum or lookup table]`.
+  4. `[owner_field]`: Select dropdown populated from `profiles` table (show `full_name`).
 - Validation: zod schema, inline error messages below each field.
 - Actions: "Cancel" (secondary, closes modal) and "Create [Entity]" (primary).
 - On submit: insert to `[table_name]` via Supabase, set `created_by` to `auth.uid()`.
@@ -208,11 +208,11 @@ Create a modal dialog for creating a new `[entity]`.
 
 ### 6.1 AI Analysis with Recommendations
 
-**When to use:** Adding AI-assisted analysis to any governance record — control gap analysis, risk treatment recommendations, policy alignment checks.
+**When to use:** Adding AI-assisted analysis to any governance record: control gap analysis, risk treatment recommendations, policy alignment checks.
 
 **Preconditions:** AI gateway is available. Edge function pattern established. Assessment and recommendation tables exist.
 
-**Why the error handling matters:** AI gateway calls fail in ways that generic error handling misses. A `429` means rate-limited (the prompt should retry with backoff). A `402` means credits exhausted (the build itself is at risk — this requires human intervention). Handling these explicitly prevents silent failures and budget surprises.
+**Why the error handling matters:** AI gateway calls fail in ways that generic error handling misses. A `429` means rate-limited (the prompt should retry with backoff). A `402` means credits exhausted (the build itself is at risk, so this requires human intervention). Handling these explicitly prevents silent failures and budget surprises.
 
 ```
 Add an AI-powered "[Analysis Name]" feature to the `[Entity]` detail page.
@@ -240,7 +240,7 @@ Add an AI-powered "[Analysis Name]" feature to the `[Entity]` detail page.
 
 ### 7.1 Multi-Phase Stepper with Validation Gates
 
-**When to use:** Any entity with a multi-phase lifecycle — the Risk 7-phase lifecycle is the reference implementation. Also applies to control lifecycle management and policy approval workflows.
+**When to use:** Any entity with a multi-phase lifecycle: the Risk 7-phase lifecycle is the reference implementation. Also applies to control lifecycle management and policy approval workflows.
 
 **Preconditions:** Entity has a `phase` integer column. Edge function for phase advancement exists or will be created.
 
@@ -250,10 +250,10 @@ Add an AI-powered "[Analysis Name]" feature to the `[Entity]` detail page.
 Implement a [N]-phase lifecycle stepper for `[entity]`.
 
 **Phases:**
-1. [Phase 1 Name] — [description, required fields]
-2. [Phase 2 Name] — [description, required fields]
+1. [Phase 1 Name]: [description, required fields]
+2. [Phase 2 Name]: [description, required fields]
 3. …
-N. [Phase N Name] — [description, final state]
+N. [Phase N Name]: [description, final state]
 
 **Stepper UI:**
 - Horizontal stepper at the top of the detail page.
@@ -281,11 +281,11 @@ N. [Phase N Name] — [description, final state]
 
 ### 8.1 Linked Items Tab with Add/Remove
 
-**When to use:** Any tab showing items connected via a junction table — linked controls on a risk, linked risks on a control, linked standards on a policy.
+**When to use:** Any tab showing items connected via a junction table: linked controls on a risk, linked risks on a control, linked standards on a policy.
 
 **Preconditions:** Junction table exists. Both entities have detail pages.
 
-**Governance note:** The "exclude already-linked items" filter in the search dialog is not a UX nicety — it prevents duplicate junction rows that corrupt scoring (e.g. a control counted twice in CE calculation). This constraint should also exist as a UNIQUE constraint on the junction table itself (see §1.2).
+**Governance note:** The "exclude already-linked items" filter in the search dialog is not a UX nicety: it prevents duplicate junction rows that corrupt scoring (e.g. a control counted twice in CE calculation). This constraint should also exist as a UNIQUE constraint on the junction table itself (see §1.2).
 
 ```
 Create a "[Linked Entity Plural]" tab on the `[Parent Entity]` detail page.
@@ -314,8 +314,8 @@ Create a "[Linked Entity Plural]" tab on the `[Parent Entity]` detail page.
 ```
 Add a KPI summary row to the dashboard with [N] cards:
 
-1. **[Metric Name]** — Count of `[table]` where `[condition]`. Icon: `[LucideIcon]`. Color accent: `[semantic token]`.
-2. **[Metric Name]** — …
+1. **[Metric Name]**: Count of `[table]` where `[condition]`. Icon: `[LucideIcon]`. Color accent: `[semantic token]`.
+2. **[Metric Name]**: …
 3. …
 
 Layout: responsive grid, 4 columns on desktop, 2 on tablet, 1 on mobile.
@@ -350,7 +350,7 @@ Add a "[Chart Title]" chart widget to the dashboard.
 
 ### 10.1 Secure Edge Function Template
 
-**When to use:** Any server-side operation that requires auth validation, external API calls, or business logic that must not be bypassable from the client — phase gate advancement, AI analysis, webhook receivers, SLA calculations.
+**When to use:** Any server-side operation that requires auth validation, external API calls, or business logic that must not be bypassable from the client: phase gate advancement, AI analysis, webhook receivers, SLA calculations.
 
 **Preconditions:** Supabase client available via `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars.
 
@@ -362,7 +362,7 @@ Create an edge function at `supabase/functions/[function-name]/index.ts`.
 - CORS: handle OPTIONS preflight and allow `Authorization` header.
 - Auth: extract JWT from `Authorization` header, verify with Supabase client, reject if invalid (401).
 - Input: parse JSON body, validate required fields `[field_1, field_2]`. Return 400 if missing.
-- Logic: [describe the business logic — e.g. "fetch all controls, compare with policy content, generate recommendations"].
+- Logic: [describe the business logic, e.g. "fetch all controls, compare with policy content, generate recommendations"].
 - Response: return JSON `{ [result_fields] }` with 200.
 - Errors: catch all exceptions, return `{ error: message }` with 500. Log to console.
 - If calling an AI gateway: check `aiResponse.ok` before parsing JSON. Handle 429 (rate limit) and 402 (credits exhausted) with descriptive error messages.
@@ -374,11 +374,11 @@ Create an edge function at `supabase/functions/[function-name]/index.ts`.
 
 ### 11.1 Role-Gated Page or Section
 
-**When to use:** Any page or UI section restricted to specific roles — admin settings, score editing, phase advancement controls, approval workflows.
+**When to use:** Any page or UI section restricted to specific roles: admin settings, score editing, phase advancement controls, approval workflows.
 
 **Preconditions:** `useAuth()` hook provides `userRoles` array. `ProtectedRoute` component exists.
 
-**Critical:** The frontend gate is for UX. The RLS policy is for security. Both must exist. Removing the RLS policy because the route is protected in the frontend is the most common RBAC failure pattern in agentic SaaS builds — the agent generates the UI gate and the developer assumes it's sufficient. It is not.
+**Critical:** The frontend gate is for UX. The RLS policy is for security. Both must exist. Removing the RLS policy because the route is protected in the frontend is the most common RBAC failure pattern in agentic SaaS builds: the agent generates the UI gate and the developer assumes it's sufficient. It is not.
 
 ```
 Gate the `[Page/Section Name]` so it is only accessible to users with the `[role_1]` or `[role_2]` role.
@@ -386,7 +386,7 @@ Gate the `[Page/Section Name]` so it is only accessible to users with the `[role
 - Wrap the route in `<ProtectedRoute requiredRoles={['[role_1]', '[role_2]']}>`.
 - If the user lacks the role, show a "You don't have permission to view this page" message with a "Go to Dashboard" link. Never show a 404.
 - For inline sections: conditionally render using `hasRole('[role]')`. Show a lock icon with tooltip "Requires [Role Name] access" for unauthorized users.
-- Never rely on frontend checks alone — ensure corresponding RLS policies exist on the backend.
+- Never rely on frontend checks alone: ensure corresponding RLS policies exist on the backend.
 ```
 
 ---

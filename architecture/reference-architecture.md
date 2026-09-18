@@ -39,24 +39,24 @@ Core characteristics:
 - **9-role RBAC model** with API-layer permission enforcement
 - **Cloud-portable** deployment: containerised services backed by managed PostgreSQL
 
-### Framework Invariants — Enforced in Code, Not Policy
+### Framework Invariants: Enforced in Code, Not Policy
 
 The following invariants are the architectural core. They are enforced at the API layer using gate checks, schema constraints, and scoring engine logic.
 
 | ID | Rule | Enforcement Point |
 |---|---|---|
 | RINV-1 | Residual risk NEVER updated without validated evidence | API validation gate |
-| RINV-4 | Acceptance NEVER permanent — always time-bound | DB constraint + expiry flag |
-| RINV-5 | Critical risks NEVER accepted — must Mitigate, Transfer, or Avoid | Scoring engine + API validation |
+| RINV-4 | Acceptance NEVER permanent, always time-bound | DB constraint + expiry flag |
+| RINV-5 | Critical risks NEVER accepted: must Mitigate, Transfer, or Avoid | Scoring engine + API validation |
 | RINV-6 | Risk readout NEVER skipped for risks rated Moderate or above | Phase gate check |
-| RINV-8 | Scoring NEVER begins without all preconditions satisfied | Phase gate — checklist |
+| RINV-8 | Scoring NEVER begins without all preconditions satisfied | Phase gate checklist |
 | RINV-9 | Planned/partial/unvalidated controls NEVER reduce residual | Scoring engine logic |
 | RINV-10 | Every risk MUST have Risk Owner AND Risk Stakeholder | Schema-level constraint |
-| RINV-11 | Expired risks ALWAYS escalated — no silent expiry | API + scheduled job |
+| RINV-11 | Expired risks ALWAYS escalated, no silent expiry | API + scheduled job |
 | RINV-12 | Treatments NEVER at readout without GRC Engineer validation | Workflow gate |
 | RINV-13 | Partial treatment selection ALWAYS documented with rationale | API validation |
 | TINV-4 | Full mitigation of a threat scenario REQUIRES an active, linked control_deployment | Schema + API validation |
-| TINV-5 | Low severity accepted threat scenarios NEVER permanent — always time-bound | API validation gate |
+| TINV-5 | Low severity accepted threat scenarios NEVER permanent, always time-bound | API validation gate |
 
 Full invariant catalogue: [Codified Rules](../specification/codified-rules.md)
 
@@ -144,7 +144,7 @@ Real-time cascade behaviour across linked entities. Five cascade patterns enforc
 RBAC is enforced at the API layer, not the UI layer. Every API endpoint checks the caller's role against the required permission before processing the request. UI elements are hidden for convenience but security does not depend on UI enforcement.
 
 ```
-# Pseudocode — API-layer RBAC check
+# Pseudocode: API-layer RBAC check
 @require_role(["Risk_Analyst", "Risk_Owner"])
 def update_risk_score(risk_id, payload):
     ...

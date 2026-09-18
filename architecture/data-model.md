@@ -459,10 +459,10 @@ Level 3. Where the control runs, on which asset. **CE lives here.**
 | id | uuid | NO | gen_random_uuid() | PK |
 | reference | text | NO | | UNIQUE |
 | activity_id | uuid | NO | | FK to control_activities. ON DELETE CASCADE. |
-| attack_surface_id | uuid | NO | | FK to attack_surfaces. ON DELETE RESTRICT — an asset with live deployments cannot be deleted out from under them (CINV-9). |
+| attack_surface_id | uuid | NO | | FK to attack_surfaces. ON DELETE RESTRICT: an asset with live deployments cannot be deleted out from under them (CINV-9). |
 | deployment_status | text | NO | 'Planned' | CHECK: Planned/Active/Degraded/Failed/Decommissioned |
 | ce_rating | text | NO | 'CE-Unvalidated' | CHECK: CE-High/CE-Medium/CE-Low/CE-Unvalidated |
-| ce_evidence_ref | text | YES | | CINV-1 at the schema layer — see constraint below |
+| ce_evidence_ref | text | YES | | CINV-1 at the schema layer: see constraint below |
 | ce_assessed_by | uuid | YES | | |
 | ce_assessed_at | date | YES | | Drives CE expiry (CINV-10) |
 | ce_notes | text | YES | | |
@@ -478,7 +478,7 @@ Level 3. Where the control runs, on which asset. **CE lives here.**
 
 | Constraint | Purpose | Invariant |
 |---|---|---|
-| `uq_deployment_activity_asset` | UNIQUE (activity_id, attack_surface_id) — one deployment of an activity per asset | |
+| `uq_deployment_activity_asset` | UNIQUE (activity_id, attack_surface_id): one deployment of an activity per asset | |
 | `ck_control_deployments_status` | Valid deployment states | |
 | `ck_control_deployments_ce_rating` | Valid CE vocabulary | |
 | `ck_control_deployments_test_result` | Valid test results | |
@@ -486,7 +486,7 @@ Level 3. Where the control runs, on which asset. **CE lives here.**
 
 > **On the CE vocabulary.** `CE-High`, `CE-Medium`, `CE-Low`, `CE-Unvalidated`. The
 > names are fixed, because invariants and `CHECK` constraints reference them by
-> name; what each one *buys* — the maximum likelihood reduction it permits — is
+> name. What each one *buys*, the maximum likelihood reduction it permits, is
 > configuration. See [scoring-model.md](../specification/scoring-model.md) §4.
 
 ### control_tests
@@ -505,7 +505,7 @@ Immutable test history. **Append-only, enforced by database trigger (CINV-7).**
 | supersedes_id | uuid | YES | | A correction references the record it replaces rather than editing it |
 | sequence | integer | NO | 1 | Ordering within a deployment's history |
 
-**Immutability:** `trg_control_tests_append_only` — a `BEFORE UPDATE OR DELETE`
+**Immutability:** `trg_control_tests_append_only` is a `BEFORE UPDATE OR DELETE`
 trigger that raises `restrict_violation`. A service-layer rule cannot deliver this,
 because anyone holding a database connection bypasses the service layer.
 
@@ -925,10 +925,10 @@ while the control that mitigates it is genuinely operating; when that control fa
 the scenario re-opens and the model loses its sign-off ([codified-rules §20.2](../specification/codified-rules.md)).
 A mitigation makes the linked risk record eligible for re-evaluation (§20.3).
 
-The environment a model sits in — the controls already deployed on the asset, the
-risks already recorded against it — is surfaced to the modeller as **read-only
-context**. No table below carries a column written by that context engine, and that
-absence is deliberate: see §19.4 and TINV-7.
+The environment a model sits in, meaning the controls already deployed on the
+asset and the risks already recorded against it, is surfaced to the modeller as
+**read-only context**. No table below carries a column written by that context
+engine, and that absence is deliberate: see §19.4 and TINV-7.
 
 ### threat_models
 
@@ -982,7 +982,7 @@ and where it sits determine what a compromise costs and which boundary it crosse
 | data_types | jsonb | NO | '[]' | Data categories handled. Drives the regulatory view of a compromise. |
 | trust_zone | text | YES | | Where it sits. Each zone carries a trust level. **TINV-9**: required at or above the sensitive threshold. |
 | exposure | text | YES | | How reachable it is. Informs, never sets, severity. |
-| attack_surface_id | uuid | YES | | FK to attack_surfaces, ON DELETE SET NULL. May differ from the model's primary asset — which is exactly where cross-boundary flows get interesting. |
+| attack_surface_id | uuid | YES | | FK to attack_surfaces, ON DELETE SET NULL. May differ from the model's primary asset, which is exactly where cross-boundary flows get interesting. |
 | source_component_id | uuid | YES | | For Data_Flow components: origin |
 | target_component_id | uuid | YES | | For Data_Flow components: destination |
 | created_at | timestamptz | NO | now() | |
@@ -1060,14 +1060,14 @@ Junction mapping a scenario to the **deployed** control that mitigates it.
 ### threat_scenario_comments
 
 Threaded discussion on a scenario. Threat modelling is a conversation between AppSec,
-engineering and risk, and the conversation is part of the record — not a side channel
+engineering and risk, and the conversation is part of the record, not a side channel
 in a chat tool that nobody can produce at audit.
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | PK |
 | scenario_id | uuid | NO | | FK to threat_scenarios. ON DELETE CASCADE. |
-| parent_comment_id | uuid | YES | | FK to threat_scenario_comments — self-referential threading |
+| parent_comment_id | uuid | YES | | FK to threat_scenario_comments, self-referential threading |
 | body | text | NO | | |
 | created_by | uuid | YES | | |
 | created_at | timestamptz | NO | now() | |
@@ -1082,7 +1082,7 @@ Evidence attached to a scenario. **Append-only, enforced by database trigger.**
 | id | uuid | NO | gen_random_uuid() | PK |
 | scenario_id | uuid | NO | | FK to threat_scenarios. ON DELETE CASCADE. |
 | title | text | NO | | |
-| evidence_ref | text | NO | | A reference — scan result, design document, test report, ticket. Artefact storage is the organisation's concern. |
+| evidence_ref | text | NO | | A reference: scan result, design document, test report, ticket. Artefact storage is the organisation's concern. |
 | evidence_type | text | YES | | |
 | supports | text | YES | | What the evidence was offered for, so an assessor can see whether the claim and the proof match |
 | notes | text | YES | | |
@@ -1091,7 +1091,7 @@ Evidence attached to a scenario. **Append-only, enforced by database trigger.**
 | created_at | timestamptz | NO | now() | |
 
 **Immutability:** `trg_threat_scenario_evidence_append_only`. Evidence that can be
-edited after the fact is not evidence — the same argument as CINV-7 and PINV-9.
+edited after the fact is not evidence: the same argument as CINV-7 and PINV-9.
 
 ### threat_scenario_risk_links
 
@@ -1101,7 +1101,7 @@ Scenario to **existing** risk record. Distinct from promotion.
 |---|---|---|---|---|
 | id | uuid | NO | gen_random_uuid() | PK |
 | scenario_id | uuid | NO | | FK to threat_scenarios. ON DELETE CASCADE. |
-| risk_id | uuid | NO | | FK to risks. ON DELETE CASCADE — the link goes, never the register entry. |
+| risk_id | uuid | NO | | FK to risks. ON DELETE CASCADE: the link goes, never the register entry. |
 | link_type | text | NO | 'Represents' | Configuration-driven. Exactly one configured type may carry `creates_risk: true`. |
 | rationale | text | YES | | |
 | linked_by | uuid | YES | | |
@@ -1197,7 +1197,7 @@ A person's assertion that a control objective addresses a requirement.
 **Constraints:** `uq_control_requirement` UNIQUE (objective_id, requirement_id).
 
 > **Nothing infers a link.** Not a shared policy, not a matching control family,
-> not a keyword. Somebody asserts it and the record says who — the same argument
+> not a keyword. Somebody asserts it and the record says who: the same argument
 > TINV-7 makes about threat mitigation, for the same reason: an inferred control
 > is one nobody has checked.
 

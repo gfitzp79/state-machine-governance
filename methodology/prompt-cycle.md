@@ -5,9 +5,9 @@
 
 > **Principle:** Each prompt is an atomic unit of work. The agent builds against it. You validate against the specification.
 
-> **⚠ Cost awareness:** Agentic SaaS platforms charge per prompt, per database operation, and per code generation cycle. Self-hosted agents consume compute time and API credits. Before starting any build, understand your platform's pricing model, estimate total credit consumption for a multi-module build, and budget for iteration — failed prompts that require revert and rebuild cost the same as successful ones. The optimisation practices below reduce waste but do not eliminate cost. Factor this into your build-vs-buy decision.
+> **⚠ Cost awareness:** Agentic SaaS platforms charge per prompt, per database operation, and per code generation cycle. Self-hosted agents consume compute time and API credits. Before starting any build, understand your platform's pricing model, estimate total credit consumption for a multi-module build, and budget for iteration, because failed prompts that require revert and rebuild cost the same as successful ones. The optimisation practices below reduce waste but do not eliminate cost. Factor this into your build-vs-buy decision.
 
-> **Implementation companion:** This document covers architecture and discipline. For the actual prompt patterns — copy-paste templates for schema, CRUD pages, phase-gated workflows, RBAC, and dashboard widgets — see [Platform Prompt Library](./platform-prompt-library.md).
+> **Implementation companion:** This document covers architecture and discipline. For the actual prompt patterns, meaning copy-paste templates for schema, CRUD pages, phase-gated workflows, RBAC, and dashboard widgets, see [Platform Prompt Library](./platform-prompt-library.md).
 
 ---
 
@@ -83,14 +83,14 @@ Do this before touching any AI tool. The agent needs a technical blueprint, not 
 
 ## 2. Build Your Optimised Agent
 
-Build a dedicated agent before writing your first build prompt. A generic prompt produces generic output. A tuned agent with deep context produces significantly better results — and on platforms charging per prompt, it pays back in reduced waste.
+Build a dedicated agent before writing your first build prompt. A generic prompt produces generic output. A tuned agent with deep context produces significantly better results, and on platforms charging per prompt, it pays back in reduced waste.
 
 ### Self-Hosted Agents (Claude Code, Cursor, Replit)
 
 Create a persistent project context loaded at session start. This is your `claude.md`, `.replit` instructions, or equivalent briefing file depending on `[PLATFORM]`.
 
 The briefing must contain:
-- The current module being built (`[MODULE_1..N]` — one at a time)
+- The current module being built (`[MODULE_1..N]`: one at a time)
 - Data model for the current build phase (relevant tables only, not the full schema)
 - Active invariants scoped to the current module
 - Tech stack decision record: `[TECH_STACK]`, `[DB_PLATFORM]`, `[CLOUD]`
@@ -189,22 +189,22 @@ Without pin discipline there is no recovery path. A failure in prompt 8 can corr
 ### Self-Hosted (Claude Code, Cursor, Replit with local agent)
 
 - Maintain your briefing file (`claude.md` or equivalent); update it before every session, not after
-- Version control from the first prompt — repository `[REPO_NAME]`, commit before any new prompt
+- Version control from the first prompt: repository `[REPO_NAME]`, commit before any new prompt
 - End every prompt with the DoD as a numbered checklist the agent can self-check against
 - Keep `[TECH_STACK]` decision locked before the build starts; mid-build stack changes are expensive
 - When context degrades (agent re-implements existing components, contradicts prior architecture, produces verbose generic responses): start a new session, reload the briefing, continue from the last pin
 
-### Agentic SaaS (Lovable, Replit Agent — GitHub-Connected)
+### Agentic SaaS (Lovable, Replit Agent, GitHub-Connected)
 
-- Connect `[REPO_NAME]` to the platform before the first prompt — the platform only syncs the default branch
+- Connect `[REPO_NAME]` to the platform before the first prompt: the platform only syncs the default branch
 - Validate prompts in your optimised agent before pushing to `[PLATFORM]` (saves credits)
-- Batch related changes into single prompts where possible — each push to the platform has a fixed overhead
-- The GitHub connection mitigates one class of context drift (agent building against stale code) but not session-level invariant decay — re-grounding discipline still applies
+- Batch related changes into single prompts where possible: each push to the platform has a fixed overhead
+- The GitHub connection mitigates one class of context drift (agent building against stale code) but not session-level invariant decay: re-grounding discipline still applies
 - AppSec scanning should run in your CI/CD pipeline against `[REPO_NAME]` on every agent commit
 
 ### Agentic SaaS (Platform-Native, No GitHub)
 
-- Design the full `[NUM_TABLES]`-table schema before starting any application logic — schema changes after logic is built are expensive on credit-based platforms
+- Design the full `[NUM_TABLES]`-table schema before starting any application logic: schema changes after logic is built are expensive on credit-based platforms
 - Export the data model and architecture artefacts after every pinned module; re-import into your optimised agent to maintain external context
 - Confirm export capability for data and codebase before committing any production records to `[DB_PLATFORM]`
 - When output quality degrades: stop, export, validate against specification, re-ground in a new session. Do not send additional prompts to a degraded session.
@@ -218,7 +218,7 @@ See: [Context Management](./context-management.md) for degradation detection sig
 Two failure modes appear in every multi-module agentic build. Both are resolved by fixing the specification, not the code.
 
 **Failure Mode 1: Circular Dependency**
-Two components each depend on the other to resolve a value. The build either loops or defaults to an undefined value. Root cause: the specification did not define computation order. Fix: declare an explicit resolution order in the spec — which component resolves first and is treated as a fixed input to the other. Update the spec. Rebuild from the last pin.
+Two components each depend on the other to resolve a value. The build either loops or defaults to an undefined value. Root cause: the specification did not define computation order. Fix: declare an explicit resolution order in the spec, which component resolves first and is treated as a fixed input to the other. Update the spec. Rebuild from the last pin.
 
 **Failure Mode 2: Silent Gate Removal**
 A state transition gate is rewritten by the agent to resolve an unrelated conflict (rendering, type error, schema change). The component works. The invariant is absent. This is the most dangerous failure mode because nothing breaks visibly. Root cause: the spec described the invariant as a lifecycle rule but did not declare it inviolable at the code layer. Fix: explicitly declare the invariant inviolable in the spec and state that no other requirement can justify its removal.

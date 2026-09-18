@@ -21,12 +21,12 @@ Document Map
 Every change in this repo touches multiple documents. Understand the dependency structure before editing anything.
 specification/
   codified-rules.md          → Source of truth for all governance rules, lifecycle phases, invariants, scoring
-  state-transitions.md       → Transition tables, gate preconditions, cascade rules — derived from codified-rules
-  invariants-catalogue.md    → Invariant reference table (RINV/CINV/PINV/TINV) — derived from codified-rules
+  state-transitions.md       → Transition tables, gate preconditions, cascade rules, derived from codified-rules
+  invariants-catalogue.md    → Invariant reference table (RINV/CINV/PINV/TINV): derived from codified-rules
   scoring-model.md           → Scoring formulae and CE resolution logic
 
 architecture/
-  data-model.md              → Table schemas, column definitions, FK map — must match state machine lifecycles
+  data-model.md              → Table schemas, column definitions, FK map: must match state machine lifecycles
   reference-architecture.md  → Platform overview, RBAC, module boundaries, cascade architecture
   architecture-deployment-saas.md         → SaaS deployment path (template/guidance only)
   architecture-deployment-self-hosted.md  → Self-hosted deployment path (template/guidance only)
@@ -37,9 +37,9 @@ methodology/
   prompt-cycle.md             → Prompt structure and sequencing guidance
   context-management.md       → Context window management and re-grounding
 
-README.md                     → Entry point — references all documents, high-level summary
+README.md                     → Entry point, references all documents, high-level summary
 appendix.md                   → Regulatory mapping, future domains, references
-disclaimer.md                 → IP disclaimer — must remain on every document
+disclaimer.md                 → IP disclaimer: must remain on every document
 
 Cross-Document Dependency Rules
 These are the propagation rules. When one document changes, check every dependent document.
@@ -48,8 +48,8 @@ Never update one document in isolation when a dependency exists. Incomplete prop
 
 Editorial Standards (Enforced on Every Edit)
 
-No em dashes. Use a comma, a colon, or restructure the sentence.
-No unverifiable quantitative claims. "50% reduction", "3x faster" — these do not appear. If a claim cannot be sourced to a named public framework or the repo's own specification, remove it.
+No em dashes in any markdown file, including this one. Use a comma, a colon, or restructure the sentence. Enforced by tools/check_em_dashes.py in CI, not left to review. Application code is out of scope: there an em dash is a typographic glyph, the empty-value placeholder in a table cell and a label separator, rather than punctuation.
+No unverifiable quantitative claims. "50% reduction", "3x faster": these do not appear. If a claim cannot be sourced to a named public framework or the repo's own specification, remove it.
 No employer-specific content. No proprietary framework names, internal tooling names, or company-specific terminology. All referenced frameworks must be publicly available (NIST, ISO, DORA, OWASP, FAIR, IMDA, WEF).
 All documents carry the IP disclaimer reference. Check that disclaimer.md is linked or referenced where appropriate.
 Consistent invariant ID format: RINV-N, CINV-N, PINV-N, TINV-N. No deviation.

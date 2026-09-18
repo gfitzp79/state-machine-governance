@@ -99,7 +99,7 @@ Certain moments require a full re-grounding because drift risk is highest.
 2. Compare against specification artefacts (not against the agent's last output)
 3. Document discrepancies
 4. Update briefing
-5. Start new session — the agent will build against the committed codebase
+5. Start new session: the agent will build against the committed codebase
 6. Commit a clean state tag to the repository before proceeding
 
 **The cost of skipping:** A wrong column constraint caught at the inflection point costs 15 minutes. Caught three modules later, it costs hours of rework.

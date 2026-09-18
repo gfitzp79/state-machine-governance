@@ -1,4 +1,4 @@
-# GRC Codified Rules Engine — Unified Specification Template
+# GRC Codified Rules Engine: Unified Specification Template
 
 **Version:** 2.1-template | **License:** CC BY 4.0
 **Purpose:** Machine-parseable rule set for governance, risk, and compliance platforms. Covers the risk management lifecycle, control management hierarchy, and policy governance layer as a single integrated specification. Designed for organisations to adapt to their own frameworks, appetite statements, and regulatory obligations.
@@ -104,14 +104,14 @@ policy, not a control. Each rule below names the layer that makes it impossible.
 
 | Rule | Enforcement |
 |---|---|
-| SEP-1 | Invariant `SEP-1` — `CHECK` constraint on the risk record plus service validation |
+| SEP-1 | Invariant `SEP-1`: `CHECK` constraint on the risk record plus service validation |
 | SEP-2 | Treatment assignment gate: the risk owner is not selectable as treatment owner |
 | SEP-3 | Invariants `RINV-3` and `CINV-3`, checked bidirectionally on assignment |
 | SEP-4 | Role seniority ordering; an approval gate cannot be fired by a delivery role |
 | SEP-5 | Treatment validation gate rejects `grc_engineer_id = treatment_owner_id`; acceptance approval requires the approver role band from §2.3, which `GRC_Engineer` does not hold |
 
 Sign-off separation in threat modelling follows the same principle and is
-enforced by `TINV-2` — see §19.3.
+enforced by `TINV-2`: see §19.3.
 
 ### §2.3 Ownership by Severity
 
@@ -318,7 +318,7 @@ WORST_CASE_RULE: if control has multiple deployments with different CE ratings,
   use the WORST CE across all deployments for scoring purposes
 ```
 
-### §4.7 Residual Risk Validation Gate (MANDATORY — ALL must pass)
+### §4.7 Residual Risk Validation Gate (MANDATORY: ALL must pass)
 
 ```
 RESIDUAL_SCORING_GATE:
@@ -407,7 +407,7 @@ CONFIRMS: { exposure_not_increased, treatment_on_track, continued_acknowledgemen
 ```
 # RECOMMENDED: Aggressive acceptance limits aligned to regulated financial services expectations.
 ACCEPTANCE_RULES:
-  Critical:      acceptance NOT PERMITTED — must Mitigate, Transfer, or Avoid
+  Critical:      acceptance NOT PERMITTED, must Mitigate, Transfer, or Avoid
   High:          max acceptance period 90 days, reassess every 90 days, max 1 renewal (180 days total)
                  REQUIRES: C-level or ExCo approval
   Moderate:      max acceptance period 180 days, reassess every 180 days, max 1 renewal (360 days total)
@@ -537,9 +537,9 @@ AGENDA := [
 
 ```
 CONTROL_HIERARCHY:
-  Level_1: Control_Objective  ("what we achieve" — measurable security outcome)
-    └── Level_2: Control_Activity  ("what we do to achieve it" — specific procedure)
-          └── Level_3: Control_Deployment  (activity × asset — "where we do it")
+  Level_1: Control_Objective  ("what we achieve": measurable security outcome)
+    └── Level_2: Control_Activity  ("what we do to achieve it": specific procedure)
+          └── Level_3: Control_Deployment  (activity × asset: "where we do it")
 
 RULES:
   RULE CH-1: every Control_Activity MUST have exactly one parent Control_Objective
@@ -595,7 +595,7 @@ CONTROL_ACTIVITY := {
 }
 ```
 
-#### Control_Deployment (Level 3 — join object)
+#### Control_Deployment (Level 3, join object)
 
 ```
 CONTROL_DEPLOYMENT := {
@@ -726,10 +726,10 @@ RELATIONSHIP risk_controls:
 TRIGGER ce_change_impact:
   WHEN: ce_rating changes on any deployment linked to a risk
   IF degradation:
-    flag risk "Control_Changed — Re-evaluation Required"
+    flag risk "Control_Changed: Re-evaluation Required"
     re-evaluation within: Critical: 5bd | High: 10bd | Moderate: 20bd | Mod-Low: 30bd
   IF improvement AND residual_score_locked:
-    flag risk "Control_Improved — Residual Update Eligible"
+    flag risk "Control_Improved: Residual Update Eligible"
     full validation gate (§4.7) still required
 ```
 
@@ -753,10 +753,10 @@ RELATIONSHIP control_issues:
 
 ```
 POLICY_HIERARCHY:
-  Level_1: Policy         "the WHY and WHAT — organisational governance commitment"
-    └── Level_2: Standard  "the HOW — technical and procedural implementation requirements"
-          └── Level_3: Control_Objective  "the WHAT WE ACHIEVE — measurable outcome"
-                └── Level_4: Control_Activity  "the WHAT WE DO — specific procedures"
+  Level_1: Policy         "the WHY and WHAT: organisational governance commitment"
+    └── Level_2: Standard  "the HOW: technical and procedural implementation requirements"
+          └── Level_3: Control_Objective  "the WHAT WE ACHIEVE: measurable outcome"
+                └── Level_4: Control_Activity  "the WHAT WE DO: specific procedures"
 
 HIERARCHY_RULES:
   RULE PH-1: Policy MUST have ≥1 linked Control_Objective (or governance_gap)
@@ -853,7 +853,7 @@ RULE CF-4: annual-audit frameworks MUST have Annual review cycle
 
 ---
 
-# PART 4: INVARIANTS (HARD RULES — NEVER VIOLATED)
+# PART 4: INVARIANTS (HARD RULES, NEVER VIOLATED)
 
 ## §16 Risk Management Invariants
 
@@ -861,14 +861,14 @@ RULE CF-4: annual-audit frameworks MUST have Annual review cycle
 INVARIANT RINV-1:  residual_risk NEVER updated without validated evidence
 INVARIANT RINV-2:  risk_appetite NEVER downgraded without formal governance
 INVARIANT RINV-3:  control_owners NEVER assigned as risk_owners
-INVARIANT RINV-4:  acceptance NEVER permanent — always time-bound
-INVARIANT RINV-5:  Critical risks NEVER accepted — must Mitigate, Transfer, or Avoid
+INVARIANT RINV-4:  acceptance NEVER permanent, always time-bound
+INVARIANT RINV-5:  Critical risks NEVER accepted, must Mitigate, Transfer, or Avoid
 INVARIANT RINV-6:  risk_readout NEVER skipped for risks rated Moderate or above
 INVARIANT RINV-7:  issues NEVER scored as risks without promotion criteria met
 INVARIANT RINV-8:  scoring NEVER begins without preconditions (§4.1) satisfied
 INVARIANT RINV-9:  planned/partial/unvalidated controls NEVER reduce residual risk
 INVARIANT RINV-10: every risk MUST have Risk_Owner AND Risk_Stakeholder
-INVARIANT RINV-11: expired risks ALWAYS escalated — no silent expiry
+INVARIANT RINV-11: expired risks ALWAYS escalated, no silent expiry
 INVARIANT RINV-12: treatments NEVER presented at readout without GRC Engineer validation + treatment owner commitment
 INVARIANT RINV-13: partial treatment selection ALWAYS documented with rationale
 ```
@@ -892,14 +892,14 @@ INVARIANT CINV-10: CE expiry auto-downgrades to CE-Unvalidated; no override
 
 ```
 INVARIANT PINV-1:  Active policy MUST have ≥1 linked control_objective
-INVARIANT PINV-2:  policy exceptions NEVER permanent — always time-bound
+INVARIANT PINV-2:  policy exceptions NEVER permanent, always time-bound
 INVARIANT PINV-3:  deprecation NEVER silently removes risk-policy linkages
-INVARIANT PINV-4:  compliance-mapped policies MUST have Annual review — no exceptions
-INVARIANT PINV-5:  approval REQUIRES CISO+ — no self-approval by Policy_Owner
+INVARIANT PINV-4:  compliance-mapped policies MUST have Annual review, no exceptions
+INVARIANT PINV-5:  approval REQUIRES CISO+, no self-approval by Policy_Owner
 INVARIANT PINV-6:  Under_Revision policies remain enforceable
 INVARIANT PINV-7:  standard revision ALWAYS triggers control alignment check
 INVARIANT PINV-8:  retirement BLOCKED if linked risks Critical/High and unmitigated
-INVARIANT PINV-9:  version history IMMUTABLE — always retained for audit
+INVARIANT PINV-9:  version history IMMUTABLE, always retained for audit
 ```
 
 ---
@@ -1046,7 +1046,7 @@ SENSITIVE_THRESHOLD without at least one threat scenario.
 
 **The direction of travel matters.** A gap identified by the context surface is
 an *input to judgement*, never an automatic finding. It tells the modeller where
-to look. The corresponding output — a threat the environment does not cover — is
+to look. The corresponding output, a threat the environment does not cover, is
 recorded as a scenario by a person, and it is the scenario, not the gap, that
 carries governance weight and reaches the risk register.
 
@@ -1112,7 +1112,7 @@ RULE TSE-1: Evidence is APPEND-ONLY, enforced at the database layer, for the sam
             reason control test history is (TST-1): evidence that can be edited
             after the fact is not evidence. Superseding an entry creates a new
             record referencing the original.
-RULE TSE-2: evidence_ref is a REFERENCE — a scan result, design document, test
+RULE TSE-2: evidence_ref is a REFERENCE, such as a scan result, design document, test
             report, or ticket. Storage of the artefact is the organisation's
             concern, not this specification's.
 RULE TSE-3: The `supports` field records WHAT the evidence was offered for, so an
@@ -1152,14 +1152,14 @@ TRIGGER tm_control_failure:
 ```
 TRIGGER tm_mitigation_success:
   WHEN: threat_scenario.status transitions to Mitigated
-        (≥1 mitigation link, all Fully_Mitigated — TINV-4 and TM-PARTIAL satisfied)
+        (≥1 mitigation link, all Fully_Mitigated, so TINV-4 and TM-PARTIAL are satisfied)
   FOR EVERY risk record carrying this scenario
       (promoted_risk_id, OR any threat_scenario_risk_link):
     flag "Linked_Threat_Mitigated" → re-evaluation eligible
     notify(Risk_Owner, Risk_Analyst)
 
   # The cascade grants eligibility, never an outcome.
-  Risk residual score NOT automatically updated — the full RINV-1 gate
+  Risk residual score NOT automatically updated: the full RINV-1 gate
   (all five conditions) is still required.
 ```
 

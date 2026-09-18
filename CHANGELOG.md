@@ -13,7 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added — Compliance and Assurance (Domain 8)
+### Added: Compliance and Assurance (Domain 8)
 
 - **Requirements are records, not framework names.** §15 CF-2 had controls
   inherit compliance mappings from linked policies, which cannot say *which*
@@ -21,7 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   unkeepable: a gap cannot be found without the set to compare against.
 - **Coverage is asserted against a live control.** A requirement is Covered only
   while a satisfying control is Operating and deployed inside the framework's
-  declared scope (AINV-2) — TINV-4's argument applied to compliance.
+  declared scope (AINV-2): TINV-4's argument applied to compliance.
 - **§24.3, the cascade that makes it more than a mapping table.** A control
   entering Failure revokes every compliance position that rested on it, unless
   another Operating control still satisfies the requirement.
@@ -52,7 +52,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.1.0] — First public release
+## [0.1.0] - First public release
 
 The first release of the reference implementation, alongside the specification
 changes needed to describe what it actually does.
@@ -63,7 +63,7 @@ changes needed to describe what it actually does.
 > upgrades are safe, and they are not yet. See *Known limitations* in
 > [platform/README.md](./platform/README.md).
 
-### Added — platform
+### Added: platform
 
 - **The engine.** Domain-agnostic primitives: `StateMachine` for declarative
   gated lifecycles, `InvariantRegistry`, a deterministic 5×5 `ScoringEngine`,
@@ -100,7 +100,7 @@ changes needed to describe what it actually does.
   trust zone, exposure, and the asset a component actually sits on.
 - `docker compose up -d` and a browser. Docker is the only prerequisite.
 
-### Added — framework
+### Added: framework
 
 - **`codified-rules.md` §19.4**, *Environmental Context*: the LKH-3 analogue for
   threat modelling. Identification runs against the architecture as designed,
@@ -115,7 +115,7 @@ changes needed to describe what it actually does.
   wired into CI: an invariant enforced in code and absent from the documents now
   fails the build.
 
-### Fixed — framework
+### Fixed: framework
 
 - §20.3 sat outside its code fence, and the stray fence that followed swallowed
   the `APPENDICES` heading and Appendix A.
@@ -132,12 +132,12 @@ changes needed to describe what it actually does.
   deployments while citing an invariant that requires one.
 - PINV-3 and PINV-7 cited §14.1, which did not exist.
 
-### Fixed — platform
+### Fixed: platform
 
 - The API client had no network-failure path. `fetch` rejects rather than
   resolving when the API is unreachable, and nginx answers a dead upstream with
   an HTML 502 that `JSON.parse` throws on. Neither produced an `ApiError`, and
-  pages discard anything that is not one — so a stopped API left the sign-in
+  pages discard anything that is not one, so a stopped API left the sign-in
   button dead with no message.
 - The Content-Security-Policy blocked the theme bootstrap inlined in
   `index.html`. A saved dark-mode preference was not merely ignored on load; it
@@ -152,7 +152,7 @@ changes needed to describe what it actually does.
   refused outside a development environment.
 - Fifteen engine and configuration endpoints that were anonymously readable now
   require authentication. They carry no record data, but machine definitions
-  describe which roles may fire which gate — the separation-of-duties design.
+  describe which roles may fire which gate: the separation-of-duties design.
 - The nginx `/assets/` location declared its own `add_header`, which silently
   dropped every security header for the entire JavaScript bundle. Added CSP and
   Permissions-Policy, and `server_tokens off`.

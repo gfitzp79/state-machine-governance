@@ -1,4 +1,4 @@
-# State Machine Governance — Reference Implementation
+# State Machine Governance: Reference Implementation
 
 An open-source GRC platform that enforces the [state machine governance
 framework](../README.md) natively. Modular, object-oriented, dockerised.
@@ -34,8 +34,8 @@ openssl rand -hex 32
 
 Your operating model lives in [`config/governance.yml`](./config/governance.yml),
 not in the code. Risk appetite bands, acceptance windows, control families,
-roles, compliance frameworks, escalation SLAs — everything the specification
-marks `[CUSTOMISE]` — is configuration.
+roles, compliance frameworks, escalation SLAs: everything the specification
+marks `[CUSTOMISE]` is configuration.
 
 ```bash
 $EDITOR config/governance.yml
@@ -63,7 +63,7 @@ reference. The UI renders that list directly, so "why can't I advance this?" is
 answered on screen rather than in a support ticket.
 
 **Invariants run before commit, on every write path.** Not in the UI, not in one
-service method — in the invariant registry, evaluated on every write to the
+service method, but in the invariant registry, evaluated on every write to the
 entity regardless of which endpoint reached it.
 
 **The schema backs the service layer.** `CHECK` constraints, conditional
@@ -85,8 +85,8 @@ one transaction:
 | `DEP-002` | Active | **Failed** |
 | `CTL-001` | Operating | **Failure** (DL-1 propagation) |
 | `RISK-001` residual | unlocked, 15 High | **re-locked** (CINV-5) |
-| `RISK-001` reported score | 15 High | **20 Critical** — reverts to inherent (RES-2) |
-| `THR-001` | Mitigated | **Identified** — re-opened (TINV-4) |
+| `RISK-001` reported score | 15 High | **20 Critical**: reverts to inherent (RES-2) |
+| `THR-001` | Mitigated | **Identified**: re-opened (TINV-4) |
 | `TM-001` | Active, dual sign-off | **Review**, both signatures stripped (TINV-2) |
 
 Nobody clicked six buttons. One piece of evidence changed, and every conclusion
@@ -131,7 +131,7 @@ platform/
 `app/engine/` knows nothing about risk, controls or policy. It provides four
 primitives that every module composes:
 
-**`StateMachine`** — a lifecycle declared as states plus gated edges. Each edge
+**`StateMachine`**: a lifecycle declared as states plus gated edges. Each edge
 names its gate, its preconditions (each with a specification ID), the roles
 permitted to fire it, and the cascade events it emits. `fire()` is the only
 sanctioned way to change a lifecycle field anywhere in the codebase.
@@ -152,17 +152,17 @@ Transition(
 )
 ```
 
-**`InvariantRegistry`** — each invariant carries its ID, the rule in plain
+**`InvariantRegistry`**: each invariant carries its ID, the rule in plain
 English, its enforcement layer, its mechanism, its violation behaviour, and its
 specification reference. `/api/engine/invariants` serves the live catalogue, and
 the Engine page in the UI renders it straight from the running registry.
 
-**`ScoringEngine`** — stateless and deterministic. Resolves control effectiveness
+**`ScoringEngine`**: stateless and deterministic. Resolves control effectiveness
 through objective → activity → deployment, discarding everything that does not
 qualify and returning the reason for each exclusion. Worst case across qualifying
 deployments, never an average, never best case.
 
-**`CascadeBus`** — handlers registered per event, running inside the caller's
+**`CascadeBus`**: handlers registered per event, running inside the caller's
 transaction so state change, propagation and audit commit atomically or not at
 all. Every effect is returned to the caller, so the API response tells you what
 else changed.
@@ -172,10 +172,10 @@ else changed.
 `LifecycleService` gives every module the same four steps in the same order, and
 routers never touch the session directly:
 
-1. **mutate** — apply the caller's change
-2. **enforce** — run every invariant registered for the entity
-3. **cascade** — propagate to related entities
-4. **audit** — record it, including the full gate evaluation
+1. **mutate**: apply the caller's change
+2. **enforce**: run every invariant registered for the entity
+3. **cascade**: propagate to related entities
+4. **audit**: record it, including the full gate evaluation
 
 Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 `service.py`, `router.py`. The enforcement behaviour comes from the base class.
@@ -245,8 +245,8 @@ docker compose exec api python smoke_test.py      # 147 tests: the enforcement l
 `config_test.py` proves both halves of configurability: that invalid governance
 models are refused at boot, and that valid changes actually take effect.
 
-`smoke_test.py` mutates state deliberately — failing a control test is the point
-— so it needs a freshly seeded database and refuses to start otherwise:
+`smoke_test.py` mutates state deliberately, because failing a control test is
+the point, so it needs a freshly seeded database and refuses to start otherwise:
 
 ```bash
 docker compose down -v && docker compose up -d
@@ -340,8 +340,8 @@ infrastructure task.
 engine makes it a follow-on module rather than a rework: the same five files as
 any other domain.
 
-**Authentication** is local password auth. OIDC is a single-file change — see
-above — but it is not wired to a provider out of the box.
+**Authentication** is local password auth. OIDC is a single-file change, as
+described above, but it is not wired to a provider out of the box.
 
 ---
 
@@ -350,8 +350,8 @@ above — but it is not wired to a provider out of the box.
 The reference implementation in this directory is licensed under the
 **Apache License 2.0**. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
 
-The governance framework it implements — the specification, architecture and
-methodology documents in the parent directory — is released separately under
+The governance framework it implements, meaning the specification, architecture
+and methodology documents in the parent directory, is released separately under
 **CC BY 4.0**. See the [repository root](../README.md) and
 [DISCLAIMER](../disclaimer.md).
 

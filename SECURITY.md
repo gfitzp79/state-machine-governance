@@ -44,7 +44,7 @@ Credit is given in the advisory unless you ask otherwise.
 
 **In scope**
 
-- Anything in `platform/` — the API, the UI, the container and nginx
+- Anything in `platform/`: the API, the UI, the container and nginx
   configuration, the governance configuration loader
 - Authentication and authorisation defects, including any way to bypass a
   lifecycle gate, an invariant, or a role restriction
@@ -56,7 +56,7 @@ Credit is given in the advisory unless you ask otherwise.
 **Out of scope**
 
 - The known limitations listed in [`platform/README.md`](./platform/README.md),
-  which are documented rather than hidden — currently the absence of a schema
+  which are documented rather than hidden: currently the absence of a schema
   migration path and the local-password authentication default
 - Findings that depend on the demo dataset, which is enabled only when
   `SEED_DEMO_DATA=true` and which the application refuses to combine with a

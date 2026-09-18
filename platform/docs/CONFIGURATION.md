@@ -19,7 +19,7 @@ rebuild. To keep your configuration outside the checkout entirely, point
 
 | Section | Governs | Specification |
 |---|---|---|
-| `organisation` | Name and tagline shown throughout the UI | — |
+| `organisation` | Name and tagline shown throughout the UI | None |
 | `scoring.rating_bands` | Where each appetite band starts and stops | codified-rules §1.2 |
 | `scoring.review_cadence_days` | Re-evaluation cadence per rating | §5.4 |
 | `acceptance` | Which ratings may be accepted, for how long, by whom | §5.5 |
@@ -127,9 +127,9 @@ roles:
     - { id: Data_Protection_Officer, level: 4, description: Statutory DPO }
 ```
 
-The role becomes assignable immediately. To make it *meaningful* — to let it fire
-a particular lifecycle transition — name it in that transition's `roles` tuple in
-the relevant `machine.py`. That part is deliberately code: which roles may fire
+The role becomes assignable immediately. To make it *meaningful*, so that it can
+fire a particular lifecycle transition, name it in that transition's `roles`
+tuple in the relevant `machine.py`. That part is deliberately code: which roles may fire
 which gates is part of your separation-of-duties design, and it belongs where it
 can be reviewed alongside the gate it guards.
 

@@ -175,16 +175,7 @@ jobs:
         run: npm run build
 
       - name: The build carries no inline script
-        run: |
-          # nginx sets `script-src 'self'`, so an inline <script> is silently
-          # blocked at runtime: the build passes, the page loads, and the script
-          # simply never executes. That is how the theme bootstrap broke. Any
-          # script that must run before the bundle goes in public/ instead.
-          if grep -Pzo '<script(?![^>]*src=)[^>]*>' dist/index.html; then
-            echo "dist/index.html contains an inline script; the CSP will block it"
-            exit 1
-          fi
-          echo "no inline scripts"
+        run: python3 ../../tools/check_no_inline_script.py dist/index.html
 
   hygiene:
     name: Links, secrets and licence headers
@@ -218,6 +209,9 @@ jobs:
             echo "unfilled link placeholder found"
             exit 1
           fi
+
+      - name: No em dashes in the documentation
+        run: python3 tools/check_em_dashes.py
 
       - name: Specification matches the code
         run: |

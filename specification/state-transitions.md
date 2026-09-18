@@ -120,12 +120,12 @@
 
 | From | To | Gate Preconditions | Blocking Rules |
 |---|---|---|---|
-| Design | Implementation | ≥1 Control_Activity defined AND deployment plan exists | — |
+| Design | Implementation | ≥1 Control_Activity defined AND deployment plan exists | None |
 | Implementation | Operating | ≥1 deployment Active (OL-4) AND first CE assessed with evidence on a live deployment (CINV-1) | OL-4: blocked with zero active deployments |
-| Operating | Failure | CE-Low on critical deployment OR test result = Fail on any deployment | — |
-| Failure | Operating | Remediated without architectural change AND CE re-assessed upward | — |
-| Failure | Redesign | Remediation requires architectural change to control design | — |
-| Redesign | Implementation | Redesigned and ready for re-deployment | — |
+| Operating | Failure | CE-Low on critical deployment OR test result = Fail on any deployment | None |
+| Failure | Operating | Remediated without architectural change AND CE re-assessed upward | None |
+| Failure | Redesign | Remediation requires architectural change to control design | None |
+| Redesign | Implementation | Redesigned and ready for re-deployment | None |
 | Operating | Deprecated | Governance-approved retirement | OL-3: BLOCKED if linked risks ≠ {Closed, Accepted, Transferred} |
 | Any | Deprecated | With documented rationale + Risk_Owner notification for linked risks | OL-3 applies |
 
@@ -194,13 +194,13 @@ When a Control_Objective transitions to `Failure`:
 
 | From | To | Gate Preconditions | Cascade |
 |---|---|---|---|
-| Planned | Active | Deployment confirmed on the asset | — |
-| Active | Degraded | Test result = Partial OR CE drops to CE-Low | — |
+| Planned | Active | Deployment confirmed on the asset | None |
+| Active | Degraded | Test result = Partial OR CE drops to CE-Low | None |
 | Active | Failed | Test result = Fail | DL-1: triggers Failure propagation check on parent Objective |
-| Degraded | Active | Remediated AND CE re-assessed upward | — |
+| Degraded | Active | Remediated AND CE re-assessed upward | None |
 | Degraded | Failed | Further degradation confirmed | DL-1: triggers Failure propagation check |
-| Failed | Active | Fully remediated AND evidence provided AND CE re-assessed | — |
-| Failed | Decommissioned | Control permanently removed from this asset | — |
+| Failed | Active | Fully remediated AND evidence provided AND CE re-assessed | None |
+| Failed | Decommissioned | Control permanently removed from this asset | None |
 | Any | Decommissioned | Governance-approved | Record becomes READ-ONLY (DL-3) |
 
 ### CE Editability
@@ -213,7 +213,7 @@ When a Control_Objective transitions to `Failure`:
 > required "first CE assessed" to leave Planned, while DL-2 makes CE unassessable
 > until the deployment is Active. That gate could never be passed. First CE is
 > required one level up, at the objective's Implementation → Operating gate
-> (OL-4 and CINV-1) — which is the right place for it, because that is where the
+> (OL-4 and CINV-1): which is the right place for it, because that is where the
 > claim "this control is operating" is actually made.
 
 ---
@@ -232,12 +232,12 @@ When a Control_Objective transitions to `Failure`:
 
 | From | To | Gate Preconditions | Blocking Rules |
 |---|---|---|---|
-| Draft | Under_Review | Policy_Owner submits for review | — |
-| Under_Review | Approved | Policy_Approver (CISO+) approves. PINV-5: no self-approval. | — |
-| Under_Review | Draft | Reviewer returns for revision | — |
+| Draft | Under_Review | Policy_Owner submits for review | None |
+| Under_Review | Approved | Policy_Approver (CISO+) approves. PINV-5: no self-approval. | None |
+| Under_Review | Draft | Reviewer returns for revision | None |
 | Approved | Active | On or after effective_date. PL-1: requires approver sign-off, effective_date, ≥1 linked control. | PINV-1: must have ≥1 linked control_objective |
 | Active | Under_Revision | Triggered by: schedule, audit finding, regulatory change, risk event, >5 exceptions | PL-3: Active version remains enforceable during revision |
-| Under_Revision | Approved | New version approved. PL-4: requires version increment + change_summary. | — |
+| Under_Revision | Approved | New version approved. PL-4: requires version increment + change_summary. | None |
 | Active | Deprecated | Superseded or no longer applicable. All linked controls re-mapped. | PL-2: BLOCKED if linked control_objectives have active risk linkages ≥ Moderate. PINV-8: BLOCKED if linked risks Critical/High and unmitigated. |
 | Deprecated | Under_Review | Reinstatement re-enters the approval workflow at review. It never returns directly to Active: a deprecated policy has an unreviewed control mapping and possibly a stale compliance mapping, and PINV-1 must be re-satisfied before it is enforceable again. | PINV-1 on the subsequent Approved → Active |
 
@@ -293,8 +293,8 @@ Unscheduled reviews triggered by: regulatory change, incident, audit finding, >5
 | Decomposition | Threat_Analysis | Model MUST have ≥1 trust boundary or component defined |
 | Threat_Analysis | Mitigation_Design | Model MUST have ≥1 identified threat scenario |
 | Mitigation_Design | Review | All Critical and High severity scenarios assigned a mitigation OR flagged for risk promotion |
-| Review | Mitigation_Design | Reviewer returns the model for further mitigation work. No preconditions — sending work back is never gated |
-| Review | Active | `GATE_TM_SIGNOFF` — eight preconditions, below |
+| Review | Mitigation_Design | Reviewer returns the model for further mitigation work. No preconditions: sending work back is never gated |
+| Review | Active | `GATE_TM_SIGNOFF`: eight preconditions, below |
 | Active | Review | A mitigating control failed, or the architecture changed. Sign-offs are **stripped**, not retained |
 | Active | Deprecated | Feature or system decommissioned. Drops mapping to enterprise controls |
 | Any except Active | Abandoned | Model abandoned before reaching Active |
@@ -326,7 +326,7 @@ preconditions must pass.
 
 ### Scenario Status Transitions
 
-Scenario status is not a state machine in its own right — it is derived from, and
+Scenario status is not a state machine in its own right: it is derived from, and
 constrained by, the link set and the rules below.
 
 | To | Requires |
@@ -344,7 +344,7 @@ and remains an open threat.
 ## 8. Treatment Lifecycle (6 States)
 
 Treatments hang off risks but have their own lifecycle, because a treatment is
-delivered by a different person from the one who decided it was needed — which is
+delivered by a different person from the one who decided it was needed, which is
 the whole of SEP-2 and SEP-5.
 
 ### State Machine Diagram
@@ -363,7 +363,7 @@ the whole of SEP-2 and SEP-5.
 |---|---|---|---|---|
 | Proposed | Validated | `GATE_TREATMENT_VALIDATED` | GRC_Engineer, CISO, Admin | RINV-12.1: a named GRC Engineer confirms technical feasibility · **SEP-5**: the validator is not the treatment owner · A treatment owner is assigned |
 | Validated | Approved | `GATE_TREATMENT_APPROVED` | Risk_Owner, GRC_Engineer, CISO, Admin | RINV-12.2: the treatment owner has explicitly committed · A target date is set, so the SLA clock can run · An approval decision is recorded |
-| Approved | In_Progress | `GATE_TREATMENT_STARTED` | Risk_Treatment_Owner, GRC_Engineer, CISO, Admin | — |
+| Approved | In_Progress | `GATE_TREATMENT_STARTED` | Risk_Treatment_Owner, GRC_Engineer, CISO, Admin | None |
 | In_Progress | Complete | `GATE_TREATMENT_COMPLETE` | Risk_Treatment_Owner, GRC_Engineer, CISO, Admin | RESIDUAL.2: implementation evidence recorded · RESIDUAL.5: at least one progress check-in exists |
 | Any except Complete | Cancelled | `GATE_TREATMENT_CANCELLED` | Risk_Owner, CISO, Admin | A cancellation reason is recorded · The treatment is not already Complete |
 
@@ -372,10 +372,10 @@ the whole of SEP-2 and SEP-5.
 `Proposed → Validated → Approved` looks like ceremony and is not. They answer
 different questions, asked of different people:
 
-- **Validated** is *can this be built?* — answered by a GRC Engineer, who is
-  technically competent to judge it and has no delivery stake in the answer.
-- **Approved** is *are we doing it, and who is accountable?* — answered by the Risk
-  Owner, with the treatment owner's explicit commitment on record.
+- **Validated** asks *can this be built?* A GRC Engineer answers, and they are
+  technically competent to judge it and have no delivery stake in the answer.
+- **Approved** asks *are we doing it, and who is accountable?* The Risk Owner
+  answers, with the treatment owner's explicit commitment on record.
 
 Collapsing them produces the most common failure in risk treatment: a plan
 approved by governance that the delivery team has never agreed is achievable, which
@@ -389,7 +389,7 @@ their own pull request.
 
 | Event | Effect on the linked risk |
 |---|---|
-| Treatment reaches `Validated` and owner commits | `grc_eng_validated` and `owner_committed` satisfied — RINV-12 unblocks Phase 4 → 5 |
+| Treatment reaches `Validated` and owner commits | `grc_eng_validated` and `owner_committed` satisfied, so RINV-12 unblocks Phase 4 → 5 |
 | Treatment reaches `Complete` | Satisfies residual gate condition 1 on every linked risk. **Does not** update the residual score: RINV-1 still requires all five conditions |
 | Treatment is `Cancelled` | Linked risks return to treatment design. The risk does not silently keep a treatment it no longer has |
 
@@ -401,7 +401,7 @@ their own pull request.
 ### Check-in immutability
 
 `treatment_checkins` is append-only, enforced by database trigger. Progress
-reporting that can be revised after the fact is not a drift trail — it is a
+reporting that can be revised after the fact is not a drift trail: it is a
 summary written with the benefit of hindsight, which is precisely what the record
 exists to prevent.
 
@@ -433,11 +433,11 @@ requirement applies, and whether it is covered.
 | Not_Applicable | Applicable | `GATE_REQUIREMENT_IN_SCOPE` | Approver | A reason for re-scoping: reversing an exclusion changes the SoA |
 | Applicable | Covered | `GATE_REQUIREMENT_COVERED` | Assessor | **AINV-2**: a satisfying link, an Operating objective, a live deployment inside scope |
 | Applicable | Compensating | `GATE_REQUIREMENT_COMPENSATING` | Approver | **AINV-4**: a compensating link, an expiry within the window, and a rationale |
-| Applicable | Gap | `GATE_REQUIREMENT_GAP` | Assessor | — |
-| Covered | Gap | `GATE_REQUIREMENT_GAP` | Assessor | — · Fired automatically by the §24.3 cascade |
-| Covered | Applicable | `GATE_REQUIREMENT_REASSESS` | Assessor | — · Re-opened, for instance on a framework version change |
+| Applicable | Gap | `GATE_REQUIREMENT_GAP` | Assessor | None |
+| Covered | Gap | `GATE_REQUIREMENT_GAP` | Assessor | None. Fired automatically by the §24.3 cascade |
+| Covered | Applicable | `GATE_REQUIREMENT_REASSESS` | Assessor | None. Re-opened, for instance on a framework version change |
 | Compensating | Covered | `GATE_REQUIREMENT_COVERED` | Assessor | **AINV-2**: a permanent control replaced the compensating one |
-| Compensating | Gap | `GATE_REQUIREMENT_GAP` | Assessor | — · Expiry or withdrawal |
+| Compensating | Gap | `GATE_REQUIREMENT_GAP` | Assessor | None. Expiry or withdrawal |
 | Gap | Covered | `GATE_REQUIREMENT_COVERED` | Assessor | **AINV-2**: closing a gap means the control runs, not that it is planned |
 | Gap | Compensating | `GATE_REQUIREMENT_COMPENSATING` | Approver | **AINV-4** |
 
@@ -470,8 +470,8 @@ State changes in one lifecycle propagate to related entities. These cascades are
 
 | Trigger | Source Lifecycle | Target Lifecycle | Cascade Behaviour | SLA |
 |---|---|---|---|---|
-| CE degradation | Control Deployment | Risk | Risk flagged "Control Changed — Re-evaluation Required". Risk Analyst notified. | Critical: 5bd, High: 10bd, Moderate: 20bd, Mod-Low: 30bd |
-| CE improvement | Control Deployment | Risk | Risk flagged "Control Improved — Residual Update Eligible". Full validation gate (§4.7) still required. | Analyst-triggered; no automatic score update |
+| CE degradation | Control Deployment | Risk | Risk flagged "Control Changed: Re-evaluation Required". Risk Analyst notified. | Critical: 5bd, High: 10bd, Moderate: 20bd, Mod-Low: 30bd |
+| CE improvement | Control Deployment | Risk | Risk flagged "Control Improved: Residual Update Eligible". Full validation gate (§4.7) still required. | Analyst-triggered; no automatic score update |
 | Control → Failure | Control Objective | Risk | Warning banner on ALL linked risk records. `residual_score_locked = TRUE`. | Immediate. Escalation at 15bd if unresolved. |
 | Control → Deprecated | Control Objective | Risk | Risk Analyst notified. Risk re-assessment required if control was contributing to residual scoring. | 30bd for re-assessment |
 
@@ -495,13 +495,13 @@ State changes in one lifecycle propagate to related entities. These cascades are
 | Trigger | Source | Intermediate | Target | Cascade Behaviour |
 |---|---|---|---|---|
 | Control test failure | Control Deployment | Threat Scenario | Threat Model & Risk | TINV-4: Failed control immediately re-opens the `Threat_Scenario` to 'Identified'. Threat model transitions from Active back to Review. `System_Owner` notified. If unaddressed > 15bd AND severity ≥ Medium → auto-promotes to formal Risk. |
-| Threat scenario unmitigated | Threat Scenario | — | Risk | A scenario with no mitigation assigned and not eligible for local Low acceptance is promoted to the register (§20.1). TINV-8 first checks whether an existing risk already carries the exposure: if one does, the scenario is *linked*, not promoted, and the register gains no duplicate. |
-| **Threat scenario mitigated** | Threat Scenario | — | Risk | §20.3, the mirror of the row above. Every risk record carrying the scenario — whether by `promoted_risk_id` or by a risk link — is flagged `Linked_Threat_Mitigated`. Risk Owner and Risk Analyst notified. **The residual score is not updated:** RINV-1 still requires all five conditions. |
+| Threat scenario unmitigated | Threat Scenario | None | Risk | A scenario with no mitigation assigned and not eligible for local Low acceptance is promoted to the register (§20.1). TINV-8 first checks whether an existing risk already carries the exposure: if one does, the scenario is *linked*, not promoted, and the register gains no duplicate. |
+| **Threat scenario mitigated** | Threat Scenario | None | Risk | §20.3, the mirror of the row above. Every risk record carrying the scenario, whether by `promoted_risk_id` or by a risk link, is flagged `Linked_Threat_Mitigated`. Risk Owner and Risk Analyst notified. **The residual score is not updated:** RINV-1 still requires all five conditions. |
 
 > **The loop runs both ways, and neither direction moves a number.** A control
 > failure re-opens a threat and freezes the residual; a mitigation makes the risk
 > eligible for re-evaluation. Both directions grant or revoke *eligibility*. A
-> score changes only when a person passes the gate that RINV-1 defines — which is
+> score changes only when a person passes the gate that RINV-1 defines, which is
 > what stops the cascade engine from quietly re-rating the register overnight.
 
 ### Control → Compliance Cascades

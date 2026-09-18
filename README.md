@@ -51,9 +51,10 @@ Docker is the only prerequisite.
 served live from the running engine at `/api/engine/*` rather than transcribed
 into a document that can drift.
 
-Your operating model — appetite bands, control families, roles, acceptance
-windows, escalation SLAs, everything this specification marks `[CUSTOMISE]` —
-lives in [`platform/config/governance.yml`](./platform/config/governance.yml).
+Your operating model lives in
+[`platform/config/governance.yml`](./platform/config/governance.yml): appetite
+bands, control families, roles, acceptance windows, escalation SLAs, and
+everything this specification marks `[CUSTOMISE]`.
 Aligning the platform to your framework is a file edit and a restart, not a fork.
 See the [configuration guide](./platform/docs/CONFIGURATION.md).
 
@@ -108,7 +109,7 @@ Core principle: fix the specification, not the code. Full detail: [/methodology]
 | Requirement | Regulation | Implementation |
 |---|---|---|
 | Continuous ICT risk monitoring with documented response | DORA Article 9 | Cross-entity FK propagation: issues and findings cascade to risk records |
-| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress — see [appendix.md](./appendix.md#vulnerability-management) for the adjacent pattern. |
+| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress: see [appendix.md](./appendix.md#vulnerability-management) for the adjacent pattern. |
 | ICT risk management framework maintained and reviewed | DORA Article 6 | Framework codified as machine-readable rule set. Changes trigger re-assessment cascade |
 | ICT third-party register | DORA Article 28 | Third-party risk module: schema extension defined, state machine specified |
 | AI system lifecycle documentation | EU AI Act Article 18 | Lifecycle model: Ideation through Deprecation artefacts satisfy technical documentation requirements |
@@ -119,9 +120,9 @@ Core principle: fix the specification, not the code. Full detail: [/methodology]
 
 ## What's Next
 
-**Vulnerability Management** — Five enforced state transitions: Discovery through Verified Closed. Specification in progress. [Detail](./appendix.md#vulnerability-management).
+**Vulnerability Management**: five enforced state transitions, Discovery through Verified Closed. Specification in progress. [Detail](./appendix.md#vulnerability-management).
 
-**Resilience** — BIA/RPO/RTO as enforced state variables linked to risk register via FK. [Detail](./appendix.md#resilience).
+**Resilience**: BIA/RPO/RTO as enforced state variables linked to risk register via FK. [Detail](./appendix.md#resilience).
 
 ---
 
@@ -139,7 +140,7 @@ implementation carries a licence built for code: permissive, with an explicit
 patent grant and contributor terms.
 
 The platform is versioned separately from the framework documents and follows
-semantic versioning. It is currently **0.1.0** — pre-1.0, because there is no
+semantic versioning. It is currently **0.1.0**: pre-1.0, because there is no
 schema migration path yet. See [CHANGELOG.md](./CHANGELOG.md) and the known
 limitations in [platform/README.md](./platform/README.md).
 
@@ -154,7 +155,7 @@ limitations in [platform/README.md](./platform/README.md).
 
 ## Author
 
-**Gavin Fitzpatrick** — Security architecture, GRC engineering, agentic AI development.
+**Gavin Fitzpatrick**: Security architecture, GRC engineering, agentic AI development.
 
 Two decades of experience scaling security programs across enterprise technology and financial services, including Meta, Coinbase, and enterprise data protection. MSc Security and Forensics. CISM. ISO 27001 Lead Implementer. Professional Diploma in AI. SANS DevSecOps.
 

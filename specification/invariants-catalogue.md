@@ -22,7 +22,7 @@ enforced by a named invariant alongside it: AINV-5 keeps AINV-2 true.
 
 | Column | Meaning |
 |---|---|
-| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy, TINV = Threat Modelling, AINV = Assurance and Compliance. A few rules keep the identifier they carry in the specification body — `SEP-1` (§2.2), `PE-5` (§12.3), `TM-PARTIAL` (§19.3) — because renaming them would break the cross-reference that makes them findable. |
+| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy, TINV = Threat Modelling, AINV = Assurance and Compliance. A few rules keep the identifier they carry in the specification body: `SEP-1` (§2.2), `PE-5` (§12.3) and `TM-PARTIAL` (§19.3). Renaming them would break the cross-reference that makes them findable. |
 | **Rule** | The constraint expressed as a natural-language rule. |
 | **Enforcement Layer** | Where the constraint is implemented: Schema (DB constraint or trigger), Service (API/business logic), Both, or Cascade. |
 | **Enforcement Mechanism** | The specific technical mechanism that prevents violation. |
@@ -52,9 +52,9 @@ enforced by a named invariant alongside it: AINV-5 keeps AINV-2 true.
 | RINV-12 | Treatments are never presented at readout without GRC Engineer validation and treatment owner commitment | Service | Phase 4 gate checks both flags on every linked treatment record | Phase transition blocked; treatment records flagged incomplete | §5.2 |
 | RINV-13 | Partial treatment selection is always documented with a rationale | Service | Rationale required when fewer treatments are selected than proposed | Save rejected; rationale field required | §5.2 |
 
-> **On RINV-3.** This is deliberately `Service`, not `Both`. The separation it enforces is relational — it depends on which controls are linked to the risk at the moment of assignment — and a `CHECK` constraint cannot see across tables. Enforcing it means checking on *both* sides: RINV-3 when the risk owner is set, CINV-3 when the control owner is set. Either one alone is defeated by performing the two assignments in the other order.
+> **On RINV-3.** This is deliberately `Service`, not `Both`. The separation it enforces is relational: it depends on which controls are linked to the risk at the moment of assignment, and a `CHECK` constraint cannot see across tables. Enforcing it means checking on *both* sides: RINV-3 when the risk owner is set, CINV-3 when the control owner is set. Either one alone is defeated by performing the two assignments in the other order.
 
-> **On RINV-2.** Appetite thresholds are configuration, not data. There is no endpoint that writes them because there is no table that holds them. Changing appetite means changing the operating model and redeploying it, which leaves a reviewable diff — the formal governance the rule asks for.
+> **On RINV-2.** Appetite thresholds are configuration, not data. There is no endpoint that writes them because there is no table that holds them. Changing appetite means changing the operating model and redeploying it, which leaves a reviewable diff: the formal governance the rule asks for.
 
 ---
 
@@ -102,7 +102,7 @@ That occasion is what the control exists for.
 
 > **On PINV-4.** This is `Service`, not `Both`. Which frameworks demand an annual cycle is configuration, and a `CHECK` constraint cannot read a configuration file. The check belongs where the framework list lives.
 
-> **On PE-5.** An exception does not expire because a job ran. It expires because the date passed. The job's purpose is to make the *record* agree with reality — which is why PE-5 is written as a statement about valid states rather than as a description of the job. A system where an expired exception silently remains Approved has not merely failed to notify; it is asserting something untrue.
+> **On PE-5.** An exception does not expire because a job ran. It expires because the date passed. The job's purpose is to make the *record* agree with reality, which is why PE-5 is written as a statement about valid states rather than as a description of the job. A system where an expired exception silently remains Approved has not merely failed to notify; it is asserting something untrue.
 
 ---
 
@@ -169,13 +169,13 @@ that case, and AINV-9 stops any requirement reaching Covered to begin with.
 
 Some rules are not invariants on a single entity but properties of the system as
 a whole. They are enforced by construction rather than by a predicate, which
-means they have no row above — and are easy to lose sight of for that reason.
+means they have no row above, and are easy to lose sight of for that reason.
 
 | Property | How it is guaranteed | Spec Ref |
 |---|---|---|
 | Every lifecycle change passes every applicable invariant | One write path: mutate → enforce → cascade → audit, in that order, in one transaction. No route bypasses it because no other route to the session exists | §16-18 |
 | A cascade cannot leave the system in a state an invariant forbids | Cascades run inside the originating transaction, before the invariant sweep. A cascade that would violate an invariant rolls the whole operation back | §11.2, §20.2, §20.3 |
-| Audit records cannot be revised | Append-only, enforced by database trigger — as for `control_tests` (CINV-7), `policy_versions` (PINV-9), and `threat_scenario_evidence` (TSE-1) | §7.3 |
+| Audit records cannot be revised | Append-only, enforced by database trigger, as for `control_tests` (CINV-7), `policy_versions` (PINV-9), and `threat_scenario_evidence` (TSE-1) | §7.3 |
 | Separation of duties survives assignment ordering | Every separation rule is checked from both sides. See the note under RINV-3 | §2.2 |
 | A compliance position never outlives the control beneath it | AINV-2 is re-evaluated on every write, and the §24.3 cascade revokes coverage the moment a control fails. Neither depends on anyone revisiting the register | §23.1, §24.3 |
 
@@ -202,14 +202,14 @@ Every invariant should have at least two test cases:
 - **Positive test:** confirm the system allows valid operations that comply with the invariant.
 - **Negative test:** confirm the system rejects operations that would violate it, and produces the correct error or behaviour.
 
-For any invariant claiming `Schema` or `Both`, test through the API **and** via direct SQL. A test that only exercises the API cannot distinguish a genuine constraint from a service check wearing one's name — which is exactly the drift this column exists to prevent.
+For any invariant claiming `Schema` or `Both`, test through the API **and** via direct SQL. A test that only exercises the API cannot distinguish a genuine constraint from a service check wearing one's name, which is exactly the drift this column exists to prevent.
 
 ### Adding New Invariants
 
 When adding invariants to this catalogue:
 
 1. Assign the next sequential ID in the appropriate domain (RINV, CINV, PINV, TINV, AINV)
-2. Identify the enforcement layer honestly — `Schema` only if a constraint or trigger genuinely exists
+2. Identify the enforcement layer honestly: `Schema` only if a constraint or trigger genuinely exists
 3. Define the specific mechanism (constraint type, gate check, trigger, job)
 4. Define the violation behaviour (what the user sees, or what the system does)
 5. Cross-reference to the Codified Rules Specification section, and **write that section if it does not yet exist**

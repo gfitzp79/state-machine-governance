@@ -210,11 +210,11 @@ RULE CE-6: expired CE auto-downgrades to CE-Unvalidated
 
 ```
 TRIGGER: CE rating degrades on any deployment linked to a risk
-  ACTION: risk flagged "Control Changed — Re-evaluation Required"
+  ACTION: risk flagged "Control Changed: Re-evaluation Required"
   SLA:    Critical risk: 5bd | High: 10bd | Moderate: 20bd | Mod-Low: 30bd
 
 TRIGGER: CE rating improves on deployment linked to a risk with locked residual
-  ACTION: risk flagged "Control Improved — Residual Update Eligible"
+  ACTION: risk flagged "Control Improved: Residual Update Eligible"
   NOTE:   full residual validation gate (§7) still required before score update
 ```
 

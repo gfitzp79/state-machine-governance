@@ -21,7 +21,7 @@ improvements.
 that do not change meaning.
 
 **Open an issue first:** new invariants, changes to a state machine, changes to
-the scoring model, new domains. These have implementation consequences — every
+the scoring model, new domains. These have implementation consequences: every
 rule in the specification is enforced in code, so a specification change is a
 code change wearing different clothes.
 
@@ -79,7 +79,7 @@ docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py
 ```
 
-Both exit non-zero on failure. Neither uses a test framework yet — they are
+Both exit non-zero on failure. Neither uses a test framework yet: they are
 plain scripts with a `check()` helper, which keeps the output readable as a
 statement of what the platform guarantees. Migrating them to pytest is a welcome
 contribution.
@@ -95,7 +95,7 @@ npx tsc -b --noEmit    # must be clean
 ### The one architectural rule
 
 **Every write goes through `LifecycleService`.** It runs the same four steps in
-the same order — mutate, enforce invariants, cascade, audit — and routers never
+the same order: mutate, enforce invariants, cascade, audit. Routers never
 touch the database session directly. A pull request that writes to the session
 from a router, or mutates a lifecycle field without going through
 `StateMachine.fire()`, will be asked to change.
@@ -107,7 +107,7 @@ Concretely:
 
 | Change | Where it belongs |
 |---|---|
-| A threshold, SLA, or taxonomy value | `platform/config/governance.yml` — never hardcoded |
+| A threshold, SLA, or taxonomy value | `platform/config/governance.yml`: never hardcoded |
 | Which roles may fire a transition | `modules/<domain>/machine.py` |
 | A new precondition on a gate | `modules/<domain>/machine.py` |
 | A new hard rule | `modules/<domain>/invariants.py`, with a specification reference |
@@ -117,7 +117,7 @@ Concretely:
 ### Adding or changing a rule
 
 Every invariant carries its specification reference. If you add one, the
-specification gets the rule too — a rule enforced in code and absent from the
+specification gets the rule too: a rule enforced in code and absent from the
 documents is exactly the drift this project exists to argue against. A pull
 request adding an invariant should touch both
 `specification/invariants-catalogue.md` and the module's `invariants.py`.
@@ -153,16 +153,20 @@ There is no formatter configured yet, so match the surrounding code:
 - Module docstrings explain *why* the module exists, not what it does
 - String concatenation rather than f-strings in messages and SQL-adjacent code
 - Type hints on public functions
-- Comments explain reasoning, not mechanics — if a line needs a comment to say
+- Comments explain reasoning, not mechanics: if a line needs a comment to say
   what it does, rename something instead
 - British English in user-facing text and documentation
+- No em dashes in markdown. Use a comma, a colon, or restructure the sentence.
+  `python tools/check_em_dashes.py` runs in CI. Application code is exempt,
+  because there an em dash is the empty-value placeholder in a table cell and a
+  label separator rather than punctuation
 
 ### Pull requests
 
 - One concern per pull request
 - Say what rule or behaviour changed, and why
 - Note any specification document that needs to change with it
-- If you changed enforcement, say how you proved it — ideally a new `check()` in
+- If you changed enforcement, say how you proved it, ideally a new `check()` in
   the smoke test
 
 ---
