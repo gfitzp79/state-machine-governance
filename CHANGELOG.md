@@ -97,6 +97,17 @@ changes needed to describe what it actually does.
   deployments while citing an invariant that requires one.
 - PINV-3 and PINV-7 cited §14.1, which did not exist.
 
+### Fixed — platform
+
+- The API client had no network-failure path. `fetch` rejects rather than
+  resolving when the API is unreachable, and nginx answers a dead upstream with
+  an HTML 502 that `JSON.parse` throws on. Neither produced an `ApiError`, and
+  pages discard anything that is not one — so a stopped API left the sign-in
+  button dead with no message.
+- The Content-Security-Policy blocked the theme bootstrap inlined in
+  `index.html`. A saved dark-mode preference was not merely ignored on load; it
+  was overwritten with `light` on mount. Moved to `public/theme-init.js`.
+
 ### Security
 
 - **The application refuses to start** with a shipped default `JWT_SECRET`
