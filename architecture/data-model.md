@@ -1,8 +1,8 @@
 # Data Model
 
-**Version:** 1.1 | **License:** CC BY 4.0
+**Version:** 1.2 | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](../specification/codified-rules.md) and validated against a working Supabase implementation.
-**Purpose:** Complete relational schema for the governance platform. 45 tables across 7 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
+**Purpose:** Complete relational schema for the governance platform. 49 tables across 8 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
 
 > **Design principle:** The schema is the first line of enforcement. Every NOT NULL, CHECK, UNIQUE, and FK constraint exists because a codified rule requires it. If a constraint is absent, the rule is not enforced at the data layer and must be enforced at the service layer. See [Invariants Catalogue](../specification/invariants-catalogue.md) for the complete enforcement mapping.
 
@@ -36,10 +36,11 @@
 | Treatment Management | 3 | Treatment plans, approval workflows, progress check-ins |
 | Policy and Standards | 7 | Policy register, standards, versions, exceptions, control links, AI assessments, AI recommendations |
 | Vendor and Third-Party Risk | 8 | Vendor register, engagements (assessment lifecycle), inherent risk assessments, due diligence artefacts, findings, approval decisions, offboarding, analyst tasks |
+| Compliance and Assurance | 4 | Framework register, requirement catalogue, Statement of Applicability positions, control-to-requirement coverage assertions |
 | Threat Management | 7 | Threat models, components (DFD items with classification and trust zone), STRIDE threat scenarios, mitigation links to deployed controls, scenario comments, append-only evidence, risk register links |
-| **Total** | **45** | |
+| **Total** | **49** | |
 
-> **Scope note.** This is the framework's reference data model. The [reference implementation](../platform) builds 30 of these tables: it covers identity, risk, control, treatment, policy and threat management, and does not yet implement the vendor and third-party risk domain, the policy AI assessment tables, or the group and OIDC role-mapping tables. Where the two differ, this document describes the target and the platform's own schema is the subset currently enforced.
+> **Scope note.** This is the framework's reference data model. The [reference implementation](../platform) builds 34 of these tables: it covers identity, risk, control, treatment, policy and threat management, and does not yet implement the vendor and third-party risk domain, the policy AI assessment tables, or the group and OIDC role-mapping tables. Where the two differ, this document describes the target and the platform's own schema is the subset currently enforced.
 
 ### Entity Relationship Summary
 
@@ -58,6 +59,7 @@ risks ←── risk_phase_history
 
 control_objectives ←── control_activities ←── control_deployments ──→ attack_surfaces
                                                ←── control_tests (append-only)
+                   ←── control_requirement_links ──→ compliance_requirements
                    ←── policy_controls ──→ policies
                    ←── risk_controls ──→ risks
 
@@ -85,6 +87,10 @@ threat_models ←── threat_components ←── threat_scenarios ──→ r
                                    ←── threat_scenario_comments (threaded)
                                    ←── threat_scenario_evidence (append-only)
                                    ←── threat_scenario_risk_links ──→ risks
+
+compliance_frameworks ←── compliance_requirements ←── requirement_assessments
+                                                    ←── control_requirement_links ──→ control_objectives
+attack_surfaces.compliance_scopes ──→ compliance_frameworks (by framework_id)
 
 engagements ──→ risks (promoted_risk_id: promoted vendor findings)
 ```
@@ -406,6 +412,12 @@ Level 1. What the control must achieve. Owned by a Control Owner.
 | control_type | text | NO | 'Preventive' | Preventive/Detective/Corrective. Configuration-driven. |
 | lifecycle_state | text | NO | 'Design' | CHECK: Design/Implementation/Operating/Failure/Redesign/Deprecated |
 | control_owner_id | uuid | YES | | RINV-3 and CINV-3 check this against linked risk owners |
+| objective_statement | text | YES | | What "working" means, in terms a test can be written against. `description` says what the control is; this says how you would know it works |
+| automation_level | text | NO | 'Manual' | Manual/Semi_Automated/Automated. **CINV-11** caps CE by this |
+| implementation_type | text | NO | 'Technical' | Technical/Administrative/Physical. Orthogonal to preventive/detective/corrective |
+| operating_frequency | text | NO | 'Continuous' | How often the control **runs**, as distinct from `test_frequency` on the deployment, which is how often somebody checks it ran |
+| assurance_method | text | NO | 'Inquiry' | Inquiry/Observation/Inspection/Re_Performance, weakest first. **CINV-12** sets a floor for key controls |
+| is_key_control | boolean | NO | false | Key controls carry the assurance floor |
 | failure_declared_at | timestamptz | YES | | Set by the OL-5 cascade |
 | remediation_plan | text | YES | | Required to leave Failure |
 | deprecation_rationale | text | YES | | Required to reach Deprecated |
@@ -428,6 +440,11 @@ Level 2. How the objective is implemented. Owned by a Control Operator.
 | lifecycle_state | text | NO | 'Draft' | CHECK: Draft/Active/Suspended/Retired |
 | control_operator_id | uuid | YES | | |
 | suspension_rationale | text | YES | | Required to reach Suspended |
+| automation_level | text | YES | | May differ from the objective's headline figure: an objective met by a nightly job on one estate and a spreadsheet on another is the normal case |
+| operating_frequency | text | YES | | |
+| procedure_ref | text | YES | | Where the runbook lives. An activity whose procedure nobody can produce is a description of an intention |
+| tooling | text | YES | | Which system performs or records it |
+| evidence_type | text | YES | | What this activity produces when it runs. Declaring it up front is what makes a missing artefact detectable rather than arguable |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
@@ -503,6 +520,7 @@ Asset register. Named "attack surfaces" in the implementation; maps to the "Asse
 | tier | text | NO | | Criticality tier. CHECK constraint. |
 | description | text | YES | | |
 | system_owner_id | uuid | YES | | |
+| compliance_scopes | jsonb | NO | '[]' | Framework ids this asset sits inside. **AINV-2** reads it to decide where a control must run for a requirement to count; **AINV-9** refuses to report coverage for a framework no asset has claimed |
 | created_at | timestamptz | NO | now() | |
 | updated_at | timestamptz | NO | now() | |
 
@@ -1098,9 +1116,102 @@ Scenario to **existing** risk record. Distinct from promotion.
 
 ---
 
+## 8b. Domain 8: Compliance and Assurance
+
+The register holds framework **requirements** as records rather than deriving
+compliance from the policies that reference a control. See
+[codified-rules Part 6](../specification/codified-rules.md).
+
+### compliance_frameworks
+
+One framework at one version. Version is part of the identity, not an attribute.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| framework_id | text | NO | | Natural key from the catalogue file, e.g. `NIST-CSF-2.0`. UNIQUE |
+| name | text | NO | | |
+| version | text | NO | | **AINV-7**: immutable once requirements are loaded |
+| authority | text | YES | | |
+| source_url | text | YES | | |
+| redistributable | boolean | NO | false | **AINV-6**: false means this repository may not carry the requirement text, and the loader refuses a catalogue that does |
+| licence_note | text | YES | | |
+| adopted | boolean | NO | false | **AINV-8**: only an adopted framework carries assessed positions |
+| adopted_at | timestamptz | YES | | |
+
+### compliance_requirements
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| framework_id | uuid | NO | | FK to compliance_frameworks. ON DELETE CASCADE |
+| ref | text | NO | | The identifier as the framework writes it: `GV.OC-01`, `A.5.15`, `8.3.1`. UNIQUE per framework |
+| title | text | NO | | |
+| requirement_text | text | YES | | Full prose. **NULL for a licensed framework**; populated by an operator importing from their own copy |
+| category | text | YES | | Grouping, e.g. `Protect / Data Security` |
+| sort_order | integer | NO | 0 | |
+
+### requirement_assessments
+
+The organisation's position on one requirement. A Statement of Applicability entry.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| requirement_id | uuid | NO | | FK to compliance_requirements. UNIQUE: exactly one position per requirement |
+| lifecycle_state | text | NO | 'Not_Assessed' | CHECK: Not_Assessed/Not_Applicable/Applicable/Covered/Compensating/Gap |
+| rationale | text | YES | | **AINV-1**: required for Not_Applicable |
+| owner_id | uuid | YES | | |
+| assessed_by | uuid | YES | | |
+| assessed_at | timestamptz | YES | | |
+| compensating_expiry | date | YES | | **AINV-4**: required for Compensating |
+| gap_reason | text | YES | | Set by the §24.3 cascade, so the reason a requirement became a gap survives |
+
+**Constraints:**
+
+| Constraint | Purpose | Invariant |
+|---|---|---|
+| `ck_requirement_assessments_state` | Valid states | |
+| `ck_requirement_assessments_exclusion_justified` | `lifecycle_state <> 'Not_Applicable' OR rationale IS NOT NULL` | **AINV-1** |
+| `ck_requirement_assessments_compensating_time_bound` | `lifecycle_state <> 'Compensating' OR compensating_expiry IS NOT NULL` | **AINV-4** |
+
+> **`Not_Assessed` is a real state, not a missing row.** "Nobody has looked at
+> this" is itself a finding, and a finding that cannot be counted does not get
+> fixed. Deriving the position from the absence of a record would make the most
+> common state in any real register invisible.
+
+### control_requirement_links
+
+A person's assertion that a control objective addresses a requirement.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| objective_id | uuid | NO | | FK to control_objectives. ON DELETE CASCADE |
+| requirement_id | uuid | NO | | FK to compliance_requirements. ON DELETE CASCADE |
+| coverage_level | text | NO | 'Full' | Configuration-driven. Full/Partial/Compensating by default; **AINV-3** reads `satisfies` from configuration rather than from the name |
+| rationale | text | YES | | |
+| asserted_by | uuid | YES | | |
+| asserted_at | timestamptz | NO | now() | |
+
+**Constraints:** `uq_control_requirement` UNIQUE (objective_id, requirement_id).
+
+> **Nothing infers a link.** Not a shared policy, not a matching control family,
+> not a keyword. Somebody asserts it and the record says who — the same argument
+> TINV-7 makes about threat mitigation, for the same reason: an inferred control
+> is one nobody has checked.
+
+> **The dependency points one way.** `control_requirement_links` references
+> `control_objectives`, and the control module carries no relationship back.
+> A back-reference would make importing `control.models` fail unless
+> `compliance.models` had already been imported, which is a coupling the module
+> boundary exists to prevent.
+
+---
+
 ## 9. Foreign Key Relationship Map
 
-49 foreign key relationships across the schema.
+55 foreign key relationships across the schema.
 
 | Source Table | Source Column | Target Table | Target Column |
 |---|---|---|---|
@@ -1153,6 +1264,10 @@ Scenario to **existing** risk record. Distinct from promotion.
 | control_deployments | activity_id | control_activities | id |
 | control_deployments | attack_surface_id | attack_surfaces | id |
 | control_tests | deployment_id | control_deployments | id |
+| compliance_requirements | framework_id | compliance_frameworks | id |
+| requirement_assessments | requirement_id | compliance_requirements | id |
+| control_requirement_links | requirement_id | compliance_requirements | id |
+| control_requirement_links | objective_id | control_objectives | id |
 
 ---
 
@@ -1160,10 +1275,10 @@ Scenario to **existing** risk record. Distinct from promotion.
 
 | Constraint Type | Count | Purpose |
 |---|---|---|
-| PRIMARY KEY | 45 | One per table |
-| UNIQUE | 20 | Human-readable IDs, junction table deduplication, role assignment uniqueness |
-| CHECK (named, non-NOT-NULL) | 34 | Enum validation on lifecycle states, ratings, scores, tiers, strategies; plus the conditional CHECKs carrying an invariant |
-| FOREIGN KEY | 49 | Cross-entity integrity |
+| PRIMARY KEY | 49 | One per table |
+| UNIQUE | 23 | Human-readable IDs, junction table deduplication, role assignment uniqueness |
+| CHECK (named, non-NOT-NULL) | 37 | Enum validation on lifecycle states, ratings, scores, tiers, strategies; plus the conditional CHECKs carrying an invariant |
+| FOREIGN KEY | 55 | Cross-entity integrity |
 | NOT NULL | ~210 | Field-level data integrity |
 | APPEND-ONLY TRIGGER | 6 | Immutability on audit_log, risk_phase_history, policy_versions, control_tests, treatment_checkins, threat_scenario_evidence |
 
@@ -1211,6 +1326,8 @@ Cross-reference to [Invariants Catalogue](../specification/invariants-catalogue.
 | TINV-5 | `status <> 'Accepted' OR acceptance_expiry IS NOT NULL` | CHECK |
 | TINV-6 | `status <> 'Promoted_To_Risk' OR promoted_risk_id IS NOT NULL` | CHECK |
 | TSE-1 | `threat_scenario_evidence`: append-only | Trigger |
+| **AINV-1** | `lifecycle_state <> 'Not_Applicable' OR rationale IS NOT NULL` | CHECK |
+| **AINV-4** | `lifecycle_state <> 'Compensating' OR compensating_expiry IS NOT NULL` | CHECK |
 
 > **CINV-7 attaches to `control_tests`, not `risk_phase_history`.** CINV-7 is the
 > control-testing immutability rule (§10.1, TST-1). `risk_phase_history` is also

@@ -1,6 +1,6 @@
 # State Transitions Reference
 
-**Version:** 2.1-template | **License:** CC BY 4.0
+**Version:** 2.2-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §4-§5 (Risk and Treatment), §9 (Controls), §13 (Policy), §19-§20 (Threat)
 **Purpose:** Complete definition of every lifecycle state machine in the platform, including valid transitions, gate preconditions, blocking rules, and cascade behaviours. Designed for implementation teams to build phase-gate enforcement at the API layer.
 
@@ -18,7 +18,8 @@
 6. [Policy Exception Lifecycle (4 States)](#6-policy-exception-lifecycle-4-states)
 7. [Threat Model Lifecycle (8 States)](#7-threat-model-lifecycle-8-states)
 8. [Treatment Lifecycle (6 States)](#8-treatment-lifecycle-6-states)
-9. [Cross-Lifecycle Cascade Rules](#9-cross-lifecycle-cascade-rules)
+9. [Requirement Assessment Lifecycle (6 States)](#9-requirement-assessment-lifecycle-6-states)
+10. [Cross-Lifecycle Cascade Rules](#10-cross-lifecycle-cascade-rules)
 
 ---
 
@@ -406,7 +407,62 @@ exists to prevent.
 
 ---
 
-## 9. Cross-Lifecycle Cascade Rules
+## 9. Requirement Assessment Lifecycle (6 States)
+
+Every requirement of an adopted framework carries exactly one position. This is a
+Statement of Applicability, and both the decisions in it are gated: whether the
+requirement applies, and whether it is covered.
+
+### State Machine Diagram
+
+```
+[Not_Assessed] ─────→ [Applicable] ⇄ [Covered]
+       │                   │  ↑          │
+       │                   ↓  │          ↓
+       │              [Compensating] ⇄ [Gap]
+       ↓                                 ↑
+[Not_Applicable] ──→ [Applicable] ───────┘
+```
+
+### Transition Rules
+
+| From | To | Gate | Roles | Gate Preconditions |
+|---|---|---|---|---|
+| Not_Assessed | Applicable | `GATE_REQUIREMENT_IN_SCOPE` | Assessor | **AINV-8**: the framework is adopted |
+| Not_Assessed | Not_Applicable | `GATE_REQUIREMENT_EXCLUDED` | Approver | **AINV-1**: a documented justification |
+| Not_Applicable | Applicable | `GATE_REQUIREMENT_IN_SCOPE` | Approver | A reason for re-scoping: reversing an exclusion changes the SoA |
+| Applicable | Covered | `GATE_REQUIREMENT_COVERED` | Assessor | **AINV-2**: a satisfying link, an Operating objective, a live deployment inside scope |
+| Applicable | Compensating | `GATE_REQUIREMENT_COMPENSATING` | Approver | **AINV-4**: a compensating link, an expiry within the window, and a rationale |
+| Applicable | Gap | `GATE_REQUIREMENT_GAP` | Assessor | — |
+| Covered | Gap | `GATE_REQUIREMENT_GAP` | Assessor | — · Fired automatically by the §24.3 cascade |
+| Covered | Applicable | `GATE_REQUIREMENT_REASSESS` | Assessor | — · Re-opened, for instance on a framework version change |
+| Compensating | Covered | `GATE_REQUIREMENT_COVERED` | Assessor | **AINV-2**: a permanent control replaced the compensating one |
+| Compensating | Gap | `GATE_REQUIREMENT_GAP` | Assessor | — · Expiry or withdrawal |
+| Gap | Covered | `GATE_REQUIREMENT_COVERED` | Assessor | **AINV-2**: closing a gap means the control runs, not that it is planned |
+| Gap | Compensating | `GATE_REQUIREMENT_COMPENSATING` | Approver | **AINV-4** |
+
+**Assessor:** Risk_Analyst, GRC_Engineer, Control_Owner, CISO, Admin.
+**Approver:** GRC_Engineer, CISO, Admin. Excluding a requirement or resting on a
+compensating control are governance decisions, not assessment work, so they sit
+at the higher band.
+
+### Why `Not_Assessed` is a state
+
+It would be simpler to treat an unassessed requirement as a missing row. It would
+also make the most common state in any real register invisible, and a register
+that cannot count what nobody has looked at will report a flattering number on
+its first day. A framework with 106 requirements and 4 positions is 4% assessed,
+and that is the honest headline.
+
+### There is no `Partially_Covered` state
+
+Partial coverage is derived from the link set and displayed as detail on the
+requirement. Giving it a status would let it satisfy an audit position, which is
+the same reason there is no `Partially_Mitigated` threat status (TM-PARTIAL).
+
+---
+
+## 10. Cross-Lifecycle Cascade Rules
 
 State changes in one lifecycle propagate to related entities. These cascades are the mechanism by which the platform maintains consistency across interconnected state machines.
 
@@ -447,6 +503,18 @@ State changes in one lifecycle propagate to related entities. These cascades are
 > eligible for re-evaluation. Both directions grant or revoke *eligibility*. A
 > score changes only when a person passes the gate that RINV-1 defines — which is
 > what stops the cascade engine from quietly re-rating the register overnight.
+
+### Control → Compliance Cascades
+
+| Trigger | Source | Target | Cascade Behaviour |
+|---|---|---|---|
+| Control → Failure | Control Objective | Requirement Assessment | **AINV-5**. Every requirement covered by a satisfying link to that control returns to `Gap`, with `gap_reason` naming the control. Skipped where another Operating control still satisfies the requirement |
+| Control → Deprecated | Control Objective | Requirement Assessment | Same, with a re-mapping prompt: retiring a control that carries an audit position is a governance event, not a tidy-up |
+
+> **Why the "another Operating control" clause matters.** Revoking coverage a
+> second control still provides would report a gap that does not exist. A
+> compliance figure loses trust faster from one false alarm than from a missed
+> finding, and a figure nobody trusts gets replaced by a spreadsheet.
 
 ### Acceptance Expiry Cascade
 

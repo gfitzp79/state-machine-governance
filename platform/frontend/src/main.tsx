@@ -10,6 +10,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Risks from './pages/Risks'
 import RiskDetail from './pages/RiskDetail'
+import Compliance from './pages/Compliance'
 import Controls from './pages/Controls'
 import ControlDetail from './pages/ControlDetail'
 import Policies from './pages/Policies'
@@ -45,6 +46,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <Route path="treatments/:id" element={<TreatmentDetail />} />
               <Route path="threat-models" element={<ThreatModels />} />
               <Route path="threat-models/:id" element={<ThreatModelDetail />} />
+              <Route path="compliance" element={<Compliance />} />
               <Route path="engine" element={<Engine />} />
               <Route path="audit" element={<Audit />} />
               <Route path="notifications" element={<Notifications />} />

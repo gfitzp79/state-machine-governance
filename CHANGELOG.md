@@ -13,7 +13,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — Compliance and Assurance (Domain 8)
+
+- **Requirements are records, not framework names.** §15 CF-2 had controls
+  inherit compliance mappings from linked policies, which cannot say *which*
+  clause a control satisfies, and left CF-3's promise of gap detection
+  unkeepable: a gap cannot be found without the set to compare against.
+- **Coverage is asserted against a live control.** A requirement is Covered only
+  while a satisfying control is Operating and deployed inside the framework's
+  declared scope (AINV-2) — TINV-4's argument applied to compliance.
+- **§24.3, the cascade that makes it more than a mapping table.** A control
+  entering Failure revokes every compliance position that rested on it, unless
+  another Operating control still satisfies the requirement.
+- **Licensing enforced, not documented (AINV-6).** ISO 27001, CIS, PCI DSS and
+  the AICPA criteria ship as framework records with zero requirements, and the
+  loader refuses at boot any catalogue declaring `redistributable: false` while
+  carrying requirement text. NIST CSF 2.0 ships complete, all 106 subcategories.
+  `tools/import_framework.py` loads licensed content into the database, never
+  back into the tree.
+- **Control attributes** an assessor actually asks for: objective statement,
+  automation level, implementation type, operating frequency, assurance method,
+  key-control flag; procedure reference, tooling and evidence type on the
+  activity. CINV-11 caps CE by automation level, so a manual control cannot buy
+  the likelihood reduction of an enforced one under RINV-9.
+- `Cascade` added as a fourth enforcement layer in the invariants catalogue.
+- Specification: `codified-rules` Part 6 (§21-24), `state-transitions` §9,
+  `data-model` Domain 8. 11 new invariants, all catalogued and cross-referenced.
+
+### Fixed
+
+- **Nested cascades lost their effects.** A handler calling `cascades.emit` built
+  a new event, so everything the downstream handlers recorded was discarded when
+  it returned. The work still happened, so nothing looked broken; the audit trail
+  simply stopped mentioning it.
+- **Every control write model silently dropped unknown fields**, so the new
+  attributes were unreachable through the API and a `PATCH` setting one returned
+  200 having done nothing. Control write models now refuse extra fields.
 
 ---
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   Bell,
+  BookLock,
   Boxes,
   Cpu,
   FileText,
@@ -28,6 +29,7 @@ const NAV = [
   { to: '/policies', label: 'Policies', icon: FileText },
   { to: '/treatments', label: 'Treatments', icon: Wrench },
   { to: '/threat-models', label: 'Threat models', icon: Target },
+  { to: '/compliance', label: 'Compliance', icon: BookLock },
   { to: '/engine', label: 'Engine', icon: Cpu },
   { to: '/audit', label: 'Audit trail', icon: ScrollText },
 ]
