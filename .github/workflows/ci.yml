@@ -199,6 +199,17 @@ jobs:
             exit 1
           fi
 
+      - name: Specification matches the code
+        run: |
+          # Every invariant registered in code appears in the catalogue with the
+          # same enforcement layer, and vice versa. A rule enforced in code and
+          # absent from the documents is exactly the drift this project argues
+          # against, so it fails the build rather than accumulating quietly.
+          python3 tools/check_invariant_drift.py
+
+      - name: Every invariant cites a section that exists
+        run: python3 tools/check_spec_references.py
+
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
         env:

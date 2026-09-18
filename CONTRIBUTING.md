@@ -73,7 +73,7 @@ Both suites must pass before a pull request is reviewed.
 # 33 tests: the configuration layer. Fast, no database needed.
 docker compose exec api python config_test.py
 
-# 112 tests: gates, invariants, cascades, and direct-SQL bypass attempts.
+# 126 tests: gates, invariants, cascades, and direct-SQL bypass attempts.
 # Mutates state deliberately, so it needs a freshly seeded database.
 docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py
@@ -125,6 +125,25 @@ request adding an invariant should touch both
 Every invariant also declares its enforcement layer. Declare `schema` only if
 there is genuinely a `CHECK` constraint or trigger behind it; `both` only if
 there are both. An overstated enforcement claim is worse than an understated one.
+
+Two checks enforce this, and CI runs both:
+
+```bash
+python tools/check_invariant_drift.py
+```
+
+Every invariant registered in code appears in the catalogue with the same
+enforcement layer, and vice versa. Add an invariant without a catalogue row and
+the build fails.
+
+```bash
+python tools/check_spec_references.py
+```
+
+Every invariant's `spec_ref` points at a section of `codified-rules.md` that
+actually exists. Four threat invariants once cited sections that had never been
+written; a rule whose stated reason does not exist is the first rule somebody
+removes.
 
 ### Code style
 

@@ -1,10 +1,12 @@
 # System Invariants Catalogue
 
-**Version:** 2.0-template | **License:** CC BY 4.0
-**Source:** Derived from [Codified Rules Specification](./codified-rules.md) §16-18
+**Version:** 2.1-template | **License:** CC BY 4.0
+**Source:** Derived from [Codified Rules Specification](./codified-rules.md) §16-20
 **Purpose:** Complete catalogue of system invariants with enforcement layer, validation method, and implementation guidance. Invariants are hard rules that the system must never violate regardless of user role, workflow state, or API path.
 
 > **Design principle:** Schema constraints handle data integrity. Service-layer gates handle business logic. Neither layer operates without the other. Every invariant below identifies which layer enforces it, so implementation teams know where the constraint must live.
+
+> **Enforcement claims are load-bearing.** An invariant that says `Schema` must have a genuine `CHECK` constraint, `NOT NULL`, foreign key, or trigger behind it. `Both` requires both layers independently. An overstated enforcement claim is worse than an understated one, because it tells an assessor that a bypass is impossible when it is merely inconvenient. The layer recorded here is the layer the [reference implementation](../platform) actually uses.
 
 ---
 
@@ -12,12 +14,14 @@
 
 | Column | Meaning |
 |---|---|
-| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy, TINV = Threat Modeling. |
+| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy, TINV = Threat Modelling. A few rules keep the identifier they carry in the specification body — `SEP-1` (§2.2), `PE-5` (§12.3), `TM-PARTIAL` (§19.3) — because renaming them would break the cross-reference that makes them findable. |
 | **Rule** | The constraint expressed as a natural-language rule. |
-| **Enforcement Layer** | Where the constraint is implemented: Schema (DB constraint), Service (API/business logic), or Both. |
+| **Enforcement Layer** | Where the constraint is implemented: Schema (DB constraint or trigger), Service (API/business logic), or Both. |
 | **Enforcement Mechanism** | The specific technical mechanism that prevents violation. |
 | **Violation Behaviour** | What happens when something attempts to violate the invariant. |
 | **Spec Reference** | Cross-reference to the Codified Rules Specification section. |
+
+**Counts.** 46 invariants: 14 risk, 10 control, 10 policy, 12 threat.
 
 ---
 
@@ -25,19 +29,24 @@
 
 | ID | Rule | Enforcement Layer | Enforcement Mechanism | Violation Behaviour | Spec Ref |
 |---|---|---|---|---|---|
-| RINV-1 | Residual risk NEVER updated without validated evidence | Service | Residual score fields carry a `locked` flag. API validation gate checks all 5 conditions before releasing the lock. Direct DB writes blocked by trigger or RLS policy. | Write rejected; residual remains at inherent score | §4.7 |
-| RINV-2 | Risk appetite NEVER downgraded without formal governance | Service | Appetite threshold changes require governance approval workflow. No API endpoint permits direct appetite modification. | Change request rejected; logged as unauthorised modification attempt | §1.2 |
-| RINV-3 | Control owners NEVER assigned as risk owners | Schema + Service | FK constraint check on `risk_owner_id` against `control_owner_id` for linked controls. Service layer validates on assignment. | Assignment rejected; validation error returned | §2.2 (SEP-3) |
-| RINV-4 | Acceptance NEVER permanent — always time-bound | Schema | `NOT NULL` constraint on `acceptance_expiry` when `treatment_decision = Accept`. | DB write rejected; constraint violation | §5.5 |
-| RINV-5 | Critical risks NEVER accepted | Service + Schema | Service layer rejects `treatment_decision = Accept` when `inherent_rating = Critical`. CHECK constraint as backup. | Decision rejected; must select Mitigate, Transfer, or Avoid | §5.5 |
-| RINV-6 | Risk readout NEVER skipped for risks rated Moderate or above | Service | Phase gate check at Phase 5 transition. Risks rated Moderate, High, or Critical cannot advance past Phase 5 without readout confirmation. | Phase transition blocked | §7.4 |
-| RINV-7 | Issues NEVER scored as risks without promotion criteria met | Service | Intake triage gate validates promotion criteria before creating a risk record from an issue. | Risk record creation blocked; item remains in Issue Management | §3.6 |
-| RINV-8 | Scoring NEVER begins without preconditions satisfied | Service | Phase 2 gate enforces 4-item precondition checklist. All items must be TRUE before scoring fields become editable. | Phase transition blocked; scoring fields remain read-only | §4.1 |
-| RINV-9 | Planned/partial/unvalidated controls NEVER reduce residual risk | Service | Scoring engine filters linked controls. Only controls with `lifecycle_status = Operating` and `ce_rating ≠ CE-Unvalidated` contribute to likelihood adjustment. | Planned controls excluded from calculation automatically | §4.6 |
-| RINV-10 | Every risk MUST have Risk Owner AND Risk Stakeholder | Schema | `NOT NULL` constraint on `risk_owner_id` and `risk_stakeholder_id` in risks table. | DB write rejected; constraint violation | §2.1 |
-| RINV-11 | Expired risks ALWAYS escalated — no silent expiry | Service | Scheduled job checks `acceptance_expiry` daily. Expired acceptances trigger automatic escalation workflow and flag risk as Above Appetite. | Auto-escalation to Risk Owner → Risk Stakeholder → CISO | §5.5, §6.1 |
-| RINV-12 | Treatments NEVER presented at readout without GRC Engineer validation + treatment owner commitment | Service | Phase 4 gate checks `grc_eng_validated = TRUE` and `owner_committed = TRUE` on all linked treatment records. | Phase transition blocked; treatment records flagged as incomplete | §5.2 |
-| RINV-13 | Partial treatment selection ALWAYS documented with rationale | Service | API validation requires `partial_treatment_rationale` field when fewer than all proposed treatments are selected. | Save rejected; rationale field required | §5.2 |
+| RINV-1 | Residual risk is never updated without validated evidence | Both | `residual_score_locked` flag released only by `GATE_RESIDUAL_VALIDATED`; while locked, residual may not diverge from inherent | Write rejected; residual remains at the inherent score | [scoring-model §7](./scoring-model.md) |
+| RINV-2 | Risk appetite is never downgraded without formal governance | Service | No API endpoint writes appetite thresholds; they are engine configuration, changed only by redeploying the operating model | Change request rejected; logged as an unauthorised modification attempt | §1.2 |
+| RINV-3 | Control owners are never assigned as risk owners for linked risks | Service | Risk owner checked against `control_owner_id` on every linked objective, both on assignment and at link time | Assignment rejected; validation error returned | §2.2 (SEP-3) |
+| RINV-4 | Acceptance is never permanent; it is always time-bound and within the rating limit | Both | `CHECK` constraint requires an expiry date; service caps the window per rating | Write rejected; constraint violation | §5.5 |
+| RINV-5 | Critical risks are never accepted | Both | `CHECK` constraint plus service-layer rejection of Accept on a Critical rating | Decision rejected; must select Mitigate, Transfer or Avoid | §5.5 |
+| RINV-6 | Risk readout is never skipped for risks rated Moderate or above | Service | Phase 5 gate requires `readout_confirmed` for Moderate, High and Critical | Phase transition blocked | §7.4 |
+| RINV-7 | Issues are never scored as risks without promotion criteria met | Service | Promoted items must carry triage confirmation before leaving Preconditions | Risk record creation blocked; item remains in issue management | §3.6 |
+| RINV-8 | Scoring never begins without preconditions satisfied | Service | Scoring fields remain unwritable until the 4-item Phase 2 checklist passes | Phase transition blocked; scoring fields stay read-only | §4.1 |
+| RINV-9 | Planned, partial or unvalidated controls never reduce residual risk | Service | Scoring engine filters to Operating objectives with live deployments and non-expired evidence, then caps the likelihood reduction at the resolved CE | Residual likelihood reduction beyond the CE ceiling is rejected | §4.6 |
+| RINV-10 | Every risk has both a Risk Owner and a Risk Stakeholder | Both | Service enforcement from Phase 3 onward; `CHECK` constraint enforces SEP-1 | Write rejected; constraint violation | §2.1 |
+| **SEP-1** | The Risk Owner is never also the Risk Stakeholder | Both | `CHECK` constraint on the risks table plus service validation | Assignment rejected | §2.2 |
+| RINV-11 | Expired acceptances are always escalated; no silent expiry | Service | Daily scheduled job flags expired acceptances; an unflagged one is invalid | Auto-escalation to Risk Owner, then Risk Stakeholder, then CISO | §5.5, §6.1 |
+| RINV-12 | Treatments are never presented at readout without GRC Engineer validation and treatment owner commitment | Service | Phase 4 gate checks both flags on every linked treatment record | Phase transition blocked; treatment records flagged incomplete | §5.2 |
+| RINV-13 | Partial treatment selection is always documented with a rationale | Service | Rationale required when fewer treatments are selected than proposed | Save rejected; rationale field required | §5.2 |
+
+> **On RINV-3.** This is deliberately `Service`, not `Both`. The separation it enforces is relational — it depends on which controls are linked to the risk at the moment of assignment — and a `CHECK` constraint cannot see across tables. Enforcing it means checking on *both* sides: RINV-3 when the risk owner is set, CINV-3 when the control owner is set. Either one alone is defeated by performing the two assignments in the other order.
+
+> **On RINV-2.** Appetite thresholds are configuration, not data. There is no endpoint that writes them because there is no table that holds them. Changing appetite means changing the operating model and redeploying it, which leaves a reviewable diff — the formal governance the rule asks for.
 
 ---
 
@@ -45,16 +54,18 @@
 
 | ID | Rule | Enforcement Layer | Enforcement Mechanism | Violation Behaviour | Spec Ref |
 |---|---|---|---|---|---|
-| CINV-1 | CE evidence REQUIRED for any rating other than CE-Unvalidated | Service | API validation requires `ce_evidence_ref` to be non-empty when `ce_rating ≠ CE-Unvalidated`. | CE rating save rejected; evidence field required | §4.5 |
-| CINV-2 | Design/Implementation controls NEVER used as CE evidence in risk scoring | Service | Scoring engine filters linked controls by `lifecycle_status`. Only `Operating` status controls contribute CE to risk calculations. | Controls silently excluded from scoring; no error (by design) | §9.1 (OL rules) |
-| CINV-3 | Control Owner NEVER assigned as Risk Owner for linked risks | Schema + Service | Same as RINV-3. Bidirectional check: also prevents risk owner assignment to someone who is control owner on a linked control. | Assignment rejected | §2.2 (SEP-3) |
-| CINV-4 | CE assessment NEVER performed on Decommissioned deployments | Service | API rejects CE rating updates when `deployment_status = Decommissioned`. UI hides CE fields. | Write rejected; deployment is read-only | §9.3 (DL-3) |
-| CINV-5 | Failure state ALWAYS propagates warning to linked risk records | Service | Control status change trigger: when any control_objective transitions to `Failure`, all linked risk records receive a warning flag and `residual_score_locked = TRUE`. | Automatic cascade; no manual action required | §9.1 (OL-5) |
-| CINV-6 | Worst-case CE across deployments ALWAYS used in scoring | Service | Scoring engine queries all deployments for a linked control and selects `MIN(ce_rating)`. Never averages, never uses best-case. | Automatic; scoring engine logic | §4.6 |
-| CINV-7 | Test history records are IMMUTABLE | Schema | Test result records have no UPDATE or DELETE permissions. Corrections create new superseding records with reference to the original. | UPDATE/DELETE rejected at DB layer | §10.1 (TST-1) |
-| CINV-8 | Control retirement BLOCKED if linked risks are above-appetite and unmitigated | Service | Deprecation workflow checks all linked risk records. If any have `status = Above_Appetite` and `treatment_decision ≠ {Accepted, Transferred, Closed}`, transition is blocked. | Lifecycle transition rejected | §9.1 (OL-3) |
-| CINV-9 | Asset decommission NEVER silently removes risk-control linkages | Service | Asset decommission workflow flags all linked control_deployments for review. Risk Analyst notified. Linkages preserved in read-only state until explicitly reviewed and re-mapped or closed. | Decommission proceeds but linkages remain visible; risk re-assessment required | §8.1 (CH-6) |
-| CINV-10 | CE expiry auto-downgrades to CE-Unvalidated; no manual override | Service | Scheduled job checks `ce_last_assessed` against expiry thresholds per control frequency. Expired CE automatically set to `CE-Unvalidated`. No API endpoint permits manual override of expired CE. | Automatic downgrade; Risk Analyst notified | §10.2 |
+| CINV-1 | Control effectiveness evidence is required for any rating other than CE-Unvalidated | Both | `CHECK` constraint on `control_deployments` plus service validation | CE rating save rejected; evidence reference required | §4.5 |
+| CINV-2 | Design and Implementation controls are never used as CE evidence in risk scoring | Service | Scoring engine filters to Operating objectives; others resolve to CE-Unvalidated | Controls silently excluded from scoring, with the exclusion reason surfaced | §9.1 (OL rules) |
+| CINV-3 | A Control Owner is never assigned as Risk Owner for a linked risk | Service | Control owner checked against the risk owner of every linked risk. The risk-side half is RINV-3; both directions are needed or the rule is defeated by ordering the two assignments the other way round | Assignment rejected | §2.2 (SEP-3) |
+| CINV-4 | Control effectiveness is never assessed on a decommissioned deployment | Service | Decommissioned deployments are read-only; CE writes are rejected | Write rejected; the deployment is frozen | §9.3 (DL-3) |
+| CINV-5 | A Failure state always propagates a warning to every linked risk record | Service | `control.failed` cascade flags linked risks and sets `residual_score_locked` | Automatic cascade; no manual action required | §9.1 (OL-5) |
+| CINV-6 | Worst-case control effectiveness across deployments is always used in scoring | Service | Scoring engine takes the minimum CE across qualifying deployments | Automatic; the engine never averages and never takes best case | §4.6 |
+| CINV-7 | Test history records are immutable | Schema | Database trigger rejects `UPDATE` and `DELETE` on `control_tests` | `UPDATE` and `DELETE` rejected at the database layer; corrections supersede | §10.1 (TST-1) |
+| CINV-8 | Control retirement is blocked if linked risks are above appetite and unmitigated | Service | Deprecation gate walks every linked risk before permitting the transition | Lifecycle transition rejected | §9.1 (OL-3) |
+| CINV-9 | Asset decommission never silently removes risk-control linkages | Service | Decommission preserves linkages read-only and notifies the Risk Analyst | Decommission proceeds; linkages remain visible and re-assessment is required | §8.1 (CH-6) |
+| CINV-10 | Expired control effectiveness auto-downgrades to CE-Unvalidated with no override | Service | Scheduled job downgrades on expiry; no endpoint permits a manual override | Automatic downgrade; Risk Analyst notified | §10.2 |
+
+> **CE lives on the deployment.** CINV-1, CINV-4 and CINV-10 all attach to `control_deployments` rather than to the control objective, because a control is only as effective as the place it actually runs. CINV-6 then resolves the objective's CE as the *worst* case across its deployments. See §8.1 for the three-level hierarchy and [data-model.md](../architecture/data-model.md) for the tables.
 
 ---
 
@@ -62,15 +73,20 @@
 
 | ID | Rule | Enforcement Layer | Enforcement Mechanism | Violation Behaviour | Spec Ref |
 |---|---|---|---|---|---|
-| PINV-1 | Every Active policy MUST have ≥1 linked control_objective | Service | Policy activation gate checks `linked_controls.count ≥ 1`. Policies with zero linked controls cannot transition to Active. | Lifecycle transition blocked; governance gap flagged | §12.1 (PH-1) |
-| PINV-2 | Policy exceptions NEVER permanent — always time-bound | Schema | `NOT NULL` constraint on `expiry_date` in policy_exceptions table. | DB write rejected; constraint violation | §12.3 (PE-1) |
-| PINV-3 | Policy deprecation NEVER silently removes risk-policy linkages | Service | Deprecation workflow preserves all risk-policy linkages. Linked control_objectives flagged for re-mapping within 60 days. Risk records notified. | Deprecation proceeds but linkages remain; re-mapping SLA starts | §14.1 (PC-2) |
-| PINV-4 | Compliance-mapped policies MUST have Annual review cycle | Schema + Service | Policies with non-empty `compliance_mappings` that include annual-audit frameworks have `review_cycle` constrained to `Annual`. Service validates on save. | Save rejected if Biennial selected for compliance-mapped policy | §15 (CF-4) |
-| PINV-5 | Policy approval REQUIRES CISO or above — no self-approval | Service | Approval workflow validates `policy_approver_id ≠ policy_owner_id` and `approver.role_level ≥ CISO`. | Approval rejected; must be approved by CISO or delegate | §13.1 (PL-1) |
-| PINV-6 | Under Revision policies remain enforceable | Service | Policy revision creates a draft version. Prior Active version remains the system-of-record until new version reaches Active status. No gap in enforcement. | No violation possible; architecture prevents gap by design | §13.1 (PL-3) |
-| PINV-7 | Standard revision ALWAYS triggers control alignment check | Service | Standard version change triggers notification to all linked Control_Activity owners. Alignment confirmation required within 30 days. Unconfirmed alignments flagged as governance gaps. | Automatic notification; SLA tracking begins | §14.1 (PC-1) |
-| PINV-8 | Policy retirement BLOCKED if linked risks are Critical/High and unmitigated | Service | Deprecation workflow checks linked risk ratings. If any linked risk is `Critical` or `High` with `treatment_decision ≠ {Mitigated, Transferred, Closed}`, transition blocked. | Lifecycle transition rejected | §13.1 (PL-2) |
-| PINV-9 | Version history is IMMUTABLE — always retained for audit | Schema | PolicyVersion records have no UPDATE or DELETE permissions. All changes create new version records. | UPDATE/DELETE rejected at DB layer | §12.2 |
+| PINV-1 | Every Active policy has at least one linked control objective | Service | Activation gate counts linked controls; zero blocks the transition | Lifecycle transition blocked; governance gap flagged | §12.1 (PH-1) |
+| PINV-2 | Policy exceptions are never permanent; they are always time-bound | Schema | `NOT NULL` constraint on `policy_exceptions.expiry_date` | Write rejected; constraint violation | §12.3 (PE-1) |
+| PINV-3 | Policy deprecation never silently removes risk-policy linkages | Service | Deprecation cascade preserves linkages and starts a 60-day re-mapping SLA | Deprecation proceeds; linkages remain and the re-mapping clock starts | §14.1 (PC-2) |
+| PINV-4 | Compliance-mapped policies carry an Annual review cycle | Service | Service validates the cycle against the mapped frameworks on save | Save rejected if Biennial is selected for a compliance-mapped policy | §15 (CF-4) |
+| PINV-5 | Policy approval requires CISO or above, and never self-approval | Both | `CHECK` constraint blocks owner == approver; service checks the role level | Approval rejected; must be approved by CISO or a delegate | §13.1 (PL-1) |
+| PINV-6 | Policies Under Revision remain enforceable | Service | A revision captures an immutable version and drafts forward; the Active version stays system of record until the new one reaches Active | No violation possible; the architecture prevents an enforcement gap | §13.1 (PL-3) |
+| PINV-7 | Standard revision always triggers a control alignment check | Service | Revision cascade notifies linked control owners with a 30-day SLA | Automatic notification; SLA tracking begins | §14.1 (PC-1) |
+| PINV-8 | Policy retirement is blocked if linked risks are Critical or High and unmitigated | Service | Deprecation gate walks every linked risk before permitting the transition | Lifecycle transition rejected | §13.1 (PL-2) |
+| PINV-9 | Version history is immutable and always retained for audit | Schema | Database trigger rejects `UPDATE` and `DELETE` on `policy_versions` | `UPDATE` and `DELETE` rejected at the database layer | §12.2 |
+| **PE-5** | An approved exception past its expiry date is a governance gap, not a valid state | Service | Scheduled job expires overdue exceptions and notifies the CISO | Governance gap flagged; CISO notified | [state-transitions §6](./state-transitions.md) |
+
+> **On PINV-4.** This is `Service`, not `Both`. Which frameworks demand an annual cycle is configuration, and a `CHECK` constraint cannot read a configuration file. The check belongs where the framework list lives.
+
+> **On PE-5.** An exception does not expire because a job ran. It expires because the date passed. The job's purpose is to make the *record* agree with reality — which is why PE-5 is written as a statement about valid states rather than as a description of the job. A system where an expired exception silently remains Approved has not merely failed to notify; it is asserting something untrue.
 
 ---
 
@@ -78,11 +94,37 @@
 
 | ID | Rule | Enforcement Layer | Enforcement Mechanism | Violation Behaviour | Spec Ref |
 |---|---|---|---|---|---|
-| TINV-1 | Threat Scenario MUST have mitigation OR local acceptance (Low) OR risk promotion (Medium+) | Service | Phase validation gate enforces that all scenarios must resolve to an allowed end-state before a threat model can be signed off. | Phase transition from Review to Active blocked | §19.3 |
-| TINV-2 | Threat Model CANNOT proceed from Review to Active without AppSec and System_Owner sign-off | Service | Review gate requires both user identities to explicitly log a signature. AppSec sign-off: satisfied by any user with role = AppSec_Lead or AppSec_Engineer AND user ≠ System_Owner. Team membership, not named individual. RBAC group check at service layer. | Phase transition blocked until both signatures present | §19.3 |
-| TINV-3 | Medium, High, or Critical threat scenarios CANNOT be locally "Accepted" | Service | Rejects any `status = Accepted` change event if `inherent_severity >= Medium`, unless the promotion flag and `promoted_risk_id` are supplied simultaneously. | API returns HTTP 400; promotion required | §19.3 |
-| TINV-4 | Full Mitigation of a threat scenario REQUIRES an active, linked control_deployment | Schema + Service | The `threat_mitigation_links` schema relies on FKs to `controls` table. The service layer verifies the control is active. | Cannot flag scenario as `status = Mitigated` | §19.3 |
-| TINV-5 | Low severity threat scenario accepted locally MUST carry acceptance_expiry ≤ 12 months from acceptance date | Service | Rejects status = Accepted for Low severity if acceptance_expiry is null or > 12 months from now | HTTP 400; expiry required | §19.3 |
+| TINV-1 | Every threat scenario reaches a permitted end state: mitigated, locally accepted below the promotion threshold, or carried by the risk register | Service | Review → Active gate blocks while any scenario is still unresolved | Phase transition from Review to Active blocked | §19.3 |
+| TINV-2 | A threat model cannot be Active without independent AppSec and System Owner sign-off | Both | `CHECK` constraint blocks AppSec sign-off by the system owner; the Review gate requires both signatures present | Phase transition blocked until both signatures are present | §19.3 |
+| TINV-3 | Medium, High and Critical threat scenarios are never locally accepted | Both | `CHECK` constraint plus service rejection; promotion is the only other path | Rejected; promotion to the risk register required | §19.3 |
+| TINV-4 | Full mitigation of a threat scenario requires an active, linked control deployment | Both | FK from `threat_mitigation_links` to **`control_deployments`**, plus a service check that the deployment is Active or Degraded; a control failure re-opens the scenario | Cannot flag the scenario as Mitigated | §19.3 |
+| TINV-5 | A locally accepted Low severity scenario carries an acceptance expiry no more than 12 months out | Both | `CHECK` constraint requires an expiry; service caps the window at 12 months | Rejected; expiry required and capped | §19.3 |
+| TINV-6 | A promoted scenario always names the risk record it produced | Both | `CHECK` constraint requires `promoted_risk_id` when status is `Promoted_To_Risk` | Write rejected; promotion must create and link a risk record | §20.1, [data-model §8](../architecture/data-model.md) |
+| **TM-PARTIAL** | A scenario is never Mitigated while any of its mitigation links asserts only partial coverage | Service | Status is derived from the whole link set, not the link being added. A partial link added to a mitigated scenario returns it to Identified | Status reverts to Identified; partial coverage is an open threat | §19.3 |
+| TINV-7 | Environmental control posture is informative, never determinative: a scenario is never resolved by the ambient presence of a control | Service | The context engine is read-only and cannot write to a scenario. Mitigated requires an explicit `threat_mitigation_links` row asserted by a person. The threat-modelling analogue of LKH-3 | Mitigated status rejected when no mitigation link exists | §19.4 |
+| TINV-8 | A scenario either promotes into a new risk or references existing ones, never both; the register never gains a duplicate exposure | Service | Exactly one configured risk link type may create a risk record. Linking to an existing risk is a reference, not a promotion | Link rejected; reference the existing risk instead of promoting again | §19.5 |
+| TINV-9 | A component handling data at or above the sensitive threshold must declare the trust zone it sits in | Service | Component save validates `trust_zone` against the configured zones | Save rejected; declare where the component sits | §19.1 |
+| TINV-10 | A scenario status change always carries a rationale or a linked artefact | Service | Accepted requires an acceptance rationale; Mitigated requires a link or a rationale. Evidence records are append-only at the database layer | Status change rejected without a reason | §19.5 |
+| TINV-11 | An Active threat model has no sensitive component without at least one threat scenario | Service | Review → Active gate walks every component at or above the classification threshold | Sign-off blocked; the component was decomposed but never analysed | §19.4 |
+
+> **TINV-4 links to a deployment, not a control.** This is the single most consequential modelling decision in the threat domain. A control objective is an intention; a deployment is the instance running on the asset the component sits on. Linking a scenario to an objective would let a scenario be "mitigated" by a control that exists everywhere except where the threat is. It also gives §20.2 something to fire on: a deployment that fails re-opens exactly the scenarios that depended on it.
+
+> **TINV-7 is the load-bearing one.** Everything else in the threat domain would work without it, and the result would be a model that quietly stops finding threats as the environment matures. It is the reason the context engine has no write path at all, rather than a write path nobody currently calls. See §19.4 for the argument in full.
+
+---
+
+## Cross-Domain Enforcement
+
+Some rules are not invariants on a single entity but properties of the system as
+a whole. They are enforced by construction rather than by a predicate, which
+means they have no row above — and are easy to lose sight of for that reason.
+
+| Property | How it is guaranteed | Spec Ref |
+|---|---|---|
+| Every lifecycle change passes every applicable invariant | One write path: mutate → enforce → cascade → audit, in that order, in one transaction. No route bypasses it because no other route to the session exists | §16-18 |
+| A cascade cannot leave the system in a state an invariant forbids | Cascades run inside the originating transaction, before the invariant sweep. A cascade that would violate an invariant rolls the whole operation back | §11.2, §20.2, §20.3 |
+| Audit records cannot be revised | Append-only, enforced by database trigger — as for `control_tests` (CINV-7), `policy_versions` (PINV-9), and `threat_scenario_evidence` (TSE-1) | §7.3 |
+| Separation of duties survives assignment ordering | Every separation rule is checked from both sides. See the note under RINV-3 | §2.2 |
 
 ---
 
@@ -92,31 +134,35 @@
 
 When implementing invariants, prioritise in this order:
 
-1. **Schema constraints first.** `NOT NULL`, `CHECK`, FK constraints, and immutability (revoked UPDATE/DELETE) are the strongest enforcement because they cannot be bypassed by any application code path, API, or direct database access.
+1. **Schema constraints first.** `NOT NULL`, `CHECK`, FK constraints, and immutability (trigger-rejected `UPDATE`/`DELETE`) are the strongest enforcement because they cannot be bypassed by any application code path, API, or direct database access.
 
-2. **Service-layer gates second.** Multi-condition business logic that cannot be expressed as simple column constraints. These are the phase gates, scoring engine filters, and workflow validations.
+2. **Service-layer gates second.** Multi-condition business logic that cannot be expressed as a column constraint: phase gates, scoring-engine filters, cross-table separation checks, and anything that reads configuration.
 
-3. **Scheduled jobs third.** Time-based invariants (CE expiry, acceptance expiry, SLA breach detection) that require periodic evaluation rather than per-transaction enforcement.
+3. **Scheduled jobs third.** Time-based invariants (CE expiry, acceptance expiry, exception expiry, SLA breach detection) that require periodic evaluation rather than per-transaction enforcement.
+
+A rule that can be enforced at a lower-numbered layer should be. Where a rule needs two layers, implement both rather than treating one as sufficient: the schema constraint holds against direct SQL, and the service check produces the message that tells a user what to do instead.
 
 ### Testing Invariants
 
 Every invariant should have at least two test cases:
 
-- **Positive test:** Confirm the system allows valid operations that comply with the invariant.
-- **Negative test:** Confirm the system rejects operations that would violate the invariant and produces the correct error/behaviour.
+- **Positive test:** confirm the system allows valid operations that comply with the invariant.
+- **Negative test:** confirm the system rejects operations that would violate it, and produces the correct error or behaviour.
 
-For schema-layer invariants, test both through the API and via direct SQL to confirm the constraint exists at the database level.
+For any invariant claiming `Schema` or `Both`, test through the API **and** via direct SQL. A test that only exercises the API cannot distinguish a genuine constraint from a service check wearing one's name — which is exactly the drift this column exists to prevent.
 
 ### Adding New Invariants
 
 When adding invariants to this catalogue:
 
 1. Assign the next sequential ID in the appropriate domain (RINV, CINV, PINV, TINV)
-2. Identify the enforcement layer (Schema, Service, or Both)
-3. Define the specific mechanism (constraint type, gate check, trigger)
-4. Define the violation behaviour (what the user sees or what the system does)
-5. Cross-reference to the Codified Rules Specification section
+2. Identify the enforcement layer honestly — `Schema` only if a constraint or trigger genuinely exists
+3. Define the specific mechanism (constraint type, gate check, trigger, job)
+4. Define the violation behaviour (what the user sees, or what the system does)
+5. Cross-reference to the Codified Rules Specification section, and **write that section if it does not yet exist**
 6. Write positive and negative test cases before implementation
+
+Step 5 is not bureaucracy. An invariant citing a section that was never authored is a rule with no stated reason, and a rule with no stated reason is the first one somebody removes.
 
 ---
 

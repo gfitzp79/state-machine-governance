@@ -1,6 +1,6 @@
 # GRC Codified Rules Engine — Unified Specification Template
 
-**Version:** 2.0-template | **License:** CC BY 4.0
+**Version:** 2.1-template | **License:** CC BY 4.0
 **Purpose:** Machine-parseable rule set for governance, risk, and compliance platforms. Covers the risk management lifecycle, control management hierarchy, and policy governance layer as a single integrated specification. Designed for organisations to adapt to their own frameworks, appetite statements, and regulatory obligations.
 
 > **How to use this document:** Replace all `[ORGANISATION]` placeholders and review every `[CUSTOMISE]` block against your own governance framework, regulatory requirements, and risk appetite. Parameters marked `RECOMMENDED` reflect industry best practice from ISO 27005, NIST RMF, NIST CSF, and SOC 2/COSO. SLA defaults are aligned to regulated financial services expectations. Adjust thresholds to match your operating environment.
@@ -94,9 +94,24 @@ RULE SEP-2: Risk_Owner ≠ Risk_Treatment_Owner       # decision maker ≠ execu
 RULE SEP-3: Control_Owner MUST_NOT influence risk_scoring OR acceptance_decisions
 RULE SEP-4: Governance_oversight ≠ operational_delivery
 RULE SEP-5: GRC_Engineer MUST_NOT unilaterally approve risk acceptance decisions
+            AND MUST_NOT validate the feasibility of a treatment they own
 
 VIOLATION(SEP-*) → governance_weakness → ESCALATE
 ```
+
+**Where each rule is enforced.** A separation rule stated and not enforced is a
+policy, not a control. Each rule below names the layer that makes it impossible.
+
+| Rule | Enforcement |
+|---|---|
+| SEP-1 | Invariant `SEP-1` — `CHECK` constraint on the risk record plus service validation |
+| SEP-2 | Treatment assignment gate: the risk owner is not selectable as treatment owner |
+| SEP-3 | Invariants `RINV-3` and `CINV-3`, checked bidirectionally on assignment |
+| SEP-4 | Role seniority ordering; an approval gate cannot be fired by a delivery role |
+| SEP-5 | Treatment validation gate rejects `grc_engineer_id = treatment_owner_id`; acceptance approval requires the approver role band from §2.3, which `GRC_Engineer` does not hold |
+
+Sign-off separation in threat modelling follows the same principle and is
+enforced by `TINV-2` — see §19.3.
 
 ### §2.3 Ownership by Severity
 
@@ -806,10 +821,19 @@ REVIEW TRIGGERS: regulatory change, incident, audit finding, >5 exceptions, link
 
 ## §14 POLICY RELATIONSHIPS
 
+### §14.1 Policy → Control Cascades
+
 ```
 RULE PC-1: policy revision → control re-alignment check within 30 days
+           ENFORCED BY: PINV-7. Unconfirmed alignments become governance gaps.
 RULE PC-2: policy deprecation → control_objectives re-mapping within 60 days
+           ENFORCED BY: PINV-3. Linkages are preserved, never silently dropped.
 RULE PC-3: unmapped control_objectives → governance_gap; report monthly
+```
+
+### §14.2 Policy → Risk Cascades
+
+```
 RULE PR-1: policy failure → linked risk records must reflect
 RULE PR-2: exception promoted to risk → bidirectional linkage maintained
 ```
@@ -896,6 +920,52 @@ THREAT_SCENARIO := {
 }
 ```
 
+#### Component decomposition
+
+A component is not a box on a diagram. What data it handles and where it sits
+determine what a compromise costs and which boundary it crosses, so both are
+first-class attributes rather than prose in a description.
+
+```
+THREAT_COMPONENT := {
+  component_type: enum(Process, Datastore, External_Entity, Data_Flow, Trust_Boundary),
+
+  # -- what it handles --------------------------------------------------
+  data_classification: enum(...),      # [CUSTOMISE] ordered least to most sensitive
+  data_types:          set(...),       # [CUSTOMISE] your own data taxonomy
+
+  # -- where it sits ----------------------------------------------------
+  trust_zone:  enum(...),              # [CUSTOMISE] each zone carries a trust level
+  exposure:    enum(...),              # [CUSTOMISE] how reachable it is
+  attack_surface_id,                   # may differ from the model's primary asset
+
+  # -- for Data_Flow components -----------------------------------------
+  source_component_id, target_component_id
+}
+
+# [CUSTOMISE] Ordered least to most sensitive. The ORDER is what TINV-9 and
+# TINV-11 read, not the labels.
+DATA_CLASSIFICATIONS: Public < Internal < Confidential < Restricted
+SENSITIVE_THRESHOLD:  Confidential
+
+# [CUSTOMISE] Ordered least to most trusted. A flow between zones of differing
+# trust is a boundary crossing, and boundary crossings are where the
+# interesting threats are.
+TRUST_ZONES: Public_Internet(0) < DMZ(1) = Third_Party(1)
+             < Internal_Network(2) < Restricted_Enclave(3)
+
+# [CUSTOMISE] Informs, but NEVER sets, severity.
+EXPOSURE_LEVELS: Internet_Facing, Partner_Facing, Internal_Only, Isolated
+
+INVARIANT TINV-9: A component handling data at or above SENSITIVE_THRESHOLD MUST
+declare the trust zone it sits in. "Somewhere in the estate" is not an answer to
+where the crown jewels are.
+
+RULE TMC-1: exposure and trust_zone are decomposition facts. They inform
+            severity judgement; they never compute it. Severity remains a
+            human assessment against the architecture as designed (§19.4).
+```
+
 ### §19.2 Lifecycle Phases
 
 ```
@@ -920,6 +990,135 @@ INVARIANT TINV-5: Low severity threat scenario accepted locally MUST carry a tim
 RULE TM-PARTIAL: threat_scenario.status CANNOT be set to Mitigated if any threat_mitigation_links row for that scenario carries effectiveness_assurance = Partially_Mitigated. Scenario remains Identified. A distinct UI state "Partially Mitigated" may be derived for display purposes from the link table but is not a database status value.
 
 VIOLATION(TINV-*) → Blocks state transition.
+```
+
+### §19.4 Environmental Context (INFORMATIVE, NEVER DETERMINATIVE)
+
+Threat modelling is not performed in isolation. A model is built against an asset
+that already carries deployed controls and recorded risks, and ignoring that
+produces findings the organisation resolved two years ago.
+
+The moment existing controls are allowed to *suppress* identification, however,
+the model stops describing the system. This is the threat-modelling analogue of
+**LKH-3**, which scores inherent likelihood with no control adjustment: a threat
+is identified against the architecture **as designed**, not **as currently
+defended**. A well-controlled system must not appear threat-free, because the
+record of the threat is exactly what is needed on the day the control fails.
+
+```
+CONTEXT_SURFACE := read_only {
+  control_coverage(asset) → per deployment: { effective | weak | absent }, with reason
+  risk_posture(asset)     → linked risks, current rating, above or within appetite
+  gaps(model)             → decomposed exposure with no corresponding coverage
+}
+
+# Context classifies deployments using THE SAME FILTERS as the scoring engine.
+# A control the engine will not count toward residual risk must not be presented
+# to a threat modeller as coverage.
+effective := lifecycle_status = Operating            # CINV-2
+             AND ce_rating ≠ CE-Unvalidated          # CINV-1
+             AND ce_rating > weak_coverage_threshold # [CUSTOMISE]
+weak      := operating, but CE at or below the weak threshold, or unvalidated
+absent    := no deployment of a relevant control family on the asset
+
+RULE CTX-1: The context surface is READ-ONLY. No context value may write to a
+            threat_scenario, a threat_component, or a mitigation link.
+RULE CTX-2: Context NEVER creates, resolves, or downgrades a scenario, and never
+            adjusts inherent_severity.
+RULE CTX-3: Mitigated REQUIRES an explicit threat_mitigation_links row asserted
+            by a person. The ambient presence of a control is not mitigation.
+RULE CTX-4: Absence of context NEVER blocks identification. A model on an asset
+            with no controls and no risks proceeds normally.
+RULE CTX-5: The STRIDE category → control family relevance map is used ONLY to
+            rank the coverage panel. It never links, mitigates, or excludes.
+
+INVARIANT TINV-7: Environmental control posture is informative, never
+determinative. A scenario is never resolved by the ambient presence of a control.
+  ENFORCEMENT: the context engine has no write path; Mitigated requires a
+  mitigation link (TINV-4).
+
+INVARIANT TINV-11: An Active threat model has NO component at or above
+SENSITIVE_THRESHOLD without at least one threat scenario.
+  ENFORCEMENT: the Review → Active gate walks every component above the
+  threshold. You decomposed it and declared what it handles; silence on it is a
+  gap the scenario list cannot surface on its own.
+```
+
+**The direction of travel matters.** A gap identified by the context surface is
+an *input to judgement*, never an automatic finding. It tells the modeller where
+to look. The corresponding output — a threat the environment does not cover — is
+recorded as a scenario by a person, and it is the scenario, not the gap, that
+carries governance weight and reaches the risk register.
+
+**What the connective tissue buys.** Threat modelling that runs blind duplicates
+the register and re-litigates settled decisions. Threat modelling that defers to
+the register stops finding anything. Holding context to *informative* keeps both
+failure modes closed: the modeller sees the environment, and the model still
+describes the system.
+
+### §19.5 Risk Register Linkage
+
+Most threats on a mature system map onto exposures the register already carries.
+Minting a new register entry for each one corrupts the register rather than
+improving it, so **linking** and **promoting** are distinct operations.
+
+```
+THREAT_SCENARIO_RISK_LINK := {
+  scenario_id, risk_id,
+  link_type: enum(...),          # [CUSTOMISE] see below
+  rationale: text,
+  linked_by, linked_at
+}
+
+# [CUSTOMISE] Exactly ONE link type may carry creates_risk = true. The loader
+# refuses a configuration with zero, or with more than one.
+LINK_TYPES:
+  Represents      creates_risk: false   resolves_scenario: true
+  Contributes_To  creates_risk: false   resolves_scenario: false
+  Promoted_From   creates_risk: true    resolves_scenario: true
+
+RULE TSR-1: A scenario either promotes into a NEW risk or references EXISTING
+            ones. Never both.
+RULE TSR-2: resolves_scenario = true means the register demonstrably carries the
+            exposure, so the scenario counts as resolved for TINV-1 whether the
+            record was minted by promotion or already existed.
+RULE TSR-3: Contributes_To does NOT resolve a scenario. Partial representation is
+            an open threat, consistent with TM-PARTIAL.
+RULE TSR-4: Unlinking NEVER deletes the risk record. The link goes; the register
+            entry and its phase history stand.
+
+INVARIANT TINV-8: A scenario either promotes into a new risk or references
+existing ones, never both; the register never gains a duplicate exposure.
+
+INVARIANT TINV-10: Every scenario status change carries a rationale or a linked
+artefact. Accepted requires an acceptance rationale; Mitigated requires a
+mitigation link or a rationale.
+```
+
+#### Scenario working record
+
+A scenario is worked over time by AppSec, engineering, and risk. That
+conversation is part of the record, not a side channel in a chat tool.
+
+```
+THREAT_SCENARIO_COMMENT  := { scenario_id, parent_comment_id, body,
+                              created_by, created_at }
+
+THREAT_SCENARIO_EVIDENCE := { scenario_id, title, evidence_ref, evidence_type,
+                              supports, notes, supersedes_id,
+                              created_by, created_at }
+
+RULE TSE-1: Evidence is APPEND-ONLY, enforced at the database layer, for the same
+            reason control test history is (TST-1): evidence that can be edited
+            after the fact is not evidence. Superseding an entry creates a new
+            record referencing the original.
+RULE TSE-2: evidence_ref is a REFERENCE — a scan result, design document, test
+            report, or ticket. Storage of the artefact is the organisation's
+            concern, not this specification's.
+RULE TSE-3: The `supports` field records WHAT the evidence was offered for, so an
+            assessor can see whether the claim and the proof match.
+RULE TSE-4: Re-opening a resolved scenario REQUIRES a reason, recorded on the
+            scenario and in the audit trail.
 ```
 
 ## §20 THREAT CASCADE ENGINE
@@ -948,15 +1147,26 @@ TRIGGER tm_control_failure:
     IF duration > 15bd → PROMOTE_THREAT_TO_RISK
 ```
 
-§20.3 MITIGATION SUCCESS CASCADE
-TRIGGER: threat_scenario.status transitions to Mitigated (all links Fully_Mitigated, TINV-4 satisfied)
-IF threat_scenario.promoted_risk_id IS NOT NULL:
-    linked risk record flagged "Linked Threat Mitigated — Re-evaluation Eligible"
-    Risk_Owner notified
-    Risk_Analyst notified
-    Risk residual score NOT automatically updated — full gate (RINV-1) still required
+### §20.3 Mitigation Success Cascade
 
 ```
+TRIGGER tm_mitigation_success:
+  WHEN: threat_scenario.status transitions to Mitigated
+        (≥1 mitigation link, all Fully_Mitigated — TINV-4 and TM-PARTIAL satisfied)
+  FOR EVERY risk record carrying this scenario
+      (promoted_risk_id, OR any threat_scenario_risk_link):
+    flag "Linked_Threat_Mitigated" → re-evaluation eligible
+    notify(Risk_Owner, Risk_Analyst)
+
+  # The cascade grants eligibility, never an outcome.
+  Risk residual score NOT automatically updated — the full RINV-1 gate
+  (all five conditions) is still required.
+```
+
+This is the mirror of §20.2, and the reason the loop is bidirectional. A control
+failure re-opens a threat; a mitigation makes the corresponding risk eligible for
+re-evaluation. Neither direction moves a score on its own.
+
 ---
 
 # APPENDICES
