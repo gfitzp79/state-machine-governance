@@ -25,6 +25,11 @@ for line in pathlib.Path("specification/invariants-catalogue.md").read_text(
         continue
     cells = [c.strip() for c in m.group(2).split("|")]
     if len(cells) >= 2:
+        # `Cascade` rules are enforced by a handler rather than a predicate, so
+        # there is no Invariant to compare against. The condition each one
+        # maintains is carried by a neighbouring invariant that IS registered.
+        if cells[1] == "Cascade":
+            continue
         doc[m.group(1)] = cells[1]
 
 problems = []

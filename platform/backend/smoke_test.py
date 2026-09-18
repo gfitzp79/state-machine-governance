@@ -797,6 +797,220 @@ def main() -> int:
         jobs.get("ce_expired"),
     )
 
+    section("The compliance register holds requirements, not framework names")
+    status, fw = call("GET", "/compliance/frameworks", token=analyst)
+    frameworks = {f["framework_id"]: f for f in fw["frameworks"]}
+    check(
+        "NIST CSF 2.0 bundled in full",
+        frameworks.get("NIST-CSF-2.0", {}).get("requirements") == 106,
+        frameworks.get("NIST-CSF-2.0"),
+    )
+    check(
+        "AINV-6: a licensed framework ships as a record with no content",
+        frameworks.get("ISO-27001-2022", {}).get("requirements") == 0
+        and frameworks.get("ISO-27001-2022", {}).get("redistributable") is False,
+        frameworks.get("ISO-27001-2022"),
+    )
+
+    status, reqs = call(
+        "GET", "/compliance/frameworks/NIST-CSF-2.0/requirements", token=analyst
+    )
+    rows = {r["ref"]: r for r in reqs["requirements"]}
+    check(
+        "AINV-1: an excluded requirement carries its justification",
+        rows["PR.AA-06"]["state"] == "Not_Applicable" and bool(rows["PR.AA-06"]["rationale"]),
+        rows["PR.AA-06"],
+    )
+    check(
+        "AINV-3: a requirement on a Partial link only is not Covered",
+        rows["PR.AA-05"]["state"] != "Covered"
+        and all(not link["satisfies"] for link in rows["PR.AA-05"]["links"]),
+        rows["PR.AA-05"],
+    )
+
+    section("AINV-2: coverage needs a live control inside the declared scope")
+    target = rows["PR.PS-01"]
+    call(
+        "POST",
+        "/compliance/requirements/" + target["id"] + "/assess",
+        {"target": "Applicable"},
+        token=grc,
+    )
+    status, body = call(
+        "POST",
+        "/compliance/requirements/" + target["id"] + "/assess",
+        {"target": "Covered"},
+        token=grc,
+    )
+    check("Covered refused with nothing linked", status >= 400, status)
+    check("the refusal names AINV-2", "AINV-2" in json.dumps(body), body)
+
+    status, controls = call("GET", "/controls", token=analyst)
+    by_ref = {c["reference"]: c for c in controls}
+    call(
+        "POST",
+        "/compliance/requirements/" + target["id"] + "/controls",
+        {"objective_id": by_ref["CTL-003"]["id"], "coverage_level": "Full",
+         "rationale": "Pipeline configuration baseline."},
+        token=grc,
+    )
+    status, _ = call(
+        "POST",
+        "/compliance/requirements/" + target["id"] + "/assess",
+        {"target": "Covered"},
+        token=grc,
+    )
+    check(
+        "still refused: an Implementation control with a Planned deployment covers nothing",
+        status >= 400,
+        (status, by_ref["CTL-003"]["lifecycle_state"]),
+    )
+
+    call(
+        "POST",
+        "/compliance/requirements/" + target["id"] + "/controls",
+        {"objective_id": by_ref["CTL-002"]["id"], "coverage_level": "Full",
+         "rationale": "Encryption baseline enforced on the data platform."},
+        token=grc,
+    )
+    status, covered = call(
+        "POST",
+        "/compliance/requirements/" + target["id"] + "/assess",
+        {"target": "Covered"},
+        token=grc,
+    )
+    check("Covered once an Operating control runs inside scope", status == 200, covered)
+
+    status, posture_before = call("GET", "/compliance/posture", token=analyst)
+    csf_before = next(
+        f for f in posture_before["frameworks"] if f["framework_id"] == "NIST-CSF-2.0"
+    )
+    check(
+        "posture reports a percentage only over a declared scope",
+        csf_before["coverage_pct"] is not None and csf_before["scope_declared"] is True,
+        csf_before,
+    )
+
+    section("AINV-5: a failing control takes the compliance position with it")
+    # Captured before the failure: the claim is that the cascade is targeted,
+    # and earlier sections of this suite have already failed other controls.
+    untouched_before = now_before = None
+    status, snapshot = call(
+        "GET", "/compliance/frameworks/NIST-CSF-2.0/requirements", token=analyst
+    )
+    untouched_before = {r["ref"]: r["state"] for r in snapshot["requirements"]}
+    status, ctl2 = call("GET", "/controls/" + by_ref["CTL-002"]["id"], token=analyst)
+    live_dep = [
+        d
+        for a in ctl2["activities"]
+        for d in a["deployments"]
+        if d["deployment_status"] in ("Active", "Degraded")
+    ][0]
+    status, fired = call(
+        "POST",
+        "/controls/deployments/" + live_dep["id"] + "/transition",
+        {"target": "Failed", "reason": "Key policy drift detected on the warehouse."},
+        token=control_owner,
+    )
+    check("the deployment failed", status == 200, status)
+    effects = json.dumps(fired.get("transition", {}).get("cascades", []))
+    check(
+        "the transition response names the coverage revocation",
+        "AINV-5" in effects or "lost coverage" in effects,
+        effects[:300],
+    )
+
+    status, after = call(
+        "GET", "/compliance/frameworks/NIST-CSF-2.0/requirements", token=analyst
+    )
+    now = {r["ref"]: r for r in after["requirements"]}
+    check(
+        "the requirement lost coverage with nobody touching it",
+        now["PR.PS-01"]["state"] == "Gap",
+        now["PR.PS-01"]["state"],
+    )
+    check(
+        "the record says why it lost coverage",
+        bool(now["PR.PS-01"]["gap_reason"]),
+        now["PR.PS-01"]["gap_reason"],
+    )
+    # PR.PS-01 and PR.DS-01 are both carried by CTL-002, so both are expected
+    # to move. Everything else must be untouched: the cascade walks the links of
+    # the failed control, not the register.
+    carried = {"PR.PS-01", "PR.DS-01"}
+    collateral = [
+        ref
+        for ref, state in untouched_before.items()
+        if ref not in carried and now[ref]["state"] != state
+    ]
+    check(
+        "both requirements carried by that control lost coverage",
+        all(now[ref]["state"] == "Gap" for ref in carried),
+        {ref: now[ref]["state"] for ref in carried},
+    )
+    check(
+        "the cascade is targeted: nothing else changed state",
+        not collateral,
+        collateral,
+    )
+
+    status, posture_after = call("GET", "/compliance/posture", token=analyst)
+    csf_after = next(
+        f for f in posture_after["frameworks"] if f["framework_id"] == "NIST-CSF-2.0"
+    )
+    check(
+        "the coverage figure fell with the control",
+        csf_after["counts"]["Covered"] < csf_before["counts"]["Covered"],
+        {"before": csf_before["counts"], "after": csf_after["counts"]},
+    )
+
+    section("Asset-level coverage informs rather than blocks")
+    status, gaps = call("GET", "/compliance/gaps", token=analyst)
+    gap_rows = {g["ref"]: g for g in gaps["gaps"]}
+    check(
+        "a gap row reports which in-scope assets the control does not reach",
+        gap_rows["PR.AA-05"]["asset_coverage"]["in_scope"] > 0,
+        gap_rows["PR.AA-05"].get("asset_coverage"),
+    )
+    check(
+        "an excluded requirement is not reported as a gap",
+        "PR.AA-06" not in gap_rows,
+    )
+
+    section("CINV-11: automation level caps control effectiveness")
+    # CTL-005 is Semi_Automated. Drop it to Manual, then try to claim the top
+    # rating on its deployment: the ceiling has to refuse it.
+    call(
+        "PATCH",
+        "/controls/" + by_ref["CTL-005"]["id"],
+        {"automation_level": "Manual"},
+        token=control_owner,
+    )
+    status, ctl5 = call("GET", "/controls/" + by_ref["CTL-005"]["id"], token=analyst)
+    dep5 = [d for a in ctl5["activities"] for d in a["deployments"]][0]
+    status, body = call(
+        "POST",
+        "/controls/deployments/" + dep5["id"] + "/ce",
+        {
+            "ce_rating": "CE-High",
+            "ce_evidence_ref": "Quarterly recertification sign-off, Q3 2026.",
+        },
+        token=control_owner,
+    )
+    check("a Manual control cannot claim CE-High", status >= 400, status)
+    check("the refusal names CINV-11", "CINV-11" in json.dumps(body), body)
+
+    status, body = call(
+        "POST",
+        "/controls/deployments/" + dep5["id"] + "/ce",
+        {
+            "ce_rating": "CE-Medium",
+            "ce_evidence_ref": "Quarterly recertification sign-off, Q3 2026.",
+        },
+        token=control_owner,
+    )
+    check("the same control may hold CE-Medium, which Manual permits", status == 200, body)
+
     section("Engine introspection")
     status, machines = call("GET", "/engine/machines", token=analyst)
     check("8 state machines exposed", len(machines) == 8, len(machines))

@@ -27,6 +27,12 @@ RATING_NAMES = ("Low", "Moderate-Low", "Moderate", "High", "Critical")
 # the framework itself rather than an expression of one organisation's model.
 SCALE_MIN, SCALE_MAX = 1, 5
 CE_RATING_NAMES = ("CE-Unvalidated", "CE-Low", "CE-Medium", "CE-High")
+
+# Deployment lifecycle states, ordered as the lifecycle runs. Fixed, like the
+# rating band names, because invariants and CHECK constraints reference them by
+# name. Defined here rather than in the control module so the configuration
+# validator can read them without importing a model that imports this file.
+DEPLOYMENT_STATE_NAMES = ("Planned", "Active", "Degraded", "Failed", "Decommissioned")
 TREATMENT_STRATEGIES = ("Accept", "Mitigate", "Transfer", "Avoid")
 SEVERITY_NAMES = ("Low", "Medium", "High", "Critical")
 
@@ -345,6 +351,91 @@ class GovernanceConfig:
     def checkin_statuses(self) -> tuple[str, ...]:
         return tuple(str(s) for s in _require(self.raw, "treatment.checkin_statuses"))
 
+    # -- control attributes -----------------------------------------------
+
+    @property
+    def automation_levels(self) -> tuple[str, ...]:
+        return tuple(str(a) for a in _require(self.raw, "controls.automation_levels"))
+
+    @property
+    def automation_ce_ceiling(self) -> dict[str, str]:
+        return {
+            str(k): str(v)
+            for k, v in _require(self.raw, "controls.automation_ce_ceiling").items()
+        }
+
+    @property
+    def implementation_types(self) -> tuple[str, ...]:
+        return tuple(str(i) for i in _require(self.raw, "controls.implementation_types"))
+
+    @property
+    def operating_frequencies(self) -> tuple[str, ...]:
+        return tuple(str(f) for f in _require(self.raw, "controls.operating_frequencies"))
+
+    @property
+    def assurance_methods(self) -> tuple[str, ...]:
+        return tuple(str(m) for m in _require(self.raw, "controls.assurance_methods"))
+
+    @property
+    def key_control_minimum_assurance(self) -> str:
+        return str(_require(self.raw, "controls.key_control_minimum_assurance"))
+
+    @property
+    def assurance_rank(self) -> dict[str, int]:
+        return {name: i for i, name in enumerate(self.assurance_methods)}
+
+    @property
+    def evidence_types(self) -> tuple[str, ...]:
+        return tuple(str(e) for e in _require(self.raw, "controls.evidence_types"))
+
+    # -- compliance and assurance -----------------------------------------
+
+    @property
+    def coverage_level_detail(self) -> list[dict[str, Any]]:
+        return [dict(c) for c in _require(self.raw, "compliance.coverage_levels")]
+
+    @property
+    def coverage_levels(self) -> tuple[str, ...]:
+        return tuple(str(c["id"]) for c in self.coverage_level_detail)
+
+    @property
+    def satisfying_coverage_levels(self) -> tuple[str, ...]:
+        """Levels that can make a requirement Covered on their own (AINV-3)."""
+        return tuple(
+            str(c["id"]) for c in self.coverage_level_detail if bool(c.get("satisfies"))
+        )
+
+    @property
+    def time_bound_coverage_levels(self) -> tuple[str, ...]:
+        """Levels that expire and must be renewed or replaced (AINV-4)."""
+        return tuple(
+            str(c["id"]) for c in self.coverage_level_detail if bool(c.get("time_bound"))
+        )
+
+    @property
+    def compensating_max_days(self) -> int:
+        return int(_require(self.raw, "compliance.compensating_max_days"))
+
+    @property
+    def compensating_warning_days(self) -> int:
+        return int(_require(self.raw, "compliance.compensating_warning_days"))
+
+    @property
+    def live_deployment_statuses(self) -> tuple[str, ...]:
+        return tuple(str(s) for s in _require(self.raw, "compliance.live_deployment_statuses"))
+
+    @property
+    def frameworks_dir(self) -> str:
+        return str(_require(self.raw, "compliance.frameworks_dir"))
+
+    @property
+    def adopted_frameworks(self) -> tuple[str, ...]:
+        return tuple(str(f) for f in _require(self.raw, "compliance.adopt"))
+
+    @property
+    def licensed_frameworks(self) -> tuple[str, ...]:
+        return tuple(str(f) for f in _require(self.raw, "compliance.licensed_frameworks"))
+
     # -- validation -------------------------------------------------------
 
     def _validate(self) -> None:
@@ -391,6 +482,72 @@ class GovernanceConfig:
                 errors.append(
                     "scoring.rating_bands covers scores outside 1-25: "
                     + ", ".join(str(s) for s in sorted(out_of_range))
+                )
+
+        # A CE ceiling per automation level, naming real CE ratings (CINV-11).
+        ceiling = self.automation_ce_ceiling
+        for level in self.automation_levels:
+            if level not in ceiling:
+                errors.append(
+                    "controls.automation_ce_ceiling has no entry for the "
+                    + level
+                    + " automation level. Every level needs a ceiling, or a "
+                    "control at that level could claim any effectiveness."
+                )
+        for level, rating in ceiling.items():
+            if rating not in CE_RATING_NAMES:
+                errors.append(
+                    "controls.automation_ce_ceiling." + level + " is " + str(rating)
+                    + ", which is not a CE rating. Valid ratings are: "
+                    + ", ".join(CE_RATING_NAMES)
+                )
+
+        # The key-control assurance floor must name a real method (CINV-12).
+        if self.key_control_minimum_assurance not in self.assurance_methods:
+            errors.append(
+                "controls.key_control_minimum_assurance is "
+                + self.key_control_minimum_assurance
+                + ", which is not in controls.assurance_methods ("
+                + ", ".join(self.assurance_methods)
+                + "). No key control could ever satisfy it."
+            )
+
+        # Coverage levels: exactly the shape the invariants read.
+        coverage = self.coverage_level_detail
+        if not coverage:
+            errors.append("compliance.coverage_levels must define at least one level")
+        for entry in coverage:
+            unexpected = set(entry) - {"id", "label", "satisfies", "time_bound"}
+            if unexpected:
+                errors.append(
+                    "compliance.coverage_levels entry "
+                    + str(entry.get("id", entry))
+                    + " has unexpected keys: "
+                    + ", ".join(sorted(unexpected))
+                    + ". A value containing a comma must be quoted; unquoted, "
+                    "YAML reads the rest of it as further keys."
+                )
+        if not self.satisfying_coverage_levels:
+            errors.append(
+                "compliance.coverage_levels has no level with satisfies: true. "
+                "No requirement could ever reach Covered."
+            )
+        for level in self.time_bound_coverage_levels:
+            if level not in self.satisfying_coverage_levels:
+                errors.append(
+                    "compliance.coverage_levels: " + level + " is time_bound but not "
+                    "satisfying. A level that cannot satisfy a requirement has "
+                    "nothing to expire."
+                )
+
+        # AINV-2 reads this against deployment_status; an unknown status would
+        # mean no deployment ever counts as live.
+        for status in self.live_deployment_statuses:
+            if status not in DEPLOYMENT_STATE_NAMES:
+                errors.append(
+                    "compliance.live_deployment_statuses contains " + status
+                    + ", which is not a deployment status. Valid statuses are: "
+                    + ", ".join(DEPLOYMENT_STATE_NAMES)
                 )
 
         # Every band needs an acceptance rule and a review cadence.

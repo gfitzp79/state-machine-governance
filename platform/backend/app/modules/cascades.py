@@ -205,13 +205,10 @@ def deployment_failed(event: CascadeEvent) -> None:
             "Objective " + objective.reference + " propagated to Failure (DL-1)",
             invariant="DL-1",
         )
-        cascades.emit(
-            "control.failed",
-            event.session,
-            "control_objective",
-            objective.id,
-            event.actor_id,
-        )
+        # chain, not emit: a bare emit would drop everything the downstream
+        # handlers record, so the audit trail would show the objective failing
+        # and say nothing about the risks frozen or the requirements uncovered.
+        event.chain(cascades, "control.failed", "control_objective", objective.id)
     else:
         _reopen_scenarios_for_deployment(
             event, deployment.id, deployment.reference
@@ -727,3 +724,158 @@ def risk_closed(event: CascadeEvent) -> None:
     risk.closed_by = risk.closed_by or event.actor_id
     risk.escalation_flag = False
     event.record("risk", risk.id, "Risk closed")
+
+# ---------------------------------------------------------------------------
+# Compliance and assurance (codified-rules section 24.3)
+#
+# This is the cascade that makes the compliance module something other than a
+# mapping table. A control failing is not merely a control problem: every
+# requirement whose coverage rested on it stops being covered at the same
+# moment, and a Statement of Applicability that still reads "Covered" the next
+# morning is asserting something untrue.
+# ---------------------------------------------------------------------------
+
+
+def _revoke_coverage_for_objective(event: CascadeEvent, objective, reason: str) -> None:
+    """AINV-5: coverage that rested on this control is no longer coverage."""
+    from sqlalchemy import select
+
+    from app.modules.compliance.models import ControlRequirementLink
+
+    links = event.session.execute(
+        select(ControlRequirementLink).where(
+            ControlRequirementLink.objective_id == objective.id
+        )
+    ).scalars()
+
+    for link in links:
+        requirement = link.requirement
+        if requirement is None or not link.satisfies:
+            continue
+        assessment = requirement.assessment
+        if assessment is None or assessment.lifecycle_state != "Covered":
+            continue
+
+        # Another Operating control may still carry it. Revoking then would
+        # report a gap that does not exist, which erodes trust in the number
+        # faster than missing one does.
+        still_covered = any(
+            other.satisfies
+            and other.objective is not None
+            and other.objective.id != objective.id
+            and other.objective.lifecycle_state == "Operating"
+            for other in requirement.control_links
+        )
+        if still_covered:
+            continue
+
+        assessment.lifecycle_state = "Gap"
+        assessment.gap_reason = reason
+        event.record(
+            "requirement_assessment",
+            assessment.id,
+            requirement.ref + " lost coverage: " + reason,
+            invariant="AINV-5",
+        )
+
+
+# No description: control.failed already carries one, and CascadeBus.on
+# overwrites rather than appends it. The reason lives in the docstring.
+@cascades.on("control.failed")
+def control_failed_compliance(event: CascadeEvent) -> None:
+    """AINV-5. Revoke compliance coverage that rested on the failed control."""
+    from app.modules.control.models import ControlObjective
+
+    objective = event.session.get(ControlObjective, event.entity_id)
+    if objective is None:
+        return
+    _revoke_coverage_for_objective(
+        event,
+        objective,
+        "Control " + objective.reference + " entered Failure. A requirement is "
+        "covered only while the control carrying it is operating (AINV-2).",
+    )
+
+
+@cascades.on("control.deprecated")
+def control_deprecated_compliance(event: CascadeEvent) -> None:
+    """AINV-5. A retired control stops carrying the requirements it covered."""
+    from app.modules.control.models import ControlObjective
+
+    objective = event.session.get(ControlObjective, event.entity_id)
+    if objective is None:
+        return
+    _revoke_coverage_for_objective(
+        event,
+        objective,
+        "Control " + objective.reference + " was retired. Re-map the requirement "
+        "to its replacement before the next assessment.",
+    )
+
+
+@cascades.on("requirement.covered", "Requirement covered")
+def requirement_covered(event: CascadeEvent) -> None:
+    from app.modules.compliance.models import RequirementAssessment
+
+    assessment = event.session.get(RequirementAssessment, event.entity_id)
+    if assessment is None:
+        return
+    assessment.gap_reason = None
+    event.record(
+        "requirement_assessment",
+        assessment.id,
+        assessment.requirement.ref + " covered",
+    )
+
+
+@cascades.on("requirement.gap", "Requirement is an open gap")
+def requirement_gap(event: CascadeEvent) -> None:
+    from app.modules.compliance.models import RequirementAssessment
+
+    assessment = event.session.get(RequirementAssessment, event.entity_id)
+    if assessment is None:
+        return
+    reason = event.payload.get("reason") or assessment.gap_reason
+    assessment.gap_reason = reason or "Applicable and not covered."
+    event.record(
+        "requirement_assessment",
+        assessment.id,
+        assessment.requirement.ref + " is an open gap",
+        invariant="AINV-2",
+    )
+
+
+@cascades.on("requirement.compensating", "Requirement met by a time-bound compensating control")
+def requirement_compensating(event: CascadeEvent) -> None:
+    from app.modules.compliance.models import RequirementAssessment
+
+    assessment = event.session.get(RequirementAssessment, event.entity_id)
+    if assessment is None:
+        return
+    event.record(
+        "requirement_assessment",
+        assessment.id,
+        assessment.requirement.ref
+        + " resting on a compensating control until "
+        + (
+            assessment.compensating_expiry.isoformat()
+            if assessment.compensating_expiry
+            else "an unset date"
+        ),
+        invariant="AINV-4",
+    )
+
+
+@cascades.on("requirement.excluded", "Requirement excluded from scope with justification")
+def requirement_excluded(event: CascadeEvent) -> None:
+    from app.modules.compliance.models import RequirementAssessment
+
+    assessment = event.session.get(RequirementAssessment, event.entity_id)
+    if assessment is None:
+        return
+    event.record(
+        "requirement_assessment",
+        assessment.id,
+        assessment.requirement.ref + " excluded from scope",
+        invariant="AINV-1",
+    )

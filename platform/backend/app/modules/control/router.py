@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.security import CurrentUser, DbSession
 from app.modules.control.machine import (
@@ -36,14 +36,28 @@ assets_router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 class ObjectiveCreate(BaseModel):
+    # extra="forbid" on every write model below: a field the schema does not
+    # know is dropped silently by default, so a typo in a client becomes a
+    # change that appears to succeed and does nothing. Refusing it is the same
+    # argument the rest of the platform makes about silent failure.
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(min_length=3, max_length=300)
     description: str | None = None
     family: str = "Governance"
     control_type: str = "Preventive"
     control_owner_id: str | None = None
+    objective_statement: str | None = None
+    automation_level: str = "Manual"
+    implementation_type: str = "Technical"
+    operating_frequency: str = "Continuous"
+    assurance_method: str = "Inquiry"
+    is_key_control: bool = False
 
 
 class ObjectiveUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = None
     description: str | None = None
     family: str | None = None
@@ -51,20 +65,40 @@ class ObjectiveUpdate(BaseModel):
     control_owner_id: str | None = None
     remediation_plan: str | None = None
     deprecation_rationale: str | None = None
+    objective_statement: str | None = None
+    automation_level: str | None = None
+    implementation_type: str | None = None
+    operating_frequency: str | None = None
+    assurance_method: str | None = None
+    is_key_control: bool | None = None
 
 
 class ActivityCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     objective_id: str
     title: str
     description: str | None = None
     control_operator_id: str | None = None
+    automation_level: str | None = None
+    operating_frequency: str | None = None
+    procedure_ref: str | None = None
+    tooling: str | None = None
+    evidence_type: str | None = None
 
 
 class ActivityUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = None
     description: str | None = None
     control_operator_id: str | None = None
     suspension_rationale: str | None = None
+    automation_level: str | None = None
+    operating_frequency: str | None = None
+    procedure_ref: str | None = None
+    tooling: str | None = None
+    evidence_type: str | None = None
 
 
 class DeploymentCreate(BaseModel):
@@ -141,6 +175,13 @@ def reference_data(user: CurrentUser) -> dict[str, Any]:
         "families": list(CONTROL_FAMILIES),
         "types": list(CONTROL_TYPES),
         "ce_ratings": list(CE_RATINGS),
+        "automation_levels": list(governance.automation_levels),
+        "automation_ce_ceiling": dict(governance.automation_ce_ceiling),
+        "implementation_types": list(governance.implementation_types),
+        "operating_frequencies": list(governance.operating_frequencies),
+        "assurance_methods": list(governance.assurance_methods),
+        "key_control_minimum_assurance": governance.key_control_minimum_assurance,
+        "evidence_types": list(governance.evidence_types),
         "test_results": list(TEST_RESULTS),
         "test_frequencies": list(TEST_FREQUENCIES),
         "asset_tiers": list(ASSET_TIERS),

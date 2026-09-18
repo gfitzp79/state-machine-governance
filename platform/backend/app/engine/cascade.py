@@ -41,6 +41,20 @@ class CascadeEvent:
             }
         )
 
+    def chain(self, bus: "CascadeBus", name: str, entity_type: str, entity_id: Any,
+              **payload: Any) -> None:
+        """Fire a further cascade and KEEP its effects on this event.
+
+        A bare `bus.emit(...)` inside a handler builds its own event, and
+        everything the downstream handlers record lands on that event and is
+        discarded when it returns. The work still happens, so nothing looks
+        broken; the audit trail simply stops mentioning it. Chaining through
+        here is what makes a two-step propagation auditable as one action.
+        """
+        self.effects.extend(
+            bus.emit(name, self.session, entity_type, entity_id, self.actor_id, **payload)
+        )
+
 
 class CascadeBus:
     """Handlers are registered by module at import time and keyed by event name."""

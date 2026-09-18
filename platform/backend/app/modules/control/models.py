@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -25,10 +26,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
-from app.core.governance import CE_RATING_NAMES, governance
+from app.core.governance import CE_RATING_NAMES, DEPLOYMENT_STATE_NAMES, governance
 from app.core.model_base import Timestamped, UUIDPrimaryKey
 
 OBJECTIVE_STATES = (
@@ -40,7 +42,9 @@ OBJECTIVE_STATES = (
     "Deprecated",
 )
 ACTIVITY_STATES = ("Draft", "Active", "Suspended", "Retired")
-DEPLOYMENT_STATES = ("Planned", "Active", "Degraded", "Failed", "Decommissioned")
+# Canonical definition lives in core.governance so the configuration validator
+# can read it without importing this module.
+DEPLOYMENT_STATES = DEPLOYMENT_STATE_NAMES
 
 CE_RATINGS = CE_RATING_NAMES
 TEST_RESULTS = ("Not_Tested", "Pass", "Partial", "Fail")
@@ -52,6 +56,11 @@ CONTROL_TYPES = governance.control_types
 ASSET_TIERS = governance.asset_tiers
 
 CONTROL_FAMILIES = governance.control_families
+AUTOMATION_LEVELS = governance.automation_levels
+IMPLEMENTATION_TYPES = governance.implementation_types
+OPERATING_FREQUENCIES = governance.operating_frequencies
+ASSURANCE_METHODS = governance.assurance_methods
+EVIDENCE_TYPES = governance.evidence_types
 
 
 class AttackSurface(Base, UUIDPrimaryKey, Timestamped):
@@ -62,6 +71,10 @@ class AttackSurface(Base, UUIDPrimaryKey, Timestamped):
     tier: Mapped[str] = mapped_column(String(16), nullable=False, default="Tier_3")
     description: Mapped[str | None] = mapped_column(Text)
     system_owner_id: Mapped[str | None] = mapped_column(String(36))
+    # Which compliance regimes this asset sits inside. AINV-2 reads it: a
+    # requirement is covered only where the control runs on every in-scope
+    # asset, and this is what decides which assets those are.
+    compliance_scopes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
 
 class ControlObjective(Base, UUIDPrimaryKey, Timestamped):
@@ -82,6 +95,42 @@ class ControlObjective(Base, UUIDPrimaryKey, Timestamped):
     control_type: Mapped[str] = mapped_column(String(32), nullable=False, default="Preventive")
     lifecycle_state: Mapped[str] = mapped_column(String(32), nullable=False, default="Design")
     control_owner_id: Mapped[str | None] = mapped_column(String(36))
+
+    # -- what the control must achieve ------------------------------------
+    #
+    # `description` says what the control is. `objective_statement` says what
+    # "working" means, in terms a test can be written against. A control whose
+    # objective cannot be stated testably cannot be assessed, only admired.
+    objective_statement: Mapped[str | None] = mapped_column(Text)
+
+    # -- how it runs -------------------------------------------------------
+    #
+    # CINV-11 caps CE by automation level. A manual control's evidence
+    # describes the last time a person performed it, which says nothing about
+    # the occasion nobody does, so it cannot hold the top rating.
+    automation_level: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="Manual"
+    )
+    # Orthogonal to preventive/detective/corrective: that is what the control
+    # does about a threat, this is what kind of thing it is.
+    implementation_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="Technical"
+    )
+    # How often the control OPERATES, as distinct from test_frequency on the
+    # deployment, which is how often somebody checks that it did. Conflating
+    # them is how "tested annually" gets read as "performed annually".
+    operating_frequency: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="Continuous"
+    )
+
+    # -- how it is assured -------------------------------------------------
+    #
+    # CINV-12: a key control cannot rest on the weaker methods. Asking somebody
+    # whether a control works is not evidence that it does.
+    assurance_method: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="Inquiry"
+    )
+    is_key_control: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Set by the Failure cascade; cleared on return to Operating.
     failure_declared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -122,6 +171,23 @@ class ControlActivity(Base, UUIDPrimaryKey, Timestamped):
     lifecycle_state: Mapped[str] = mapped_column(String(32), nullable=False, default="Draft")
     control_operator_id: Mapped[str | None] = mapped_column(String(36))
     suspension_rationale: Mapped[str | None] = mapped_column(Text)
+
+    # -- how this implementation actually works ---------------------------
+    #
+    # An activity may be more or less automated than its objective's headline
+    # figure: an objective met by a nightly job on one estate and a monthly
+    # spreadsheet on another is the normal case, not an edge case.
+    automation_level: Mapped[str | None] = mapped_column(String(32))
+    operating_frequency: Mapped[str | None] = mapped_column(String(32))
+
+    # Where the procedure is written down. An activity whose runbook nobody can
+    # produce is a description of an intention.
+    procedure_ref: Mapped[str | None] = mapped_column(Text)
+    # Which system performs or records it.
+    tooling: Mapped[str | None] = mapped_column(String(200))
+    # What this activity produces when it runs. Declaring it up front is what
+    # makes a missing artefact detectable rather than arguable at audit.
+    evidence_type: Mapped[str | None] = mapped_column(String(48))
 
     objective: Mapped[ControlObjective] = relationship(back_populates="activities")
     deployments: Mapped[list["ControlDeployment"]] = relationship(

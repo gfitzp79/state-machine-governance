@@ -184,7 +184,7 @@ Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 
 ## What is implemented
 
-**8 state machines · 53 gated transitions · 46 invariants · 24 cascade events**
+**9 state machines · 65 gated transitions · 57 invariants · 28 cascade events**
 
 | Lifecycle | States | Source |
 |---|---|---|
@@ -239,7 +239,7 @@ cascade and direct-SQL attempts to bypass the service layer.
 
 ```bash
 docker compose exec api python config_test.py     # 33 tests: the configuration layer
-docker compose exec api python smoke_test.py      # 126 tests: the enforcement layer
+docker compose exec api python smoke_test.py      # 147 tests: the enforcement layer
 ```
 
 `config_test.py` proves both halves of configurability: that invalid governance

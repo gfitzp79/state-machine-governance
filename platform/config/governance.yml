@@ -179,6 +179,72 @@ controls:
     - Tier_3
     - Tier_4
 
+  # -- objective and activity attributes ------------------------------------
+  #
+  # A control objective used to carry seven fields, which is not enough to
+  # assess one. These are the attributes an assessor actually asks for, and
+  # several of them constrain what the control may claim.
+
+  # How the control runs. A manual control cannot hold a CE above the ceiling
+  # set below, however good its evidence: the evidence describes the last time
+  # a person did it, not what happens on the occasion nobody does.
+  automation_levels:
+    - Manual
+    - Semi_Automated
+    - Automated
+
+  # CINV-11. The highest CE a control may hold at each automation level.
+  # Raising Manual to CE-High means asserting that a human process is as
+  # reliable as an enforced one.
+  automation_ce_ceiling:
+    Manual: CE-Medium
+    Semi_Automated: CE-High
+    Automated: CE-High
+
+  # NIST SP 800-53 style. Orthogonal to preventive/detective/corrective.
+  implementation_types:
+    - Technical
+    - Administrative
+    - Physical
+
+  # How often the control OPERATES. Distinct from test_frequency, which is how
+  # often somebody checks that it did. Conflating the two is why "annually
+  # tested" gets read as "annually performed".
+  operating_frequencies:
+    - Continuous
+    - Daily
+    - Weekly
+    - Monthly
+    - Quarterly
+    - Semi_Annual
+    - Annual
+    - Event_Driven
+
+  # Audit evidence hierarchy, weakest first. Asking somebody whether the control
+  # works is not the same as watching it work, and neither is the same as
+  # performing it yourself against a sample.
+  assurance_methods:
+    - Inquiry
+    - Observation
+    - Inspection
+    - Re_Performance
+
+  # CINV-12. A key control cannot rest on the weaker methods.
+  key_control_minimum_assurance: Inspection
+
+  # What a control activity produces when it runs. Recording the expected type
+  # up front is what makes a missing artefact detectable rather than debatable.
+  evidence_types:
+    - Configuration_Export
+    - System_Report
+    - Log_Extract
+    - Screenshot
+    - Attestation
+    - Ticket_Record
+    - Scan_Result
+    - Third_Party_Report
+    - Sample_Test
+
 # ---------------------------------------------------------------------------
 # Policy governance
 # Specification: codified-rules sections 12-15
@@ -412,3 +478,63 @@ treatment:
     - At_Risk
     - Blocked
     - Delivered
+
+# ---------------------------------------------------------------------------
+# Compliance and assurance
+# Specification: codified-rules Part 6 (sections 21-24)
+#
+# The register holds framework REQUIREMENTS as first-class records, because a
+# gap cannot be detected without the set to compare against. Before this
+# existed, CF-2 had control objectives inherit compliance mappings from the
+# policies that referenced them, which cannot answer the only question an
+# assessor asks: show me the evidence for this specific clause.
+# ---------------------------------------------------------------------------
+compliance:
+  # How a control objective may relate to a requirement.
+  #
+  #   satisfies   this link, on its own, can make a requirement Covered
+  #   time_bound  this link expires and must be renewed or replaced
+  #
+  # AINV-3: Partial does not satisfy. Partial coverage of a requirement is a
+  # gap with work in progress, exactly as a partially mitigated threat is an
+  # open threat (TM-PARTIAL).
+  coverage_levels:
+    - { id: Full,         label: "Fully satisfies this requirement", satisfies: true,  time_bound: false }
+    - { id: Partial,      label: "Partially satisfies",              satisfies: false, time_bound: false }
+    - { id: Compensating, label: "Compensating control",             satisfies: true,  time_bound: true }
+
+  # AINV-4: a compensating assertion is never permanent. Same principle as
+  # RINV-4 for risk acceptance and TINV-5 for threat acceptance.
+  compensating_max_days: 365
+
+  # AINV-2: deployment statuses that count as the control actually running
+  # where the requirement applies. A Planned or Failed deployment covers
+  # nothing, which is the same filter TINV-4 applies to threat mitigation.
+  live_deployment_statuses:
+    - Active
+    - Degraded
+
+  # Days before a compensating assertion expires that the owner is notified.
+  compensating_warning_days: 30
+
+  # Directory holding framework catalogues, bind-mounted alongside this file.
+  frameworks_dir: /srv/config/frameworks
+
+  # Catalogues to load at boot. A framework present in the directory but absent
+  # here is available to adopt but not yet in scope.
+  adopt:
+    - NIST-CSF-2.0
+
+  # AINV-6. Frameworks whose content this repository may not redistribute.
+  # A catalogue declaring redistributable: false is refused at boot if it
+  # carries requirement text, so the licence is enforced rather than described.
+  # Load these from your own licensed copy with tools/import_framework.py.
+  #
+  # This list is a convenience for operators, not legal advice. Verify the
+  # current terms of any framework you load.
+  licensed_frameworks:
+    - ISO-27001-2022
+    - ISO-27002-2022
+    - CIS-Controls-8.1
+    - PCI-DSS-4.0
+    - SOC2-TSC

@@ -110,8 +110,16 @@ jobs:
           machines = count(r"= StateMachine\(", "*/machine.py")
           transitions = count(r"\bTransition\(", "*/machine.py")
           invariants = count(r"\bInvariant\(", "*/invariants.py")
+          # Distinct EVENTS, not decorators: an event may carry more than one
+          # handler, and "28 cascade events" has to mean 28 things that can
+          # happen rather than 30 functions that listen.
           cascades = len(
-              re.findall(r"@cascades\.on\(", (modules / "cascades.py").read_text(encoding="utf-8"))
+              set(
+                  re.findall(
+                      r'@cascades\.on\(\s*"([a-z_.]+)"',
+                      (modules / "cascades.py").read_text(encoding="utf-8"),
+                  )
+              )
           )
 
           actual = {

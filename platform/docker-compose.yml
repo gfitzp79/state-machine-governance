@@ -36,6 +36,9 @@ services:
     volumes:
       # Your operating model. Edit and `docker compose restart api` to apply.
       - ${GOVERNANCE_CONFIG_FILE:-./config/governance.yml}:/srv/config/governance.yml:ro
+      # Framework catalogues. Drop a YAML file in to add a framework;
+      # AINV-6 refuses one that carries text it may not redistribute.
+      - ./config/frameworks:/srv/config/frameworks:ro
     depends_on:
       db:
         condition: service_healthy

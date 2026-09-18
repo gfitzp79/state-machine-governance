@@ -73,7 +73,7 @@ Both suites must pass before a pull request is reviewed.
 # 33 tests: the configuration layer. Fast, no database needed.
 docker compose exec api python config_test.py
 
-# 126 tests: gates, invariants, cascades, and direct-SQL bypass attempts.
+# 147 tests: gates, invariants, cascades, and direct-SQL bypass attempts.
 # Mutates state deliberately, so it needs a freshly seeded database.
 docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py

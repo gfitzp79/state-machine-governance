@@ -27,6 +27,12 @@ from sqlalchemy.orm import Session
 
 from app.core.model_base import utcnow
 from app.core.security import hash_password
+from app.modules.compliance.models import (
+    ComplianceFramework,
+    ComplianceRequirement,
+    ControlRequirementLink,
+    RequirementAssessment,
+)
 from app.modules.control.models import (
     AttackSurface,
     ControlActivity,
@@ -171,7 +177,24 @@ def seed(session: Session) -> None:
     session.flush()
 
     # -- controls ----------------------------------------------------------
-    def control(ref, title, family, ctype, state, description):
+    def control(
+        ref,
+        title,
+        family,
+        ctype,
+        state,
+        description,
+        *,
+        automation="Manual",
+        implementation="Technical",
+        frequency="Continuous",
+        assurance="Inquiry",
+        key=False,
+        objective_statement=None,
+    ):
+        # CINV-11 caps CE by automation level, so these are not decoration: a
+        # control declared Manual cannot hold CE-High, and the seed has to mean
+        # what it says or the engine refuses its own demo data.
         obj = ControlObjective(
             reference=ref,
             title=title,
@@ -180,12 +203,30 @@ def seed(session: Session) -> None:
             control_type=ctype,
             lifecycle_state=state,
             control_owner_id=control_owner.id,
+            automation_level=automation,
+            implementation_type=implementation,
+            operating_frequency=frequency,
+            assurance_method=assurance,
+            is_key_control=key,
+            objective_statement=objective_statement,
         )
         session.add(obj)
         session.flush()
         return obj
 
-    def activity(ref, obj, title, state, description):
+    def activity(
+        ref,
+        obj,
+        title,
+        state,
+        description,
+        *,
+        automation=None,
+        frequency=None,
+        procedure=None,
+        tooling=None,
+        evidence=None,
+    ):
         act = ControlActivity(
             reference=ref,
             objective_id=obj.id,
@@ -193,6 +234,11 @@ def seed(session: Session) -> None:
             description=description,
             lifecycle_state=state,
             control_operator_id=control_owner.id,
+            automation_level=automation,
+            operating_frequency=frequency,
+            procedure_ref=procedure,
+            tooling=tooling,
+            evidence_type=evidence,
         )
         session.add(act)
         session.flush()
@@ -224,10 +270,23 @@ def seed(session: Session) -> None:
         "Preventive",
         "Operating",
         "All privileged access paths require phishing-resistant MFA.",
+        automation="Automated",
+        implementation="Technical",
+        frequency="Continuous",
+        assurance="Re_Performance",
+        key=True,
+        objective_statement=(
+            "No privileged authentication succeeds without a hardware-backed "
+            "second factor, evidenced by zero non-compliant sign-ins in the "
+            "sign-in log over the review period."
+        ),
     )
     act1 = activity(
         "ACT-001", ctl1, "Enforce WebAuthn on admin roles", "Active",
         "Conditional access policy requiring hardware-backed authenticators.",
+        automation="Automated", frequency="Continuous",
+        procedure="RUN-IAM-014 Conditional access change procedure",
+        tooling="Corporate IdP", evidence="Configuration_Export",
     )
     dep1 = deployment(
         "DEP-001", act1, corp_idp, "Active", "CE-High",
@@ -247,10 +306,22 @@ def seed(session: Session) -> None:
         "Preventive",
         "Operating",
         "Customer PII encrypted at rest with managed keys and annual rotation.",
+        automation="Automated",
+        implementation="Technical",
+        frequency="Continuous",
+        assurance="Inspection",
+        key=True,
+        objective_statement=(
+            "Every volume and snapshot holding customer PII reports an active "
+            "customer-managed key, with no unencrypted store in the inventory."
+        ),
     )
     act2 = activity(
         "ACT-002", ctl2, "Enable KMS envelope encryption on data stores", "Active",
         "All warehouse volumes and snapshots encrypted with customer-managed keys.",
+        automation="Automated", frequency="Continuous",
+        procedure="RUN-DATA-006 Key rotation and encryption baseline",
+        tooling="Cloud KMS", evidence="Configuration_Export",
     )
     dep3 = deployment(
         "DEP-003", act2, warehouse, "Active", "CE-High",
@@ -265,10 +336,21 @@ def seed(session: Session) -> None:
         "Detective",
         "Implementation",
         "SAST, dependency scanning and peer review enforced before merge.",
+        automation="Automated",
+        implementation="Technical",
+        frequency="Event_Driven",
+        assurance="Observation",
+        objective_statement=(
+            "No merge to a protected branch completes while a critical SAST or "
+            "dependency finding is open against the change."
+        ),
     )
     act3 = activity(
         "ACT-003", ctl3, "Block merge on critical SAST findings", "Active",
         "Pipeline gate failing the build on critical severity findings.",
+        automation="Automated", frequency="Event_Driven",
+        procedure="RUN-APPSEC-002 Pipeline gate configuration",
+        tooling="CI/CD platform", evidence="Scan_Result",
     )
     deployment(
         "DEP-004", act3, build, "Planned", "CE-Unvalidated", None, None,
@@ -281,10 +363,24 @@ def seed(session: Session) -> None:
         "Detective",
         "Operating",
         "All privileged sessions recorded and reviewed on a monthly cadence.",
+        # Capture is automated; the review that gives it meaning is a person
+        # reading transcripts, which is why this is Semi_Automated and not
+        # Automated. The CE-Low rating below reflects the slipped cadence.
+        automation="Semi_Automated",
+        implementation="Technical",
+        frequency="Monthly",
+        assurance="Inspection",
+        objective_statement=(
+            "Every privileged session is captured, and each month's captures are "
+            "reviewed with exceptions raised within five working days."
+        ),
     )
     act4 = activity(
         "ACT-004", ctl4, "Session recording with monthly review", "Active",
         "Bastion session capture with documented monthly review by the platform team.",
+        automation="Semi_Automated", frequency="Monthly",
+        procedure="RUN-OPS-031 Privileged session review",
+        tooling="Bastion / session recorder", evidence="Log_Extract",
     )
     dep5 = deployment(
         "DEP-005", act4, payments, "Degraded", "CE-Low",
@@ -301,10 +397,21 @@ def seed(session: Session) -> None:
         "Detective",
         "Operating",
         "Quarterly recertification of all third-party access to production.",
+        automation="Semi_Automated",
+        implementation="Administrative",
+        frequency="Quarterly",
+        assurance="Inspection",
+        objective_statement=(
+            "Every third-party account with production access is confirmed or "
+            "revoked by a named reviewer each quarter."
+        ),
     )
     act5 = activity(
         "ACT-005", ctl5, "Quarterly recertification campaign", "Active",
         "Access recertification run through the IGA platform each quarter.",
+        automation="Semi_Automated", frequency="Quarterly",
+        procedure="RUN-IAM-022 Third-party recertification",
+        tooling="IGA platform", evidence="Attestation",
     )
     deployment(
         "DEP-006", act5, corp_idp, "Active", "CE-Medium",
@@ -1124,5 +1231,112 @@ def seed(session: Session) -> None:
                 created_by=appsec.id,
             )
         )
+
+    # -- compliance coverage ----------------------------------------------
+    #
+    # Seeded so the module opens with something real rather than an empty
+    # register. Every position below is one the engine would accept from a user:
+    # the coverage assertions point at Operating controls with live deployments
+    # on an in-scope asset, because AINV-2 would reject anything else.
+    from sqlalchemy import select as _select
+
+    csf = session.execute(
+        _select(ComplianceFramework).where(
+            ComplianceFramework.framework_id == "NIST-CSF-2.0"
+        )
+    ).scalar_one_or_none()
+
+    if csf is not None and csf.requirements:
+        # AINV-9: a framework with nothing in scope reports coverage over an
+        # empty set, so the demo declares its scope explicitly.
+        for asset in (payments, warehouse, corp_idp):
+            asset.compliance_scopes = ["NIST-CSF-2.0"]
+
+        by_ref = {r.ref: r for r in csf.requirements}
+
+        def cover(ref, objective, level, rationale, state):
+            requirement = by_ref.get(ref)
+            if requirement is None:
+                return
+            session.add(
+                ControlRequirementLink(
+                    requirement_id=requirement.id,
+                    objective_id=objective.id,
+                    coverage_level=level,
+                    rationale=rationale,
+                    asserted_by=engineer.id,
+                )
+            )
+            session.add(
+                RequirementAssessment(
+                    requirement_id=requirement.id,
+                    lifecycle_state=state,
+                    owner_id=control_owner.id,
+                    assessed_by=engineer.id,
+                    assessed_at=utcnow(),
+                )
+            )
+
+        cover(
+            "PR.AA-03", ctl1, "Full",
+            "Phishing-resistant MFA enforced on every privileged authentication path.",
+            "Covered",
+        )
+        cover(
+            "PR.DS-01", ctl2, "Full",
+            "Customer-managed key encryption on every store holding customer PII.",
+            "Covered",
+        )
+        cover(
+            "PR.AA-05", ctl5, "Partial",
+            "Third-party recertification covers external accounts. Internal "
+            "entitlement review is not yet in place, so this does not satisfy "
+            "the subcategory on its own.",
+            "Applicable",
+        )
+        cover(
+            "DE.CM-03", ctl4, "Full",
+            "Privileged session capture with documented monthly review.",
+            "Covered",
+        )
+
+        # An honest gap, which is what most of a real register looks like.
+        for ref, note in (
+            ("PR.PS-06", "No control mapped. Secure development practices are "
+                         "documented but not evidenced as operating."),
+            ("GV.SC-04", "Supplier criticality tiering has not been performed."),
+        ):
+            requirement = by_ref.get(ref)
+            if requirement is None:
+                continue
+            session.add(
+                RequirementAssessment(
+                    requirement_id=requirement.id,
+                    lifecycle_state="Gap",
+                    gap_reason=note,
+                    owner_id=control_owner.id,
+                    assessed_by=engineer.id,
+                    assessed_at=utcnow(),
+                )
+            )
+
+        # An exclusion with its justification, which is what AINV-1 exists for.
+        physical = by_ref.get("PR.AA-06")
+        if physical is not None:
+            session.add(
+                RequirementAssessment(
+                    requirement_id=physical.id,
+                    lifecycle_state="Not_Applicable",
+                    rationale=(
+                        "No owned physical estate. All production workloads run "
+                        "in cloud regions where physical access is the "
+                        "provider's responsibility under the shared "
+                        "responsibility model."
+                    ),
+                    owner_id=control_owner.id,
+                    assessed_by=engineer.id,
+                    assessed_at=utcnow(),
+                )
+            )
 
     session.commit()

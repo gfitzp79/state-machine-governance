@@ -30,7 +30,14 @@ class ObjectiveService(LifecycleService[ControlObjective]):
     machine = CONTROL_OBJECTIVE_MACHINE
     entity_name = "control_objective"
     reference_prefix = "CTL"
-    taxonomy = {"family": "control_families", "control_type": "control_types"}
+    taxonomy = {
+        "family": "control_families",
+        "control_type": "control_types",
+        "automation_level": "automation_levels",
+        "implementation_type": "implementation_types",
+        "operating_frequency": "operating_frequencies",
+        "assurance_method": "assurance_methods",
+    }
 
     def create_objective(self, data: dict[str, Any]) -> ControlObjective:
         obj = ControlObjective(reference=self.next_reference(), **data)
@@ -43,6 +50,7 @@ class ObjectiveService(LifecycleService[ControlObjective]):
         return {
             **summarise_objective(obj),
             "description": obj.description,
+            "objective_statement": obj.objective_statement,
             "remediation_plan": obj.remediation_plan,
             "deprecation_rationale": obj.deprecation_rationale,
             "ce_resolution": resolution.as_dict(),
@@ -147,6 +155,11 @@ class ActivityService(LifecycleService[ControlActivity]):
     model = ControlActivity
     machine = CONTROL_ACTIVITY_MACHINE
     entity_name = "control_activity"
+    taxonomy = {
+        "automation_level": "automation_levels",
+        "operating_frequency": "operating_frequencies",
+        "evidence_type": "evidence_types",
+    }
     reference_prefix = "ACT"
 
     def create_activity(self, data: dict[str, Any]) -> ControlActivity:
@@ -346,6 +359,11 @@ def summarise_objective(obj: ControlObjective) -> dict[str, Any]:
         "control_type": obj.control_type,
         "lifecycle_state": obj.lifecycle_state,
         "control_owner_id": obj.control_owner_id,
+        "automation_level": obj.automation_level,
+        "implementation_type": obj.implementation_type,
+        "operating_frequency": obj.operating_frequency,
+        "assurance_method": obj.assurance_method,
+        "is_key_control": obj.is_key_control,
         "effective_ce": resolution.effective_ce,
         "contributes_to_scoring": obj.contributes_to_scoring,
         "activity_count": len(obj.activities),
@@ -369,6 +387,11 @@ def summarise_activity(act: ControlActivity) -> dict[str, Any]:
         "lifecycle_state": act.lifecycle_state,
         "control_operator_id": act.control_operator_id,
         "suspension_rationale": act.suspension_rationale,
+        "automation_level": act.automation_level,
+        "operating_frequency": act.operating_frequency,
+        "procedure_ref": act.procedure_ref,
+        "tooling": act.tooling,
+        "evidence_type": act.evidence_type,
         "deployment_count": len(act.deployments),
     }
 

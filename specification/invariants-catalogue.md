@@ -1,10 +1,18 @@
 # System Invariants Catalogue
 
-**Version:** 2.1-template | **License:** CC BY 4.0
-**Source:** Derived from [Codified Rules Specification](./codified-rules.md) §16-20
+**Version:** 2.2-template | **License:** CC BY 4.0
+**Source:** Derived from [Codified Rules Specification](./codified-rules.md) §16-24
 **Purpose:** Complete catalogue of system invariants with enforcement layer, validation method, and implementation guidance. Invariants are hard rules that the system must never violate regardless of user role, workflow state, or API path.
 
 > **Design principle:** Schema constraints handle data integrity. Service-layer gates handle business logic. Neither layer operates without the other. Every invariant below identifies which layer enforces it, so implementation teams know where the constraint must live.
+
+> **`Cascade` is a fourth layer, not a euphemism.** A handful of rules are not
+conditions an entity must satisfy but things that must *happen* when something
+else changes. They cannot be written as a predicate without duplicating the
+invariant they exist to maintain, and they run inside the originating
+transaction, so a cascade that would violate an invariant rolls the whole
+operation back. Where a rule is marked `Cascade`, the condition it maintains is
+enforced by a named invariant alongside it: AINV-5 keeps AINV-2 true.
 
 > **Enforcement claims are load-bearing.** An invariant that says `Schema` must have a genuine `CHECK` constraint, `NOT NULL`, foreign key, or trigger behind it. `Both` requires both layers independently. An overstated enforcement claim is worse than an understated one, because it tells an assessor that a bypass is impossible when it is merely inconvenient. The layer recorded here is the layer the [reference implementation](../platform) actually uses.
 
@@ -14,14 +22,14 @@
 
 | Column | Meaning |
 |---|---|
-| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy, TINV = Threat Modelling. A few rules keep the identifier they carry in the specification body — `SEP-1` (§2.2), `PE-5` (§12.3), `TM-PARTIAL` (§19.3) — because renaming them would break the cross-reference that makes them findable. |
+| **ID** | Unique invariant identifier. RINV = Risk, CINV = Control, PINV = Policy, TINV = Threat Modelling, AINV = Assurance and Compliance. A few rules keep the identifier they carry in the specification body — `SEP-1` (§2.2), `PE-5` (§12.3), `TM-PARTIAL` (§19.3) — because renaming them would break the cross-reference that makes them findable. |
 | **Rule** | The constraint expressed as a natural-language rule. |
-| **Enforcement Layer** | Where the constraint is implemented: Schema (DB constraint or trigger), Service (API/business logic), or Both. |
+| **Enforcement Layer** | Where the constraint is implemented: Schema (DB constraint or trigger), Service (API/business logic), Both, or Cascade. |
 | **Enforcement Mechanism** | The specific technical mechanism that prevents violation. |
 | **Violation Behaviour** | What happens when something attempts to violate the invariant. |
 | **Spec Reference** | Cross-reference to the Codified Rules Specification section. |
 
-**Counts.** 46 invariants: 14 risk, 10 control, 10 policy, 12 threat.
+**Counts.** 57 invariants: 14 risk, 12 control, 10 policy, 12 threat, 9 compliance.
 
 ---
 
@@ -64,6 +72,14 @@
 | CINV-8 | Control retirement is blocked if linked risks are above appetite and unmitigated | Service | Deprecation gate walks every linked risk before permitting the transition | Lifecycle transition rejected | §9.1 (OL-3) |
 | CINV-9 | Asset decommission never silently removes risk-control linkages | Service | Decommission preserves linkages read-only and notifies the Risk Analyst | Decommission proceeds; linkages remain visible and re-assessment is required | §8.1 (CH-6) |
 | CINV-10 | Expired control effectiveness auto-downgrades to CE-Unvalidated with no override | Service | Scheduled job downgrades on expiry; no endpoint permits a manual override | Automatic downgrade; Risk Analyst notified | §10.2 |
+| CINV-11 | Control effectiveness never exceeds the ceiling its automation level supports | Service | CE compared against `controls.automation_ce_ceiling` for the parent objective's automation level. A manual control cannot hold the top rating however good its last test | CE rating rejected; raise the automation level or lower the claim | §24.1 |
+| CINV-12 | A key control never evidences a requirement on assurance weaker than the configured floor | Service | Assurance methods are ordered weakest first; a key control must sit at or above `controls.key_control_minimum_assurance` | Link rejected; strengthen the assurance method or unmark the key control | §24.2 |
+
+> **On CINV-11.** Without a ceiling, a spreadsheet reviewed quarterly can claim
+the same effectiveness as an enforced platform policy, and buy the same
+likelihood reduction under RINV-9. A manual control's evidence describes the last
+time a person performed it, which says nothing about the occasion nobody does.
+That occasion is what the control exists for.
 
 > **CE lives on the deployment.** CINV-1, CINV-4 and CINV-10 all attach to `control_deployments` rather than to the control objective, because a control is only as effective as the place it actually runs. CINV-6 then resolves the objective's CE as the *worst* case across its deployments. See §8.1 for the three-level hierarchy and [data-model.md](../architecture/data-model.md) for the tables.
 
@@ -113,6 +129,42 @@
 
 ---
 
+## Compliance and Assurance Invariants (AINV)
+
+| ID | Rule | Enforcement Layer | Enforcement Mechanism | Violation Behaviour | Spec Ref |
+|---|---|---|---|---|---|
+| AINV-1 | An excluded requirement always carries a documented justification | Both | `CHECK` constraint requires a rationale when the state is `Not_Applicable`, plus a gate precondition on the exclusion transition | Exclusion rejected; a Statement of Applicability must justify every omission | §22.2 |
+| AINV-2 | A requirement is Covered only while a satisfying control is Operating and live where the requirement applies | Service | Gate and invariant share one predicate: a satisfying link, an Operating objective, and a live deployment inside the framework's scope. Re-checked on every write, so coverage cannot outlive the control that carried it | Covered rejected or revoked; the requirement returns to Gap | §23.1 |
+| AINV-3 | Partial coverage is a gap, never coverage | Service | Satisfying levels are read from configuration, and status is derived from the whole link set. Downgrading the last Full link to Partial re-opens the requirement | Covered rejected; a requirement half-satisfied is not satisfied | §23.2 |
+| AINV-4 | A compensating position is never permanent; it is always time-bound | Both | `CHECK` constraint requires an expiry; the gate caps the window and a scheduled job expires it | Rejected; set an expiry within the configured window | §23.3 |
+| **AINV-5** | A failing or retired control revokes the compliance coverage that rested on it | Cascade | Cascade on `control.failed` and `control.deprecated` walks the coverage links and returns each affected requirement to Gap, unless another Operating control still satisfies it | Automatic; the position changes without anyone revisiting the register | §24.3 |
+| AINV-6 | A framework whose content may not be redistributed never carries requirement text in this repository | Service | The catalogue loader refuses at boot. Licensed content is imported into the database by the operator, never into the tree | Boot refused; the licence is enforced rather than documented | §21.2 |
+| AINV-7 | A framework version is immutable once its requirements are loaded | Service | Version changes rejected while requirements exist. A new version is a new record, because renumbering between versions would silently re-point existing coverage assertions | Version change rejected; create the new version as its own framework | §21.3 |
+| AINV-8 | Only an adopted framework carries an assessed position | Service | Gate blocks assessment on an unadopted framework | Assessment rejected; adopt the framework first | §21.4 |
+| AINV-9 | No requirement of an adopted framework is Covered while no asset declares itself in that framework's scope | Service | With no scope declared, AINV-2 accepts a live deployment anywhere. This refuses the undeclared case explicitly, so a percentage is never reported against an estate nobody assessed | Covered rejected; declare the assets the framework applies to | §23.1 |
+| AINV-10 | A coverage assertion always uses a configured coverage level | Service | Level validated against `compliance.coverage_levels` on write | Link rejected; an unconfigured level would silently fail to count | §23.2 |
+
+> **AINV-5 is marked `Cascade` rather than `Service`.** It is a rule about what
+must *happen* when a control fails, not a condition an entity must satisfy.
+Writing it as a predicate would mean asserting the post-cascade state on every
+write, which is precisely what AINV-2 already does. The two are a pair: AINV-5
+performs the revocation, AINV-2 refuses to let a Covered position survive
+without it.
+
+> **AINV-6 is the unusual one.** It makes a licence obligation enforceable. Every
+other way of handling third-party framework content amounts to telling
+contributors not to paste it in, which is a policy, not a control. Refusing to
+boot is the control.
+
+> **AINV-9 exists because of an arithmetic trap.** A coverage percentage over an
+empty scope is not zero, it is undefined, and code that divides anyway reports
+100%. An adopted framework nobody has scoped is the most dangerous state this
+module can be in, because it produces a confident number about an estate that was
+never assessed. The posture endpoint returns `null` rather than a percentage in
+that case, and AINV-9 stops any requirement reaching Covered to begin with.
+
+---
+
 ## Cross-Domain Enforcement
 
 Some rules are not invariants on a single entity but properties of the system as
@@ -125,6 +177,7 @@ means they have no row above — and are easy to lose sight of for that reason.
 | A cascade cannot leave the system in a state an invariant forbids | Cascades run inside the originating transaction, before the invariant sweep. A cascade that would violate an invariant rolls the whole operation back | §11.2, §20.2, §20.3 |
 | Audit records cannot be revised | Append-only, enforced by database trigger — as for `control_tests` (CINV-7), `policy_versions` (PINV-9), and `threat_scenario_evidence` (TSE-1) | §7.3 |
 | Separation of duties survives assignment ordering | Every separation rule is checked from both sides. See the note under RINV-3 | §2.2 |
+| A compliance position never outlives the control beneath it | AINV-2 is re-evaluated on every write, and the §24.3 cascade revokes coverage the moment a control fails. Neither depends on anyone revisiting the register | §23.1, §24.3 |
 
 ---
 
@@ -155,7 +208,7 @@ For any invariant claiming `Schema` or `Both`, test through the API **and** via 
 
 When adding invariants to this catalogue:
 
-1. Assign the next sequential ID in the appropriate domain (RINV, CINV, PINV, TINV)
+1. Assign the next sequential ID in the appropriate domain (RINV, CINV, PINV, TINV, AINV)
 2. Identify the enforcement layer honestly — `Schema` only if a constraint or trigger genuinely exists
 3. Define the specific mechanism (constraint type, gate check, trigger, job)
 4. Define the violation behaviour (what the user sees, or what the system does)

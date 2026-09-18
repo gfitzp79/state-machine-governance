@@ -1169,6 +1169,323 @@ re-evaluation. Neither direction moves a score on its own.
 
 ---
 
+# PART 6: COMPLIANCE AND ASSURANCE
+
+## §21 FRAMEWORK REGISTER
+
+### §21.1 Requirements Are Records, Not Names
+
+§15 CF-2 had control objectives inherit their compliance mappings from the
+policies that referenced them. That model cannot answer the only question an
+assessor actually asks.
+
+A policy mapped to three clauses passes all three to every control beneath it.
+The system can then say a control is "ISO-mapped", but not *which clause* it
+satisfies, and therefore not what evidence to produce for any one of them. CF-3
+promises that coverage gaps become governance gaps, and that promise is
+unkeepable under inheritance: a gap cannot be detected without the set to compare
+against, and a list of framework **names** is not that set.
+
+```
+COMPLIANCE_FRAMEWORK := {
+  id, name, version,               # version is IDENTITY, see 21.3
+  authority, source_url,
+  redistributable: bool,           # see 21.2
+  licence_note: text,
+  adopted: bool                    # see 21.4
+}
+
+COMPLIANCE_REQUIREMENT := {
+  framework_id, ref,               # the identifier as the framework writes it
+  title,
+  requirement_text: text | NULL,   # NULL where the licence forbids carrying it
+  category, sort_order
+}
+
+RULE CFR-1: A requirement is a first-class record. Coverage, gaps and evidence
+            all attach to it, never to the framework as a whole.
+RULE CFR-2: Requirement identifiers are the framework's own. Do not renumber.
+RULE CFR-3: Catalogues are CONFIGURATION, loaded from a directory beside the
+            operating model. Adding a framework is a file, not a migration.
+```
+
+**§15 CF-2 is superseded.** Policies keep their own framework mappings, which
+answer a different question: which regimes this policy exists to serve. Control
+coverage is now asserted directly against requirements and is not inherited from
+anything.
+
+### §21.2 Licensing (ENFORCED, NOT DOCUMENTED)
+
+Most compliance frameworks worth mapping to are copyrighted. A specification
+that ships their text is redistributing content it has no right to, and a
+repository that says "do not add ISO content" in a README has written a policy,
+not a control.
+
+```
+RULE LIC-1: A framework catalogue declares `redistributable`.
+RULE LIC-2: redistributable = false MUST ship with NO requirement text. The
+            framework record and its identifiers may ship; the prose may not.
+RULE LIC-3: The loader REFUSES a catalogue violating LIC-2, at boot, naming the
+            file. A refusal, not a warning: a warning at boot is a warning
+            nobody reads.
+RULE LIC-4: Licensed content is imported by the operator from their own copy,
+            into the DATABASE. The importer never writes back into the
+            repository, so licensed text cannot be committed by accident.
+
+INVARIANT AINV-6: A framework whose content may not be redistributed never
+carries requirement text in the repository.
+  ENFORCEMENT: refused at catalogue load, before a single row is written.
+```
+
+| Framework | Ships with text | Why |
+|---|---|---|
+| NIST CSF 2.0, SP 800-53, SP 800-171 | **Yes** | US federal government works, not subject to domestic copyright |
+| EU instruments (DORA, NIS2, GDPR, AI Act) | Yes, with attribution | Published in the Official Journal under the EU reuse notice |
+| ISO/IEC 27001, 27002 | **No** | ISO copyright, sold per seat. Identifiers referenced only |
+| CIS Controls | **No** | Distributed under terms requiring licence acceptance |
+| PCI DSS | **No** | PCI SSC copyright |
+| SOC 2 Trust Services Criteria | **No** | AICPA copyright |
+
+This table is guidance for implementers, not legal advice. Confirm the current
+terms of anything you load.
+
+### §21.3 Version Is Identity
+
+```
+RULE CFV-1: (framework, version) is the identity of a requirement set.
+RULE CFV-2: A framework's version is IMMUTABLE once requirements are loaded.
+            Publishing a new version creates a NEW framework record.
+
+INVARIANT AINV-7: A framework version is immutable once its requirements exist.
+```
+
+ISO 27001:2013 to :2022 renumbered, merged and retired Annex A controls. Editing
+the version in place would silently re-point every existing coverage assertion at
+a clause that may no longer mean the same thing, and the Statement of
+Applicability would still look complete. A migration between versions is a
+governed exercise, not a field update.
+
+### §21.4 Adoption
+
+```
+RULE ADO-1: A loaded framework is REFERENCE MATERIAL until adopted.
+RULE ADO-2: Only an adopted framework carries assessed positions, and only
+            adopted frameworks appear in a posture figure.
+RULE ADO-3: Un-adopting does not delete assessments. It means the organisation
+            is no longer making those claims, so they stop being counted.
+
+INVARIANT AINV-8: Only an adopted framework carries an assessed position.
+```
+
+---
+
+## §22 STATEMENT OF APPLICABILITY
+
+### §22.1 Assessment States
+
+Every requirement of an adopted framework carries exactly one position. `Not
+Assessed` is a real state rather than a missing row, because "nobody has looked
+at this" is itself a finding and has to be countable.
+
+```
+REQUIREMENT_ASSESSMENT_STATES:
+  Not_Assessed     initial; nobody has taken a position
+  Not_Applicable   excluded from scope, with justification (22.2)
+  Applicable       in scope, coverage not yet established
+  Covered          a live control satisfies it (23.1)
+  Compensating     met by a time-bound compensating control (23.3)
+  Gap              applicable and not covered. An honest answer.
+```
+
+Full transition table: [state-transitions.md §9](./state-transitions.md).
+
+### §22.2 Exclusion Requires Justification
+
+```
+RULE SOA-1: Not_Applicable ALWAYS carries a documented rationale.
+RULE SOA-2: Reversing an exclusion also carries a reason: it changes the SoA.
+
+INVARIANT AINV-1: An excluded requirement always carries its justification.
+  ENFORCEMENT: CHECK constraint plus a gate precondition.
+```
+
+ISO 27001 requires a documented justification for every excluded control. An
+unexplained exclusion is the single most common finding raised against a
+Statement of Applicability, which is exactly why this is a constraint rather than
+a field somebody is encouraged to fill in.
+
+---
+
+## §23 COVERAGE
+
+### §23.1 Coverage Is Asserted, and Must Be Live
+
+```
+CONTROL_REQUIREMENT_LINK := {
+  objective_id, requirement_id,
+  coverage_level: enum(...),       # [CUSTOMISE] see 23.2
+  rationale, asserted_by, asserted_at
+}
+
+RULE COV-1: A link is a PERSON'S ASSERTION. Nothing infers coverage from a
+            shared policy, a matching control family, or a keyword. The same
+            argument as TINV-7: ambient presence is not mitigation.
+RULE COV-2: Covered REQUIRES a satisfying link whose control objective is
+            Operating AND which has a live deployment on an asset inside the
+            framework's declared scope.
+RULE COV-3: Coverage is re-checked on every write, not only on entry. A register
+            that checks once reports a posture that was true once.
+RULE COV-4: An adopted framework with NO asset in scope may not report coverage.
+
+INVARIANT AINV-2: A requirement is Covered only while a satisfying control is
+Operating and live where the requirement applies.
+
+INVARIANT AINV-9: No requirement is Covered while no asset declares itself in
+that framework's scope.
+```
+
+**Why deployment and not the objective.** An objective marked Operating proves
+the control exists somewhere. It does not prove it exists on the estate the
+requirement applies to, and an assessor samples the estate rather than the
+register. This is TINV-4's argument, applied to compliance.
+
+**Why "inside scope" and not "on every in-scope asset".** The stricter rule is
+the more flattering one to write and an unusable one to live with. Requirements
+apply to different parts of an estate, so a single global scope would leave
+almost everything permanently uncovered, and the first thing anyone would do is
+stop declaring scope at all. Asset-level shortfall is REPORTED against the
+requirement instead, where it informs rather than blocks. The choice is the same
+one made for environmental context in §19.4.
+
+### §23.2 Partial Coverage Is a Gap
+
+```
+# [CUSTOMISE] Exactly what each level means is yours; that a non-satisfying
+# level exists is not.
+COVERAGE_LEVELS:
+  Full           satisfies: true    time_bound: false
+  Partial        satisfies: false   time_bound: false
+  Compensating   satisfies: true    time_bound: true
+
+RULE COV-5: A requirement resting only on non-satisfying links is NOT covered.
+RULE COV-6: Status is derived from the WHOLE link set. Downgrading the last
+            satisfying link re-opens the requirement rather than leaving a
+            Covered position resting on nothing.
+
+INVARIANT AINV-3:  Partial coverage is a gap, never coverage.
+INVARIANT AINV-10: A coverage assertion always uses a configured level.
+```
+
+This is TM-PARTIAL for compliance, and it exists for the same reason: a
+requirement half-satisfied is a requirement not satisfied. Giving partial
+coverage a status of its own would let it close out a Statement of Applicability.
+
+### §23.3 Compensating Coverage Is Never Permanent
+
+```
+RULE COV-7: A compensating position ALWAYS carries an expiry, within the
+            configured maximum.
+RULE COV-8: Expiry without replacement returns the requirement to Gap.
+
+INVARIANT AINV-4: A compensating position is never permanent.
+```
+
+The same principle as RINV-4 for risk acceptance and TINV-5 for threat
+acceptance. A temporary answer that never expires is a permanent answer nobody
+agreed to.
+
+---
+
+## §24 CONTROL ASSURANCE ATTRIBUTES
+
+### §24.1 Automation Caps Effectiveness
+
+A control objective carrying only a title, family and owner cannot be assessed,
+only admired. These attributes are the ones an assessor asks for, and two of them
+constrain what the control may claim.
+
+```
+CONTROL_OBJECTIVE (additional attributes):
+  objective_statement   what "working" means, in terms a test can be written against
+  automation_level      enum(Manual, Semi_Automated, Automated)     # [CUSTOMISE]
+  implementation_type   enum(Technical, Administrative, Physical)   # [CUSTOMISE]
+  operating_frequency   how often the control RUNS                  # [CUSTOMISE]
+  assurance_method      how its operation is evidenced (24.2)
+  is_key_control        bool
+
+CONTROL_ACTIVITY (additional attributes):
+  automation_level      may differ from the objective's headline figure
+  operating_frequency
+  procedure_ref         where the runbook lives
+  tooling               which system performs it
+  evidence_type         what it produces when it runs               # [CUSTOMISE]
+
+# [CUSTOMISE] The highest CE each automation level may hold.
+AUTOMATION_CE_CEILING:
+  Manual:          CE-Medium
+  Semi_Automated:  CE-High
+  Automated:       CE-High
+
+RULE CA-1: operating_frequency is how often the control RUNS.
+           test_frequency is how often somebody CHECKS that it ran.
+           Conflating them is how "tested annually" gets read as
+           "performed annually".
+
+INVARIANT CINV-11: Control effectiveness never exceeds the ceiling its
+automation level supports.
+```
+
+A manual control's evidence describes the last time a person performed it. That
+says nothing about the occasion nobody does, which is the occasion the control
+exists for. Without a ceiling, a spreadsheet reviewed quarterly can claim the
+same effectiveness as an enforced platform policy, and buy the same likelihood
+reduction under RINV-9.
+
+### §24.2 Assurance Method
+
+```
+# [CUSTOMISE] Ordered weakest to strongest. The ORDER is what CINV-12 reads.
+ASSURANCE_METHODS: Inquiry < Observation < Inspection < Re_Performance
+KEY_CONTROL_MINIMUM_ASSURANCE: Inspection
+
+RULE CA-2: A key control may not evidence a requirement on assurance weaker
+           than the configured floor.
+
+INVARIANT CINV-12: A key control never evidences a requirement on assurance
+weaker than the floor.
+```
+
+Asking somebody whether a control works is not the same as watching it work, and
+neither is the same as performing it yourself against a sample. The floor is
+configurable; that there is a floor is not.
+
+### §24.3 Compliance Cascade Engine
+
+```
+TRIGGER compliance_coverage_revoked:
+  WHEN: a control objective enters Failure, or is Deprecated
+  FOR EVERY requirement covered by a satisfying link to that objective:
+    IF no OTHER Operating control satisfies it:
+      assessment.state = Gap
+      assessment.gap_reason = <the control and what happened>
+      notify(requirement owner)
+
+INVARIANT AINV-5: A failing or retired control revokes the compliance coverage
+that rested on it.
+```
+
+This is the cascade that makes the module something other than a mapping table.
+A control failing is not merely a control problem: every requirement whose
+coverage rested on it stops being covered at the same moment, and a Statement of
+Applicability that still reads *Covered* the next morning is asserting something
+untrue.
+
+Note the "no OTHER Operating control" clause. Revoking coverage a second control
+still provides would report a gap that does not exist, and a compliance figure
+loses trust faster from a false alarm than from a missed one.
+
+---
+
 # APPENDICES
 
 ## Appendix A: Scoring Matrix (5x5)

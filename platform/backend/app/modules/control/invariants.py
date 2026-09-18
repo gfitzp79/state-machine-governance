@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.core.governance import CE_RATING_NAMES, governance
 from app.engine import BOTH, SCHEMA, SERVICE, Invariant, invariants
 from app.engine.scoring import ScoringEngine
 from app.modules.control.models import ControlDeployment, ControlObjective
@@ -117,6 +118,34 @@ def _always(entity, _ctx) -> bool:
     return True
 
 
+def _ce_within_automation_ceiling(dep, _ctx) -> bool:
+    """CINV-11: a control cannot claim more effectiveness than its automation
+    level supports.
+
+    A manual control's evidence describes the last time a person performed it.
+    That says nothing about the occasion nobody does, which is the occasion the
+    control exists for. The ceiling is configurable per level; that there is a
+    ceiling is not, because without one a spreadsheet reviewed quarterly can
+    claim the same effectiveness as an enforced platform policy and buy the same
+    likelihood reduction under RINV-9.
+    """
+    objective = None
+    activity = getattr(dep, "activity", None)
+    if activity is not None:
+        objective = getattr(activity, "objective", None)
+    if objective is None:
+        return True
+
+    ceilings = governance.automation_ce_ceiling
+    ceiling = ceilings.get(objective.automation_level)
+    if ceiling is None:
+        return True
+    order = list(CE_RATING_NAMES)
+    if dep.ce_rating not in order or ceiling not in order:
+        return True
+    return order.index(dep.ce_rating) <= order.index(ceiling)
+
+
 invariants.register(
     Invariant(
         id="CINV-1",
@@ -221,5 +250,22 @@ invariants.register(
         violation="Automatic downgrade; Risk Analyst notified",
         spec_ref="codified-rules section 10.2",
         holds=_expired_ce_downgraded,
+    ),
+    Invariant(
+        id="CINV-11",
+        entity=DEPLOYMENT,
+        rule=(
+            "Control effectiveness never exceeds the ceiling its automation level "
+            "supports"
+        ),
+        layer=SERVICE,
+        mechanism=(
+            "CE compared against controls.automation_ce_ceiling for the parent "
+            "objective's automation level. A manual control cannot hold the top "
+            "rating however good its last test."
+        ),
+        violation="CE rating rejected; raise the automation level or lower the claim",
+        spec_ref="codified-rules section 24.1",
+        holds=_ce_within_automation_ceiling,
     ),
 )

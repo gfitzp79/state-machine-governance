@@ -16,6 +16,8 @@ from app.db_init import bootstrap
 
 # Importing the modules registers their invariants and cascade handlers.
 from app.modules import cascades as _cascades  # noqa: F401
+from app.modules.compliance import invariants as _compliance_invariants  # noqa: F401
+from app.modules.compliance import router as compliance_router
 from app.modules.control import invariants as _control_invariants  # noqa: F401
 from app.modules.control import router as control_router
 from app.modules.dashboard import router as dashboard_router
@@ -114,6 +116,7 @@ for r in (
     policy_router.exceptions_router,
     treatment_router.router,
     threat_router.router,
+    compliance_router.router,
     dashboard_router.router,
 ):
     app.include_router(r, prefix="/api")

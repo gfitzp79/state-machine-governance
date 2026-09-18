@@ -47,7 +47,7 @@ docker compose up -d
 Open <http://localhost:8080> and sign in as `analyst@example.com` / `changeme123`.
 Docker is the only prerequisite.
 
-**8 state machines · 53 gated transitions · 46 invariants · 24 cascade events**,
+**9 state machines · 65 gated transitions · 57 invariants · 28 cascade events**,
 served live from the running engine at `/api/engine/*` rather than transcribed
 into a document that can drift.
 

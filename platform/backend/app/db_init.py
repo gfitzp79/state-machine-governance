@@ -59,6 +59,7 @@ def _install_immutability_triggers(connection) -> None:
 def bootstrap() -> None:
     """Create the schema on first boot, install triggers, seed demo data."""
     # Importing every model module first so create_all sees the full metadata.
+    from app.modules.compliance import models as _compliance  # noqa: F401
     from app.modules.control import models as _control  # noqa: F401
     from app.modules.identity import models as _identity  # noqa: F401
     from app.modules.policy import models as _policy  # noqa: F401
@@ -74,6 +75,25 @@ def bootstrap() -> None:
     with engine.begin() as connection:
         _install_immutability_triggers(connection)
     logger.info("append-only triggers installed on %s", ", ".join(APPEND_ONLY_TABLES))
+
+    # Framework catalogues load on every boot, not only a fresh one: adding a
+    # catalogue file should be enough to make it available. The loader is
+    # idempotent and matches on (framework, ref), so re-running it never
+    # disturbs an assessment already recorded against a requirement.
+    #
+    # AINV-6 is enforced inside it, and a refusal is deliberately fatal. A
+    # licence breach that logs a warning and boots anyway is the failure mode
+    # this whole project argues against.
+    from app.modules.compliance.loader import load_catalogues
+
+    session = SessionLocal()
+    try:
+        loaded = load_catalogues(session)
+        session.commit()
+        if loaded:
+            logger.info("compliance catalogues loaded: %s", ", ".join(loaded))
+    finally:
+        session.close()
 
     if fresh and settings.seed_demo_data:
         from app.seed import seed
