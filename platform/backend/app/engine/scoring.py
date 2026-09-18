@@ -307,10 +307,19 @@ class ScoringEngine:
 
     @classmethod
     def required_approver(cls, rating: str | None) -> str | None:
+        """Minimum organisational seniority permitted to accept at this rating."""
         if not rating:
             return None
         rule = ACCEPTANCE_RULES.get(rating)
         return rule["approver"] if rule else None
+
+    @classmethod
+    def max_renewals(cls, rating: str | None) -> int:
+        """How many times an acceptance may be extended before the risk must be
+        treated rather than carried again (codified-rules section 5.5)."""
+        if not rating:
+            return 0
+        return int(ACCEPTANCE_RULES.get(rating, {}).get("max_renewals", 0))
 
     @classmethod
     def matrix(cls) -> list[dict[str, Any]]:

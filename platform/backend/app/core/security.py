@@ -15,7 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, Header
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -50,9 +51,17 @@ def create_token(user_id: str, email: str, roles: list[str]) -> str:
 
 
 def decode_token(token: str) -> dict[str, Any]:
+    """Decode and verify. The algorithm allow-list is a single pinned value, so
+    the `alg` header in the token is never trusted: neither `alg: none` nor
+    RS256-to-HS256 confusion is reachable."""
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError as exc:
+        return jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"require": ["exp", "sub"]},
+        )
+    except InvalidTokenError as exc:
         raise Forbidden("invalid or expired token") from exc
 
 

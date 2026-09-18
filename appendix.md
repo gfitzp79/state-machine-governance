@@ -13,8 +13,8 @@ This appendix contains content that supplements the dedicated specification, arc
 | Full relational schema with DDL (39 tables, 7 domains) | [architecture/data-model.md](./architecture/data-model.md) |
 | Platform overview (lifecycle, cascade, RBAC) | [architecture/reference-architecture.md](./architecture/reference-architecture.md) |
 | AI tool lifecycle governance | [architecture/ai-tool-lifecycle.md](./architecture/ai-tool-lifecycle.md) |
-| Agentic SaaS deployment | [architecture/deployment-saas.md](./architecture/deployment-saas.md) |
-| Self-hosted deployment | [architecture/deployment-self-hosted.md](./architecture/deployment-self-hosted.md) |
+| Agentic SaaS deployment | [architecture/architecture-deployment-saas.md](./architecture/architecture-deployment-saas.md) |
+| Self-hosted deployment | [architecture/architecture-deployment-self-hosted.md](./architecture/architecture-deployment-self-hosted.md) |
 | Shared responsibility model | [architecture/shared-responsibility.md](./architecture/shared-responsibility.md) |
 | Methodology | [methodology/specification-driven-dev.md](./methodology/specification-driven-dev.md) |
 | Prompt cycle and agent optimisation | [methodology/prompt-cycle.md](./methodology/prompt-cycle.md) |
@@ -30,7 +30,7 @@ Under the Digital Operational Resilience Act, regulated entities must demonstrat
 | DORA Requirement | Article | State Machine Implementation |
 |---|---|---|
 | Continuous ICT risk monitoring with documented response | Article 9 | Cross-entity FK propagation: issues and findings cascade to risk records. Response enforced by phase gate. |
-| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress — see [APPENDIX.md#vulnerability-management](./APPENDIX.md#vulnerability-management) for the adjacent pattern. |
+| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress — see [appendix.md](./appendix.md#vulnerability-management) for the adjacent pattern. |
 | ICT risk management framework maintained and reviewed | Article 6 | Framework codified as machine-readable rule set. Changes trigger re-assessment cascade on all mapped controls and risks. |
 | Register of information on ICT third-party service providers | Article 28 | Third-party risk module: schema extension defined, state machine specified. See [Third-Party Risk](#third-party-risk) below. |
 | Change management with defined controls | Article 9 | AI Tool Lifecycle: versioning strategy enforced at Build gate. Breaking changes require Pre-Production re-entry before Production promotion. |

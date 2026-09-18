@@ -125,7 +125,7 @@ def create_objective(
 
 
 @router.get("/machines")
-def machines() -> dict[str, Any]:
+def machines(user: CurrentUser) -> dict[str, Any]:
     return {
         "objective": CONTROL_OBJECTIVE_MACHINE.describe(),
         "activity": CONTROL_ACTIVITY_MACHINE.describe(),
@@ -134,7 +134,7 @@ def machines() -> dict[str, Any]:
 
 
 @router.get("/reference-data")
-def reference_data() -> dict[str, Any]:
+def reference_data(user: CurrentUser) -> dict[str, Any]:
     from app.engine.scoring import CE_EXPIRY_MONTHS, CE_MAX_LIKELIHOOD_REDUCTION
 
     return {

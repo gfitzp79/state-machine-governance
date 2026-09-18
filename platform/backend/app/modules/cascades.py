@@ -336,6 +336,66 @@ def _reopen_scenarios_for_deployment(event: CascadeEvent, deployment_id: str, so
             )
 
 
+@cascades.on(
+    "threat.scenario_mitigated",
+    "Threat mitigated: flag every risk record carrying it as re-evaluation eligible "
+    "(codified-rules section 20.3)",
+)
+def threat_scenario_mitigated(event: CascadeEvent) -> None:
+    """The return leg of the threat-risk loop.
+
+    A control failure re-opens scenarios and strips sign-off. The inverse has to
+    be true as well, or the loop is one-directional: when a threat the register
+    carries is genuinely mitigated, the risk that carries it needs to know.
+
+    The residual score is deliberately NOT updated. Eligibility is not
+    validation, and RINV-1 still requires all five conditions of
+    GATE_RESIDUAL_VALIDATED before a residual can move.
+    """
+    from app.modules.risk.models import Risk
+    from app.modules.threat.models import ThreatScenario
+
+    scenario = event.session.get(ThreatScenario, event.entity_id)
+    if scenario is None:
+        return
+
+    # Every risk carrying this exposure, whether by promotion or by reference.
+    risk_ids = {link.risk_id for link in scenario.risk_links}
+    if scenario.promoted_risk_id:
+        risk_ids.add(scenario.promoted_risk_id)
+    if not risk_ids:
+        return
+
+    risks = (
+        event.session.query(Risk)
+        .filter(Risk.id.in_(risk_ids))
+        .filter(Risk.lifecycle_state != "Closed")
+        .all()
+    )
+    for risk in risks:
+        risk.control_change_flag = "Linked_Threat_Mitigated"
+        risk.control_change_detail = (
+            "Threat scenario " + scenario.reference + " is now fully mitigated by a "
+            "live control. This risk is eligible for residual re-evaluation; the "
+            "full validation gate still applies (RINV-1)."
+        )
+        _notify_risk_stakeholders(
+            event,
+            risk,
+            "linked_threat_mitigated",
+            "Linked threat mitigated on " + risk.reference,
+            scenario.reference + " is fully mitigated. Residual re-evaluation is "
+            "eligible but not automatic.",
+        )
+        event.record(
+            "risk",
+            risk.id,
+            "Flagged re-evaluation eligible on " + risk.reference
+            + "; residual NOT auto-updated (RINV-1)",
+            invariant="RINV-1",
+        )
+
+
 @cascades.on("threat_model.reopened", "Threat model returned to Review: strip both sign-offs")
 def threat_model_reopened(event: CascadeEvent) -> None:
     from app.modules.threat.models import ThreatModel

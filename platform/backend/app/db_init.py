@@ -24,6 +24,7 @@ APPEND_ONLY_TABLES = (
     "policy_versions",
     "control_tests",
     "treatment_checkins",
+    "threat_scenario_evidence",
 )
 
 IMMUTABILITY_FUNCTION = """

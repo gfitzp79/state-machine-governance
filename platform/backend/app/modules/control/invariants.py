@@ -84,7 +84,35 @@ def _expired_ce_downgraded(dep: ControlDeployment, _ctx) -> bool:
     return not ScoringEngine.ce_expired(dep.ce_assessed_at, dep.test_frequency)
 
 
-# CINV-3 / CINV-5 / CINV-7 / CINV-9 --------------------------------------
+# CINV-3 ------------------------------------------------------------------
+def _owner_not_risk_owner(obj: ControlObjective, ctx) -> bool:
+    """SEP-3, from the control side.
+
+    RINV-3 stops a risk being assigned to someone who owns a control feeding its
+    score. This is the other direction: assigning control ownership to someone
+    who already owns a linked risk. Without it the rule is trivially defeated by
+    doing the two assignments in the opposite order.
+    """
+    if not obj.control_owner_id:
+        return True
+    from app.modules.risk.models import Risk, RiskControlLink
+
+    session = getattr(ctx, "session", None)
+    if session is None:
+        return True
+    links = session.query(RiskControlLink).filter(
+        RiskControlLink.objective_id == obj.id
+    ).all()
+    if not links:
+        return True
+    owners = {
+        r.risk_owner_id
+        for r in session.query(Risk).filter(Risk.id.in_([l.risk_id for l in links])).all()
+    }
+    return obj.control_owner_id not in owners
+
+
+# CINV-5 / CINV-7 / CINV-9 ------------------------------------------------
 def _always(entity, _ctx) -> bool:
     return True
 
@@ -114,11 +142,15 @@ invariants.register(
         id="CINV-3",
         entity=OBJECTIVE,
         rule="A Control Owner is never assigned as Risk Owner for a linked risk",
-        layer=BOTH,
-        mechanism="Bidirectional check; the risk-side half is RINV-3",
+        layer=SERVICE,
+        mechanism=(
+            "Control owner checked against the risk owner of every linked risk. "
+            "The risk-side half is RINV-3; both directions are needed or the rule "
+            "is defeated by ordering the two assignments the other way round."
+        ),
         violation="Assignment rejected",
         spec_ref="codified-rules section 2.2 (SEP-3)",
-        holds=_always,
+        holds=_owner_not_risk_owner,
     ),
     Invariant(
         id="CINV-4",

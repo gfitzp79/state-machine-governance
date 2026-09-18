@@ -160,15 +160,33 @@ def dashboard(session: DbSession, user: CurrentUser) -> dict[str, Any]:
 
 
 @router.get("/config")
-def governance_config() -> dict[str, Any]:
-    # The whole configured operating model, served unauthenticated so the
-    # sign-in page can carry the organisation's name. Contains no data, only
-    # the taxonomy and thresholds from config/governance.yml.
+def public_config() -> dict[str, Any]:
+    """Branding only, and deliberately nothing else.
+
+    The sign-in page needs the organisation's name before anyone has
+    authenticated. It does not need the appetite model, the role hierarchy or
+    the separation-of-duties design, so this returns the former and withholds
+    the latter. The full model is at /api/config/governance behind authentication.
+    """
+    return {
+        "organisation": {
+            "name": governance.organisation_name,
+            "short_name": governance.organisation_short_name,
+            "tagline": governance.organisation_tagline,
+        }
+    }
+
+
+@router.get("/config/governance")
+def governance_config(user: CurrentUser) -> dict[str, Any]:
+    """The whole configured operating model: taxonomy, thresholds, roles and
+    escalation windows from config/governance.yml. Contains no record data, but
+    it does describe how this organisation governs, which is not public."""
     return governance.public()
 
 
 @router.get("/engine/machines")
-def machines() -> dict[str, Any]:
+def machines(user: CurrentUser) -> dict[str, Any]:
     """Every lifecycle in the platform, as the engine holds it."""
     return {
         "risk": RISK_MACHINE.describe(),
@@ -183,7 +201,7 @@ def machines() -> dict[str, Any]:
 
 
 @router.get("/engine/invariants")
-def invariant_catalogue() -> dict[str, Any]:
+def invariant_catalogue(user: CurrentUser) -> dict[str, Any]:
     """The live catalogue. Every entry here is evaluated on writes to its entity."""
     catalogue = invariants.catalogue()
     by_entity: dict[str, list[dict[str, Any]]] = {}
@@ -193,12 +211,12 @@ def invariant_catalogue() -> dict[str, Any]:
 
 
 @router.get("/engine/cascades")
-def cascade_registry() -> dict[str, Any]:
+def cascade_registry(user: CurrentUser) -> dict[str, Any]:
     return {"events": cascades.registered()}
 
 
 @router.get("/engine/scoring")
-def scoring_model() -> dict[str, Any]:
+def scoring_model(user: CurrentUser) -> dict[str, Any]:
     from app.engine.scoring import (
         ACCEPTANCE_RULES,
         CE_EXPIRY_MONTHS,

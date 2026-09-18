@@ -20,3 +20,12 @@ Desktop.ini
 # Temporary files
 *.tmp
 *.temp
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp

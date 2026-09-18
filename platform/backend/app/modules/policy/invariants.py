@@ -114,7 +114,9 @@ invariants.register(
         id="PINV-4",
         entity=POLICY,
         rule="Compliance-mapped policies carry an Annual review cycle",
-        layer=BOTH,
+        # Service only: the rule depends on the contents of a jsonb column, which
+        # a CHECK constraint cannot evaluate meaningfully.
+        layer=SERVICE,
         mechanism="Service validates the cycle against the mapped frameworks on save",
         violation="Save rejected if Biennial is selected for a compliance-mapped policy",
         spec_ref="codified-rules section 15 (CF-4)",

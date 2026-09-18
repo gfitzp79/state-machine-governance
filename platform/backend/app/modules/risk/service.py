@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any
 
 from app.core.errors import Conflict, DomainError, NotFound
+from app.core.governance import governance
 from app.core.service import LifecycleService
 from app.engine import AuditTrail
 from app.engine.scoring import ScoringEngine
@@ -172,6 +173,45 @@ class RiskService(LifecycleService[Risk]):
                     detail={"max_expiry": ceiling.isoformat()},
                 )
             data["acceptance_expiry_date"] = expiry
+
+            # The approval level is part of the rule, not decoration. An
+            # acceptance approved below the required seniority is not an
+            # acceptance (codified-rules section 5.5, section 2.3).
+            required = ScoringEngine.required_approver(rating)
+            approver_id = data.get("acceptance_approved_by") or risk.acceptance_approved_by
+            if required:
+                if not approver_id:
+                    raise Conflict(
+                        "Acceptance at " + str(rating) + " requires approval at "
+                        + required + " or above. Record the approver."
+                    )
+                from app.modules.identity.models import User
+
+                approver = self.session.get(User, approver_id)
+                if approver is None:
+                    raise NotFound("approver not found")
+                ladder = list(governance.seniority_ladder)
+                if approver.seniority not in ladder or ladder.index(
+                    approver.seniority
+                ) < ladder.index(required):
+                    raise Conflict(
+                        "Acceptance at " + str(rating) + " requires approval at "
+                        + required + " or above. " + approver.full_name + " is "
+                        + str(approver.seniority) + ".",
+                        detail={"required": required, "actual": approver.seniority},
+                    )
+
+            # Renewal caps: an exposure carried repeatedly is one nobody intends
+            # to treat, which is the thing the cap exists to surface.
+            cap = ScoringEngine.max_renewals(rating)
+            if risk.acceptance_reassessment_count > cap:
+                raise Conflict(
+                    "A " + str(rating) + " risk may be accepted at most "
+                    + str(cap + 1) + " time(s). This risk has been re-assessed "
+                    + str(risk.acceptance_reassessment_count)
+                    + " times and must now be treated, transferred or avoided.",
+                    detail={"renewals": risk.acceptance_reassessment_count, "cap": cap},
+                )
 
         self.apply(
             risk,

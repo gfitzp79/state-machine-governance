@@ -184,7 +184,7 @@ Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 
 ## What is implemented
 
-**8 state machines · 53 gated transitions · 40 invariants · 23 cascade events**
+**8 state machines · 53 gated transitions · 46 invariants · 24 cascade events**
 
 | Lifecycle | States | Source |
 |---|---|---|
@@ -197,15 +197,17 @@ Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 | Treatment | Proposed → Validated → Approved → In_Progress → Complete | §5.2 |
 | Threat model | Scope → Decomposition → Threat_Analysis → Mitigation_Design → Review ⇄ Active | §7 |
 
-Invariants: **RINV-1..13**, **CINV-1..10**, **PINV-1..9**, **TINV-1..6**, plus
-SEP-1 and PE-5. Every one is listed at `/api/engine/invariants` with its
-enforcement layer and mechanism.
+Invariants: **RINV-1..13**, **CINV-1..10**, **PINV-1..9**, **TINV-1..11**, plus
+**SEP-1**, **PE-5** and **TM-PARTIAL**. Every one is listed at
+`/api/engine/invariants` with its enforcement layer and mechanism, and the
+layer it declares is the layer it actually uses.
 
 ### Enforced at the database layer
 
 Append-only tables, guarded by triggers that reject `UPDATE` and `DELETE`
 regardless of how the row is reached: `audit_log`, `risk_phase_history`,
-`policy_versions`, `control_tests`, `treatment_checkins`.
+`policy_versions`, `control_tests`, `treatment_checkins`,
+`threat_scenario_evidence`.
 
 Named `CHECK` constraints that back service-layer rules, including
 `ck_risks_acceptance_time_bound` (RINV-4), `ck_risks_critical_never_accepted`
@@ -236,8 +238,8 @@ The smoke test walks every claim above against a live API, including the full
 cascade and direct-SQL attempts to bypass the service layer.
 
 ```bash
-docker compose exec api python config_test.py     # 32 tests: the configuration layer
-docker compose exec api python smoke_test.py      # 80 tests: the enforcement layer
+docker compose exec api python config_test.py     # 33 tests: the configuration layer
+docker compose exec api python smoke_test.py      # 126 tests: the enforcement layer
 ```
 
 `config_test.py` proves both halves of configurability: that invalid governance
@@ -251,7 +253,8 @@ docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py
 ```
 
-Expect **32 passed** and **80 passed**, zero failures.
+Expect **33 passed** and **126 passed**, zero failures. CI asserts the counts
+published above against the code, so this section cannot drift again.
 
 ---
 
@@ -301,7 +304,7 @@ port to serve on.
 | `JWT_SECRET` | `dev-secret-change-me` | **Change this.** `openssl rand -hex 32` |
 | `JWT_TTL_MINUTES` | `720` | Session lifetime |
 | `SEED_DEMO_DATA` | `true` | Set `false` for a real deployment |
-| `CORS_ORIGINS` | `http://localhost:8080` | Comma-separated; must match how the UI is reached |
+| `CORS_ORIGINS` | `http://localhost:8080` | Only consulted if something calls the API from another origin. The bundled UI goes through the nginx proxy on the same origin, so in the default topology this is unused. |
 | `WEB_PORT` | `8080` | Host port for the UI |
 | `POSTGRES_USER` / `_PASSWORD` / `_DB` | `grc` | Database credentials |
 | `GOVERNANCE_CONFIG_FILE` | `./config/governance.yml` | Point at your own file to keep it outside the checkout |

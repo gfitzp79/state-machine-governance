@@ -62,12 +62,17 @@ scoring:
 # The baseline refuses it at Critical only. Setting it false on High as well is
 # a legitimate tightening; the invariant picks it up with no code change.
 # ---------------------------------------------------------------------------
+#   approver      minimum seniority from roles.seniority_ladder that may approve
+#                 the acceptance. Enforced against the approver's own seniority.
+#                 null on an unacceptable band.
+#   max_renewals  how many times an acceptance may be re-assessed and extended
+#                 before it must be treated rather than carried again.
 acceptance:
-  Critical:     { acceptable: false, max_days: 0,   approver: null }
-  High:         { acceptable: true,  max_days: 90,  approver: C-level }
-  Moderate:     { acceptable: true,  max_days: 180, approver: VP }
-  Moderate-Low: { acceptable: true,  max_days: 360, approver: Director }
-  Low:          { acceptable: true,  max_days: 365, approver: Risk_Owner }
+  Critical:     { acceptable: false, max_days: 0,   approver: null,     max_renewals: 0 }
+  High:         { acceptable: true,  max_days: 90,  approver: C-level,  max_renewals: 1 }
+  Moderate:     { acceptable: true,  max_days: 180, approver: VP,       max_renewals: 1 }
+  Moderate-Low: { acceptable: true,  max_days: 360, approver: Director, max_renewals: 2 }
+  Low:          { acceptable: true,  max_days: 365, approver: Director, max_renewals: 99 }
 
 # ---------------------------------------------------------------------------
 # Control effectiveness
@@ -107,11 +112,15 @@ control_effectiveness:
 risk:
   # NIST RMF organisational tiers. Rename or reduce to match your model; impact
   # is scored within the selected tier's scope boundary (IMP-1).
+  #
+  # Quote any value containing a comma. In YAML flow mappings (the { } form) an
+  # unquoted comma ends the value and starts a new key, which turns a sentence
+  # into silent extra nulls rather than an error.
   tiers:
-    - { id: Tier_1, label: Organisation,       description: Enterprise-wide or cross-functional systemic risk }
-    - { id: Tier_2, label: Mission/Process,    description: Business process, mission area, or operational domain }
-    - { id: Tier_3, label: Information System, description: Specific system, platform, or application }
-    - { id: Tier_4, label: Component,          description: Individual component, service, or interface }
+    - { id: Tier_1, label: "Organisation",       description: "Enterprise-wide or cross-functional systemic risk" }
+    - { id: Tier_2, label: "Mission/Process",    description: "Business process, mission area, or operational domain" }
+    - { id: Tier_3, label: "Information System", description: "Specific system, platform, or application" }
+    - { id: Tier_4, label: "Component",          description: "Individual component, service, or interface" }
 
   # Authoritative intake sources. Items arriving by any other route are triaged
   # into alternate governance rather than the register.
@@ -220,7 +229,7 @@ policy:
 
 # ---------------------------------------------------------------------------
 # Threat management
-# Specification: codified-rules section 19
+# Specification: codified-rules sections 19-20
 # ---------------------------------------------------------------------------
 threat:
   # TINV-5: maximum window for a local acceptance of a Low severity scenario.
@@ -230,6 +239,100 @@ threat:
   minimum_promotable_severity: Medium
   # Days an unaddressed Medium+ scenario may sit before auto-promotion.
   auto_promotion_days: 15
+
+  # -- decomposition attributes --------------------------------------------
+  #
+  # A component is not just a box on a diagram. What data it handles and where
+  # it sits determine what a compromise costs, so both are first-class
+  # attributes rather than free text in a description.
+
+  # Ordered least to most sensitive. The order is what TINV-9 and TINV-11 read.
+  data_classifications:
+    - Public
+    - Internal
+    - Confidential
+    - Restricted
+
+  # Components at or above this classification must sit inside a declared trust
+  # zone (TINV-9) and must have at least one threat scenario before the model
+  # can be signed off (TINV-11). You decomposed it, so you thought about it.
+  sensitive_classification_threshold: Confidential
+
+  # Where a component lives. Ordered least to most trusted; a data flow that
+  # crosses zones is where the interesting threats are.
+  trust_zones:
+    - { id: Public_Internet,    label: "Public internet",     trust: 0 }
+    - { id: DMZ,                label: "DMZ / edge",          trust: 1 }
+    - { id: Third_Party,        label: "Third-party managed", trust: 1 }
+    - { id: Internal_Network,   label: "Internal network",    trust: 2 }
+    - { id: Restricted_Enclave, label: "Restricted enclave",  trust: 3 }
+
+  # How reachable the component is. Informs, but never sets, severity.
+  exposure_levels:
+    - Internet_Facing
+    - Partner_Facing
+    - Internal_Only
+    - Isolated
+
+  # Data categories a component may handle. Drives the regulatory view of what a
+  # compromise triggers. Replace with your own data taxonomy.
+  data_types:
+    - PII
+    - Payment_Card
+    - Health
+    - Credentials
+    - Financial_Records
+    - Intellectual_Property
+    - Operational_Telemetry
+    - Public_Content
+
+  # -- environmental context ------------------------------------------------
+  #
+  # Threat modelling is not performed in isolation, but the existing control
+  # posture is INFORMATIVE, never determinative. Identification happens against
+  # the architecture as designed, not as currently defended; otherwise a
+  # well-controlled system looks threat-free and the record of the threat
+  # disappears the moment the control fails.
+  #
+  # This is the threat-modelling analogue of LKH-3, which scores inherent
+  # likelihood with no control adjustment.
+  context:
+    # Surface the asset's control and risk posture during decomposition and
+    # analysis. Setting this false hides the context panel entirely; it never
+    # changes how scenarios are identified or scored.
+    show_environmental_context: true
+    # A deployment whose CE is at or below this is reported as a coverage gap
+    # rather than as coverage.
+    weak_coverage_at_or_below: CE-Low
+    # Control families considered relevant to each STRIDE category. Used only to
+    # rank the coverage panel; it never links, mitigates or excludes anything.
+    #
+    # These names must exist in controls.families above. If you replace your
+    # control taxonomy, replace this map with it: a hint pointing at a family
+    # that no longer exists ranks nothing, silently, which is worse than no hint
+    # at all. The loader refuses to start rather than let that happen.
+    stride_control_families:
+      Spoofing: [Identity_Management, Access_Control]
+      Tampering: [Data_Protection, Cryptography, Application_Security]
+      Repudiation: [Logging_Monitoring, Identity_Management]
+      Information_Disclosure: [Data_Protection, Cryptography, Access_Control]
+      Denial_of_Service: [Network_Security, Business_Continuity]
+      Elevation_of_Privilege: [Access_Control, Identity_Management, Vulnerability_Management]
+
+  # How a scenario may relate to an existing risk record. Most threats on a
+  # mature system map to risks that already exist; minting a duplicate for each
+  # one corrupts the register (TINV-8).
+  #
+  #   creates_risk      this link type mints a new register entry. Exactly one
+  #                     type may do this, and it is the promotion action.
+  #   resolves_scenario the register demonstrably carries this exposure, so the
+  #                     scenario has reached a permitted end state (TINV-1).
+  #                     Whether the record was created now or already existed
+  #                     makes no governance difference.
+  risk_link_types:
+    - { id: Represents,     label: "Is represented by this risk", creates_risk: false, resolves_scenario: true }
+    - { id: Contributes_To, label: "Contributes to this risk",    creates_risk: false, resolves_scenario: false }
+    - { id: Promoted_From,  label: "Was promoted into this risk", creates_risk: true,  resolves_scenario: true }
 
 # ---------------------------------------------------------------------------
 # Roles and separation of duties
@@ -241,21 +344,21 @@ threat:
 # ---------------------------------------------------------------------------
 roles:
   definitions:
-    - { id: Auditor,              level: 0, description: Read-only assurance access }
-    - { id: Control_Operator,     level: 1, description: Implements and operates controls }
-    - { id: Control_Owner,        level: 2, description: Owns control design and effectiveness evidence }
-    - { id: Risk_Treatment_Owner, level: 2, description: Accountable for treatment delivery }
-    - { id: AppSec_Engineer,      level: 2, description: Application security engineering }
-    - { id: Risk_Analyst,         level: 3, description: Assessment, scoring, validation, SLA tracking }
-    - { id: GRC_Engineer,         level: 3, description: Treatment feasibility, tooling, specification }
-    - { id: Security_SME,         level: 3, description: Threat landscape and architecture advisory }
-    - { id: System_Owner,         level: 3, description: Accountable for a system or service }
-    - { id: Policy_Owner,         level: 3, description: Owns policy content and review cycle }
-    - { id: AppSec_Lead,          level: 4, description: Application security leadership and sign-off }
-    - { id: Risk_Owner,           level: 4, description: Owns the risk decision and the residual }
-    - { id: Risk_Stakeholder,     level: 5, description: Senior oversight and escalation }
-    - { id: CISO,                 level: 6, description: Policy approval and governance authority }
-    - { id: Admin,                level: 7, description: Platform administration }
+    - { id: Auditor,              level: 0, description: "Read-only assurance access" }
+    - { id: Control_Operator,     level: 1, description: "Implements and operates controls" }
+    - { id: Control_Owner,        level: 2, description: "Owns control design and effectiveness evidence" }
+    - { id: Risk_Treatment_Owner, level: 2, description: "Accountable for treatment delivery" }
+    - { id: AppSec_Engineer,      level: 2, description: "Application security engineering" }
+    - { id: Risk_Analyst,         level: 3, description: "Assessment, scoring, validation, SLA tracking" }
+    - { id: GRC_Engineer,         level: 3, description: "Treatment feasibility, tooling, specification" }
+    - { id: Security_SME,         level: 3, description: "Threat landscape and architecture advisory" }
+    - { id: System_Owner,         level: 3, description: "Accountable for a system or service" }
+    - { id: Policy_Owner,         level: 3, description: "Owns policy content and review cycle" }
+    - { id: AppSec_Lead,          level: 4, description: "Application security leadership and sign-off" }
+    - { id: Risk_Owner,           level: 4, description: "Owns the risk decision and the residual" }
+    - { id: Risk_Stakeholder,     level: 5, description: "Senior oversight and escalation" }
+    - { id: CISO,                 level: 6, description: "Policy approval and governance authority" }
+    - { id: Admin,                level: 7, description: "Platform administration" }
 
   # Organisational seniority, ordered lowest to highest. Distinct from functional
   # role: it drives the ownership-by-severity matrix below.

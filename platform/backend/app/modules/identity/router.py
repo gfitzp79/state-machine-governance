@@ -138,7 +138,7 @@ def update_user(
 
 
 @router.get("/roles")
-def roles() -> dict[str, Any]:
+def roles(user: CurrentUser) -> dict[str, Any]:
     return {
         "roles": list(APP_ROLES),
         "levels": ROLE_LEVELS,

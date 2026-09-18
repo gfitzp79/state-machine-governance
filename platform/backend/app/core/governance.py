@@ -100,6 +100,7 @@ class GovernanceConfig:
                 "acceptable": bool(rule.get("acceptable", True)),
                 "max_days": int(rule.get("max_days") or 0),
                 "approver": rule.get("approver"),
+                "max_renewals": int(rule.get("max_renewals") or 0),
             }
             for rating, rule in rules.items()
         }
@@ -205,6 +206,90 @@ class GovernanceConfig:
     @property
     def threat_auto_promotion_days(self) -> int:
         return int(_require(self.raw, "threat.auto_promotion_days"))
+
+    # -- decomposition ----------------------------------------------------
+
+    @property
+    def data_classifications(self) -> tuple[str, ...]:
+        return tuple(str(c) for c in _require(self.raw, "threat.data_classifications"))
+
+    @property
+    def sensitive_classification_threshold(self) -> str:
+        return str(_require(self.raw, "threat.sensitive_classification_threshold"))
+
+    @property
+    def sensitive_classification_rank(self) -> int:
+        return self.data_classifications.index(self.sensitive_classification_threshold)
+
+    def classification_rank(self, value: str | None) -> int:
+        if not value or value not in self.data_classifications:
+            return -1
+        return self.data_classifications.index(value)
+
+    def is_sensitive(self, classification: str | None) -> bool:
+        rank = self.classification_rank(classification)
+        return rank >= 0 and rank >= self.sensitive_classification_rank
+
+    @property
+    def trust_zone_detail(self) -> list[dict[str, Any]]:
+        return [dict(z) for z in _require(self.raw, "threat.trust_zones")]
+
+    @property
+    def trust_zones(self) -> tuple[str, ...]:
+        return tuple(str(z["id"]) for z in self.trust_zone_detail)
+
+    @property
+    def trust_levels(self) -> dict[str, int]:
+        return {str(z["id"]): int(z["trust"]) for z in self.trust_zone_detail}
+
+    @property
+    def exposure_levels(self) -> tuple[str, ...]:
+        return tuple(str(e) for e in _require(self.raw, "threat.exposure_levels"))
+
+    @property
+    def data_types(self) -> tuple[str, ...]:
+        return tuple(str(d) for d in _require(self.raw, "threat.data_types"))
+
+    # -- environmental context --------------------------------------------
+
+    @property
+    def show_environmental_context(self) -> bool:
+        return bool(_require(self.raw, "threat.context.show_environmental_context"))
+
+    @property
+    def weak_coverage_at_or_below(self) -> str:
+        return str(_require(self.raw, "threat.context.weak_coverage_at_or_below"))
+
+    @property
+    def stride_control_families(self) -> dict[str, list[str]]:
+        return {
+            str(k): [str(f) for f in v]
+            for k, v in _require(self.raw, "threat.context.stride_control_families").items()
+        }
+
+    @property
+    def risk_link_type_detail(self) -> list[dict[str, Any]]:
+        return [dict(t) for t in _require(self.raw, "threat.risk_link_types")]
+
+    @property
+    def risk_link_types(self) -> tuple[str, ...]:
+        return tuple(str(t["id"]) for t in self.risk_link_type_detail)
+
+    @property
+    def risk_creating_link_types(self) -> set[str]:
+        return {
+            str(t["id"]) for t in self.risk_link_type_detail if t.get("creates_risk")
+        }
+
+    @property
+    def scenario_resolving_link_types(self) -> set[str]:
+        """Link types after which the register demonstrably carries the exposure,
+        so the scenario has reached a permitted end state (TINV-1)."""
+        return {
+            str(t["id"])
+            for t in self.risk_link_type_detail
+            if t.get("resolves_scenario")
+        }
 
     @property
     def control_failure_escalation_days(self) -> int:
@@ -319,6 +404,20 @@ class GovernanceConfig:
                     + " band"
                 )
 
+        # An approver level must name a rung on the ladder, or the check that
+        # reads it can never pass.
+        for rating, rule in self.acceptance_rules.items():
+            approver = rule.get("approver")
+            if not rule["acceptable"] or approver is None:
+                continue
+            if approver not in self.seniority_ladder:
+                errors.append(
+                    "acceptance." + rating + ".approver is " + str(approver)
+                    + ", which is not a rung on roles.seniority_ladder ("
+                    + ", ".join(self.seniority_ladder)
+                    + "). Acceptance at this rating could never be approved."
+                )
+
         # An acceptable band with a zero window would silently refuse everything.
         for rating, rule in self.acceptance_rules.items():
             if rule["acceptable"] and rule["max_days"] <= 0:
@@ -415,10 +514,103 @@ class GovernanceConfig:
                 "CISO or above."
             )
 
+        # Structured entries must carry exactly the keys they are supposed to.
+        # An unquoted comma inside a YAML flow mapping silently ends the value
+        # and starts a new key, so "description: a, b, c" becomes three entries
+        # with two nulls. That is a corrupted taxonomy that every other check
+        # would pass, so the shape is checked explicitly.
+        for path, entries, required, optional in (
+            ("risk.tiers", self.risk_tier_detail, {"id"}, {"label", "description"}),
+            ("threat.trust_zones", self.trust_zone_detail, {"id", "trust"}, {"label"}),
+            (
+                "threat.risk_link_types",
+                self.risk_link_type_detail,
+                {"id"},
+                {"label", "creates_risk", "resolves_scenario"},
+            ),
+            ("roles.definitions", self.role_definitions, {"id", "level"}, {"description"}),
+        ):
+            allowed = required | optional
+            for entry in entries:
+                keys = set(entry)
+                missing = required - keys
+                unexpected = keys - allowed
+                if missing:
+                    errors.append(
+                        path + " entry " + str(entry.get("id", entry))
+                        + " is missing: " + ", ".join(sorted(missing))
+                    )
+                if unexpected:
+                    errors.append(
+                        path + " entry " + str(entry.get("id", entry))
+                        + " has unexpected keys: " + ", ".join(sorted(unexpected))
+                        + ". A value containing a comma must be quoted; unquoted, "
+                        "YAML reads the rest of it as further keys."
+                    )
+
         if self.minimum_promotable_severity not in SEVERITY_NAMES:
             errors.append(
                 "threat.minimum_promotable_severity must be one of "
                 + ", ".join(SEVERITY_NAMES)
+            )
+
+        # Decomposition taxonomy must be usable.
+        if not self.data_classifications:
+            errors.append("threat.data_classifications cannot be empty")
+        elif self.sensitive_classification_threshold not in self.data_classifications:
+            errors.append(
+                "threat.sensitive_classification_threshold is "
+                + self.sensitive_classification_threshold
+                + ", which is not in threat.data_classifications"
+            )
+        if not self.trust_zones:
+            errors.append("threat.trust_zones cannot be empty")
+        if not self.exposure_levels:
+            errors.append("threat.exposure_levels cannot be empty")
+        if not self.data_types:
+            errors.append("threat.data_types cannot be empty")
+
+        if self.weak_coverage_at_or_below not in CE_RATING_NAMES:
+            errors.append(
+                "threat.context.weak_coverage_at_or_below must be one of "
+                + ", ".join(CE_RATING_NAMES)
+            )
+
+        # The STRIDE hint map may only name families the organisation configured,
+        # otherwise the coverage panel silently ranks nothing.
+        for category, families in self.stride_control_families.items():
+            for family in families:
+                if family not in self.control_families:
+                    errors.append(
+                        "threat.context.stride_control_families." + category
+                        + " names " + family
+                        + ", which is not in controls.families"
+                    )
+
+        # Exactly one risk link type may create a risk record (TINV-8).
+        if not self.scenario_resolving_link_types:
+            errors.append(
+                "threat.risk_link_types needs at least one entry with "
+                "resolves_scenario true, otherwise no scenario can ever be "
+                "resolved by referencing an existing risk (TINV-1)."
+            )
+        for link_type in self.risk_link_type_detail:
+            if link_type.get("creates_risk") and not link_type.get("resolves_scenario"):
+                errors.append(
+                    "threat.risk_link_types." + str(link_type["id"])
+                    + " creates a risk record but is not marked resolves_scenario. "
+                    "Promoting into the register always resolves the scenario."
+                )
+
+        creators = [
+            t["id"] for t in self.risk_link_type_detail if t.get("creates_risk")
+        ]
+        if len(creators) != 1:
+            errors.append(
+                "threat.risk_link_types must contain exactly one entry with "
+                "creates_risk true; found " + str(len(creators))
+                + ". Promotion mints a risk record, every other link references "
+                "an existing one (TINV-8)."
             )
 
         if self.exception_extended_max_days < self.exception_max_days:
@@ -477,6 +669,15 @@ class GovernanceConfig:
                 "local_acceptance_max_days": self.threat_local_acceptance_max_days,
                 "minimum_promotable_severity": self.minimum_promotable_severity,
                 "severities": list(SEVERITY_NAMES),
+                "data_classifications": list(self.data_classifications),
+                "sensitive_classification_threshold": self.sensitive_classification_threshold,
+                "trust_zones": self.trust_zone_detail,
+                "exposure_levels": list(self.exposure_levels),
+                "data_types": list(self.data_types),
+                "risk_link_types": self.risk_link_type_detail,
+                "show_environmental_context": self.show_environmental_context,
+                "weak_coverage_at_or_below": self.weak_coverage_at_or_below,
+                "stride_control_families": self.stride_control_families,
             },
             "roles": {
                 "definitions": self.role_definitions,

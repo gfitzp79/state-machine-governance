@@ -2,7 +2,7 @@
 
 **Document type:** Architecture  
 **Status:** Specification  
-**Depends on:** `architecture/deployment-saas.md`, `architecture/deployment-self-hosted.md`, `architecture/shared-responsibility.md`  
+**Depends on:** `architecture/architecture-deployment-saas.md`, `architecture/architecture-deployment-self-hosted.md`, `architecture/shared-responsibility.md`  
 **Referenced by:** `architecture/reference-architecture.md`, `APPENDIX.md`
 
 ---
@@ -239,8 +239,8 @@ This lifecycle model answers: how do you own it, from the first prompt to the fi
 
 | Topic | Document |
 |---|---|
-| Deployment on agentic SaaS platforms | `architecture/deployment-saas.md` |
-| Self-hosted deployment architecture | `architecture/deployment-self-hosted.md` |
+| Deployment on agentic SaaS platforms | `architecture/architecture-deployment-saas.md` |
+| Self-hosted deployment architecture | `architecture/architecture-deployment-self-hosted.md` |
 | Shared responsibility model | `architecture/shared-responsibility.md` |
 | Agent identity and scope-bounded permissions | `architecture/reference-architecture.md` |
 | Specification-driven development methodology | `methodology/specification-driven-dev.md` |

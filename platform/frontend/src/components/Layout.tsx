@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import { api, clearSession, getStoredUser } from '../lib/api'
-import { orgInitials, useConfig } from '../lib/config'
+import { clearConfigCache, orgInitials, useConfig } from '../lib/config'
 import { cx, initials } from '../lib/format'
 import { Badge } from './ui'
 
@@ -72,6 +72,7 @@ export default function Layout() {
 
   const signOut = () => {
     clearSession()
+    clearConfigCache()
     navigate('/login')
   }
 

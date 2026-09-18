@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -19,10 +20,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
-from app.core.governance import SEVERITY_NAMES
+from app.core.governance import SEVERITY_NAMES, governance
 from app.core.model_base import Timestamped, UUIDPrimaryKey
 
 THREAT_MODEL_STATES = (
@@ -55,6 +57,14 @@ COMPONENT_TYPES = (
     "Trust_Boundary",
 )
 ASSURANCE_LEVELS = ("Fully_Mitigated", "Partially_Mitigated")
+
+# Decomposition taxonomy, configuration-driven and validated at the service
+# layer so an organisation can use its own data model without a migration.
+DATA_CLASSIFICATIONS = governance.data_classifications
+TRUST_ZONES = governance.trust_zones
+EXPOSURE_LEVELS = governance.exposure_levels
+DATA_TYPES = governance.data_types
+RISK_LINK_TYPES = governance.risk_link_types
 
 
 class ThreatModel(Base, UUIDPrimaryKey, Timestamped):
@@ -107,9 +117,15 @@ class ThreatModel(Base, UUIDPrimaryKey, Timestamped):
 
     @property
     def unresolved_scenarios(self) -> list["ThreatScenario"]:
-        """TINV-1: every scenario must resolve to mitigation, a valid local Low
-        acceptance, or promotion to the risk register."""
-        return [s for s in self.scenarios if s.status == "Identified"]
+        """TINV-1: every scenario must reach a permitted end state.
+
+        Those are: mitigated by a live control, locally accepted below the
+        promotion threshold, or carried by the risk register. The register
+        carrying it is the same governance outcome whether the record was minted
+        by promotion or already existed and is referenced (TINV-8), so both
+        count.
+        """
+        return [s for s in self.scenarios if not s.is_resolved]
 
     @property
     def unhandled_high_severity(self) -> list["ThreatScenario"]:
@@ -125,7 +141,13 @@ class ThreatModel(Base, UUIDPrimaryKey, Timestamped):
 
 
 class ThreatComponent(Base, UUIDPrimaryKey, Timestamped):
-    """A DFD element: process, datastore, external entity, flow, or boundary."""
+    """A DFD element: process, datastore, external entity, flow, or boundary.
+
+    A component is not just a box on a diagram. What data it handles and where it
+    sits determine what a compromise costs and which boundary it crosses, so both
+    are first-class attributes rather than prose in a description. TINV-9 and
+    TINV-11 both read them.
+    """
 
     __tablename__ = "threat_components"
     __table_args__ = (
@@ -141,7 +163,38 @@ class ThreatComponent(Base, UUIDPrimaryKey, Timestamped):
     component_type: Mapped[str] = mapped_column(String(32), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
 
+    # -- what it handles --------------------------------------------------
+    data_classification: Mapped[str | None] = mapped_column(String(48))
+    data_types: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    # -- where it sits ----------------------------------------------------
+    trust_zone: Mapped[str | None] = mapped_column(String(48))
+    exposure: Mapped[str | None] = mapped_column(String(48))
+    # A component may live on an asset other than the model's primary one, which
+    # is exactly where cross-boundary flows get interesting.
+    attack_surface_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("attack_surfaces.id", ondelete="SET NULL")
+    )
+    # For Data_Flow components: which zones it bridges.
+    source_component_id: Mapped[str | None] = mapped_column(String(36))
+    target_component_id: Mapped[str | None] = mapped_column(String(36))
+
     model: Mapped[ThreatModel] = relationship(back_populates="components")
+    surface = relationship("AttackSurface", lazy="selectin")
+
+    @property
+    def is_sensitive(self) -> bool:
+        """At or above the configured classification threshold."""
+        return governance.is_sensitive(self.data_classification)
+
+    @property
+    def trust_level(self) -> int | None:
+        return governance.trust_levels.get(self.trust_zone or "")
+
+    @property
+    def crosses_boundary(self) -> bool:
+        """A flow between zones of differing trust is a boundary crossing."""
+        return self.component_type in ("Data_Flow", "Trust_Boundary")
 
 
 class ThreatScenario(Base, UUIDPrimaryKey, Timestamped):
@@ -193,9 +246,28 @@ class ThreatScenario(Base, UUIDPrimaryKey, Timestamped):
     reopened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str | None] = mapped_column(String(36))
 
+    # Rationale for the most recent status change. A status change is a decision,
+    # and a decision without a reason is not auditable (TINV-10).
+    status_rationale: Mapped[str | None] = mapped_column(Text)
+
     model: Mapped[ThreatModel] = relationship(back_populates="scenarios")
     component: Mapped[ThreatComponent] = relationship(lazy="selectin")
     mitigations: Mapped[list["ThreatMitigationLink"]] = relationship(
+        back_populates="scenario", cascade="all, delete-orphan", lazy="selectin"
+    )
+    comments: Mapped[list["ThreatScenarioComment"]] = relationship(
+        back_populates="scenario",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ThreatScenarioComment.created_at",
+    )
+    evidence: Mapped[list["ThreatScenarioEvidence"]] = relationship(
+        back_populates="scenario",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ThreatScenarioEvidence.created_at.desc()",
+    )
+    risk_links: Mapped[list["ThreatScenarioRiskLink"]] = relationship(
         back_populates="scenario", cascade="all, delete-orphan", lazy="selectin"
     )
 
@@ -204,10 +276,49 @@ class ThreatScenario(Base, UUIDPrimaryKey, Timestamped):
         return SEVERITY_ORDER.get(self.inherent_severity, 0)
 
     @property
+    def has_partial_mitigation(self) -> bool:
+        """TM-PARTIAL: any link asserting only partial coverage.
+
+        A scenario with a partial link is not mitigated. The UI may derive a
+        "Partially Mitigated" display state from the link table, but it is not a
+        status value: partial coverage is an open threat with work in progress.
+        """
+        return any(
+            link.effectiveness_assurance == "Partially_Mitigated"
+            for link in self.mitigations
+        )
+
+    @property
+    def fully_mitigated(self) -> bool:
+        """Mitigated requires at least one link and no partial ones (TM-PARTIAL)."""
+        return bool(self.mitigations) and not self.has_partial_mitigation
+
+    @property
+    def carried_by_register(self) -> bool:
+        """The risk register demonstrably holds this exposure.
+
+        True when the scenario was promoted, or when it references an existing
+        risk under a link type configured as resolving. A threat that maps onto
+        an exposure the register already carries is governed; minting a second
+        record for it would corrupt the register rather than improve it.
+        """
+        if self.status == "Promoted_To_Risk" or self.promoted_risk_id:
+            return True
+        resolving = governance.scenario_resolving_link_types
+        return any(link.link_type in resolving for link in self.risk_links)
+
+    @property
+    def is_resolved(self) -> bool:
+        """TINV-1: has this scenario reached a permitted end state?"""
+        if self.status in ("Mitigated", "Accepted"):
+            return True
+        return self.carried_by_register
+
+    @property
     def requires_promotion(self) -> bool:
-        """TINV-3: Medium and above cannot be locally accepted, so an unmitigated
-        scenario at that severity has only one legal resting place."""
-        return self.severity_rank >= 1
+        """TINV-3: at or above the promotion threshold, local acceptance is not a
+        legal end state, so the register is the only remaining one."""
+        return self.severity_rank >= governance.minimum_promotable_severity_rank
 
 
 class ThreatMitigationLink(Base, UUIDPrimaryKey):
@@ -241,3 +352,92 @@ class ThreatMitigationLink(Base, UUIDPrimaryKey):
 
     scenario: Mapped[ThreatScenario] = relationship(back_populates="mitigations")
     deployment = relationship("ControlDeployment", lazy="selectin")
+
+
+class ThreatScenarioComment(Base, UUIDPrimaryKey, Timestamped):
+    """Threaded discussion on a scenario. Threat modelling is a conversation
+    between AppSec, engineering and risk; the conversation is part of the record."""
+
+    __tablename__ = "threat_scenario_comments"
+
+    scenario_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("threat_scenarios.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parent_comment_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("threat_scenario_comments.id", ondelete="CASCADE")
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(36))
+
+    scenario: Mapped["ThreatScenario"] = relationship(back_populates="comments")
+
+
+class ThreatScenarioEvidence(Base, UUIDPrimaryKey):
+    """Immutable evidence attached to a scenario (TINV-10).
+
+    Append-only, enforced by database trigger, for the same reason control test
+    history is: evidence that can be edited after the fact is not evidence.
+    Superseding an entry creates a new record referencing the original.
+    """
+
+    __tablename__ = "threat_scenario_evidence"
+
+    scenario_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("threat_scenarios.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    # A reference rather than a blob: a scan result, a design doc, a test report,
+    # a ticket. Storage of the artefact itself is the organisation's concern.
+    evidence_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_type: Mapped[str | None] = mapped_column(String(48))
+    notes: Mapped[str | None] = mapped_column(Text)
+    # What this evidence was offered in support of, so an auditor can see whether
+    # the claim and the proof match.
+    supports: Mapped[str | None] = mapped_column(String(48))
+    supersedes_id: Mapped[str | None] = mapped_column(String(36))
+    created_by: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="now()"
+    )
+
+    scenario: Mapped["ThreatScenario"] = relationship(back_populates="evidence")
+
+
+class ThreatScenarioRiskLink(Base, UUIDPrimaryKey):
+    """Scenario to existing risk record.
+
+    Most threats on a mature system map to risks that already exist. Minting a
+    new register entry for each one corrupts the register, so linking and
+    promoting are distinct operations: exactly one link type creates a risk, and
+    the rest reference one (TINV-8).
+    """
+
+    __tablename__ = "threat_scenario_risk_links"
+    __table_args__ = (
+        UniqueConstraint("scenario_id", "risk_id", name="uq_threat_scenario_risk"),
+    )
+
+    scenario_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("threat_scenarios.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    risk_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("risks.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    link_type: Mapped[str] = mapped_column(String(48), nullable=False, default="Represents")
+    rationale: Mapped[str | None] = mapped_column(Text)
+    linked_by: Mapped[str | None] = mapped_column(String(36))
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="now()"
+    )
+
+    scenario: Mapped["ThreatScenario"] = relationship(back_populates="risk_links")
+    risk = relationship("Risk", lazy="selectin")

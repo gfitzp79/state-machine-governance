@@ -117,11 +117,11 @@ The platform's security certification does not extend to your application. The g
 
 ### Two Operating Models
 
-**Model A: GitHub-Connected (recommended).** Codebase lives in GitHub. Two-way sync. Full commit history. AppSec scanning in your CI/CD pipeline. Reduced vendor lock-in. See [deployment-saas.md](./deployment-saas.md) for full detail.
+**Model A: GitHub-Connected (recommended).** Codebase lives in GitHub. Two-way sync. Full commit history. AppSec scanning in your CI/CD pipeline. Reduced vendor lock-in. See [architecture-deployment-saas.md](./architecture-deployment-saas.md) for full detail.
 
 **Model B: Platform-Native.** Everything lives inside the platform. Faster to start. Higher lock-in. Requires explicit data portability planning and regular exports.
 
-Full detail: [Deployment Path 1: Agentic SaaS](./deployment-saas.md)
+Full detail: [Deployment Path 1: Agentic SaaS](./architecture-deployment-saas.md)
 
 ---
 
@@ -144,7 +144,7 @@ Physical infrastructure, hypervisor, and managed service engine uptime. The stan
 | Identity, secrets, logging | Supporting services | Service engine | Configuration, access policies, rotation, scope |
 | Application | Your code | Nothing | Everything: code, logic, security, correctness |
 
-Full detail: [Deployment Path 2: Self-Hosted](./deployment-self-hosted.md)
+Full detail: [Deployment Path 2: Self-Hosted](./architecture-deployment-self-hosted.md)
 
 ---
 
@@ -185,7 +185,7 @@ Full detail: [Deployment Path 2: Self-Hosted](./deployment-self-hosted.md)
 ### Choose a combination when:
 
 - Prototype on Path 1 (SaaS) for rapid validation and stakeholder feedback
-- Pivot to Path 2 (self-hosted) for production deployment using the 4-file pivot documented in [deployment-self-hosted.md](./deployment-self-hosted.md)
+- Pivot to Path 2 (self-hosted) for production deployment using the 4-file pivot documented in [architecture-deployment-self-hosted.md](./architecture-deployment-self-hosted.md)
 - The specification and schema are portable between paths. The application code may require adaptation but the governance logic does not change.
 
 ---

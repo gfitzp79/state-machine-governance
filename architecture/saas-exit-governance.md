@@ -196,7 +196,7 @@ The compliance obligation transfer is the highest-risk element of a SaaS exit. M
 |---|---|---|
 | Lifecycle governance for the internal build | `architecture/ai-tool-lifecycle.md` | The internal build must be in Production (Phase 4) before a SaaS exit can enter Assessment |
 | Shared responsibility for the internal build | `architecture/shared-responsibility.md` | The shared responsibility boundary for the internal build must be defined before the parallel run starts |
-| Deployment architecture | `architecture/deployment-saas.md`, `architecture/deployment-self-hosted.md` | The deployment path determines which infrastructure-layer obligations transfer to the internal team |
+| Deployment architecture | `architecture/architecture-deployment-saas.md`, `architecture/architecture-deployment-self-hosted.md` | The deployment path determines which infrastructure-layer obligations transfer to the internal team |
 
 ---
 

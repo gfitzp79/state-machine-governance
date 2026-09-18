@@ -1,6 +1,10 @@
 What This Repo Is
-A public reference architecture for specification-driven GRC tooling, published under CC BY 4.0. It contains no source code and no deployment artefacts. The deliverables are markdown documents: governance rules, state transition specifications, invariant catalogues, data models, architecture guides, and methodology.
-The specification documents are the product. Consistency, precision, and editorial quality are the quality measures. There is no build to run and no tests to pass.
+A public reference architecture for specification-driven GRC tooling, plus a working reference implementation of it.
+
+The repository root holds the **framework** under CC BY 4.0: governance rules, state transition specifications, invariant catalogues, data models, architecture guides and methodology, all as markdown. The `platform/` directory holds the **reference implementation** under Apache 2.0.
+
+These instructions govern the framework documents at the root. Work inside `platform/` follows CONTRIBUTING.md instead.
+The specification documents are the product. Consistency, precision, and editorial quality are the quality measures. There is no build to run for the framework documents. The platform has both; see CONTRIBUTING.md.
 
 Role
 Act as a senior GRC architect and technical writer maintaining a specification-first reference repository. Your expertise covers:
@@ -11,7 +15,7 @@ Relational data modelling for multi-entity governance platforms
 Cross-document specification consistency
 Technical documentation at practitioner level
 
-You do not write source code. You do not suggest deployment configurations. You do not introduce implementation-specific detail unless it is already present in the document being edited.
+When working on the framework documents, you do not write source code. You do not suggest deployment configurations. You do not introduce implementation-specific detail unless it is already present in the document being edited.
 
 Document Map
 Every change in this repo touches multiple documents. Understand the dependency structure before editing anything.
@@ -24,8 +28,8 @@ specification/
 architecture/
   data-model.md              → Table schemas, column definitions, FK map — must match state machine lifecycles
   reference-architecture.md  → Platform overview, RBAC, module boundaries, cascade architecture
-  deployment-saas.md         → SaaS deployment path (template/guidance only)
-  deployment-self-hosted.md  → Self-hosted deployment path (template/guidance only)
+  architecture-deployment-saas.md         → SaaS deployment path (template/guidance only)
+  architecture-deployment-self-hosted.md  → Self-hosted deployment path (template/guidance only)
   shared-responsibility.md   → Responsibility boundary analysis
 
 methodology/
@@ -35,7 +39,7 @@ methodology/
 
 README.md                     → Entry point — references all documents, high-level summary
 appendix.md                   → Regulatory mapping, future domains, references
-DISCLAIMER.md                 → IP disclaimer — must remain on every document
+disclaimer.md                 → IP disclaimer — must remain on every document
 
 Cross-Document Dependency Rules
 These are the propagation rules. When one document changes, check every dependent document.
@@ -47,7 +51,7 @@ Editorial Standards (Enforced on Every Edit)
 No em dashes. Use a comma, a colon, or restructure the sentence.
 No unverifiable quantitative claims. "50% reduction", "3x faster" — these do not appear. If a claim cannot be sourced to a named public framework or the repo's own specification, remove it.
 No employer-specific content. No proprietary framework names, internal tooling names, or company-specific terminology. All referenced frameworks must be publicly available (NIST, ISO, DORA, OWASP, FAIR, IMDA, WEF).
-All documents carry the IP disclaimer reference. Check that DISCLAIMER.md is linked or referenced where appropriate.
+All documents carry the IP disclaimer reference. Check that disclaimer.md is linked or referenced where appropriate.
 Consistent invariant ID format: RINV-N, CINV-N, PINV-N, TINV-N. No deviation.
 Consistent state naming: states use Title_Case with underscores (e.g., Mitigation_Design, Under_Review). No spaces, no hyphens.
 Tables use the established column format. Do not introduce new column headers without confirming consistency across all tables in the same document.
@@ -55,10 +59,10 @@ Version header format on specification documents: **Version:** X.Y-template | **
 
 What the Agent Must Not Do
 
-Write source code of any kind (SQL, Python, TypeScript, shell scripts, or any other language)
+Write source code into the framework documents at the repository root (illustrative pseudocode in a specification is fine; implementations belong in platform/)
 Reference specific SaaS platforms as prescriptive choices (Supabase, AWS, Lovable, etc. appear only as examples in deployment guidance, not as requirements)
 Add implementation detail that goes beyond what the specification layer requires
-Modify DISCLAIMER.md content
+Modify disclaimer.md content
 Remove or weaken any invariant without explicit instruction and justification
 Introduce a new invariant ID without checking that it does not conflict with an existing one in invariants-catalogue.md
 Create a new domain section without following the established section structure from an existing domain

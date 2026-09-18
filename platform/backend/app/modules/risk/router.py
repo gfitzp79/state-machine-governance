@@ -144,12 +144,12 @@ def create_risk(payload: RiskCreate, session: DbSession, user: CurrentUser) -> d
 
 
 @router.get("/machine")
-def risk_machine() -> dict[str, Any]:
+def risk_machine(user: CurrentUser) -> dict[str, Any]:
     return RISK_MACHINE.describe()
 
 
 @router.get("/reference-data")
-def reference_data() -> dict[str, Any]:
+def reference_data(user: CurrentUser) -> dict[str, Any]:
     from app.engine.scoring import ACCEPTANCE_RULES, RATING_BANDS, ScoringEngine
 
     return {

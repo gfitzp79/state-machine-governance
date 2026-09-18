@@ -1,0 +1,16 @@
+# A local virtualenv or .env must never reach the image. `COPY . .` would
+# otherwise bake in hundreds of MB of site-packages, and any .env a contributor
+# creates would ship with the build.
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+alembic/
+*.sqlite
+*.db

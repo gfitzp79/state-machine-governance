@@ -47,6 +47,9 @@ from app.modules.threat.models import (
     ThreatMitigationLink,
     ThreatModel,
     ThreatScenario,
+    ThreatScenarioComment,
+    ThreatScenarioEvidence,
+    ThreatScenarioRiskLink,
 )
 from app.modules.treatment.models import Treatment, TreatmentApproval, TreatmentCheckin
 
@@ -870,26 +873,65 @@ def seed(session: Session) -> None:
         name="Authorisation service",
         component_type="Process",
         description="Evaluates and authorises payment instructions.",
+        data_classification="Restricted",
+        data_types=["Payment_Card", "PII", "Financial_Records"],
+        trust_zone="Internal_Network",
+        exposure="Partner_Facing",
+        attack_surface_id=payments.id,
     )
     ledger = ThreatComponent(
         threat_model_id=tm1.id,
         name="Transaction ledger",
         component_type="Datastore",
         description="Append-only record of authorised transactions.",
+        data_classification="Restricted",
+        data_types=["Financial_Records", "PII"],
+        trust_zone="Restricted_Enclave",
+        exposure="Internal_Only",
+        attack_surface_id=payments.id,
     )
     boundary = ThreatComponent(
         threat_model_id=tm1.id,
         name="Internet to DMZ boundary",
         component_type="Trust_Boundary",
         description="Public edge terminating at the API gateway.",
+        data_classification="Public",
+        data_types=["Public_Content"],
+        trust_zone="DMZ",
+        exposure="Internet_Facing",
+        attack_surface_id=payments.id,
     )
     admin_console = ThreatComponent(
         threat_model_id=tm1.id,
         name="Operations console",
         component_type="External_Entity",
         description="Internal console used by payment operations staff.",
+        data_classification="Confidential",
+        data_types=["Credentials", "PII"],
+        trust_zone="Internal_Network",
+        exposure="Internal_Only",
+        attack_surface_id=payments.id,
     )
-    session.add_all([gateway, ledger, boundary, admin_console])
+    # A deliberate gap: Restricted data replicated into the reporting sandbox,
+    # which sits on an asset with no operating control covering it. The context
+    # panel reports this; the Review gate blocks sign-off on it (TINV-11) until
+    # someone has actually thought about it.
+    replica_flow = ThreatComponent(
+        threat_model_id=tm1.id,
+        name="Analytics replication flow",
+        component_type="Data_Flow",
+        description=(
+            "Nightly replication of settled transactions into the reporting sandbox."
+        ),
+        data_classification="Restricted",
+        data_types=["PII", "Financial_Records"],
+        trust_zone="Third_Party",
+        exposure="Partner_Facing",
+        attack_surface_id=warehouse.id,
+    )
+    session.add_all([gateway, ledger, boundary, admin_console, replica_flow])
+    session.flush()
+    replica_flow.source_component_id = ledger.id
     session.flush()
 
     thr1 = ThreatScenario(
@@ -903,6 +945,10 @@ def seed(session: Session) -> None:
         ),
         inherent_severity="Critical",
         status="Mitigated",
+        status_rationale=(
+            "Phishing-resistant MFA is enforced on every console authentication path "
+            "and evidenced in the IdP conditional access export."
+        ),
         created_by=appsec.id,
     )
     thr2 = ThreatScenario(
@@ -935,6 +981,7 @@ def seed(session: Session) -> None:
             "Edge rate limiting and upstream scrubbing reduce this to an availability "
             "inconvenience within the agreed appetite. Reviewed at the next model refresh."
         ),
+        status_rationale="Accepted locally at Low severity with a time-bound expiry.",
         created_by=appsec.id,
     )
     thr4 = ThreatScenario(
@@ -948,9 +995,37 @@ def seed(session: Session) -> None:
         ),
         inherent_severity="Medium",
         status="Mitigated",
+        status_rationale=(
+            "Privileged session capture provides an independent record of who acted, "
+            "though the review cadence itself is the subject of RISK-002."
+        ),
         created_by=appsec.id,
     )
-    session.add_all([thr1, thr2, thr3, thr4])
+    # The gap scenario: sits on the replication flow, unresolved, and maps to an
+    # exposure the register already carries rather than a new one.
+    thr5 = ThreatScenario(
+        reference="THR-005",
+        threat_model_id=tm1.id,
+        component_id=replica_flow.id,
+        category="Information_Disclosure",
+        description=(
+            "The nightly replication writes Restricted customer records into a "
+            "third-party managed sandbox with no encryption at rest, exposing them to "
+            "anyone with read access to that environment."
+        ),
+        inherent_severity="High",
+        # Carried by RISK-003 rather than promoted into a duplicate, which is what
+        # linking with a resolving link type produces (TINV-1 / TINV-8).
+        status="Promoted_To_Risk",
+        promoted_risk_id=risk3.id,
+        status_rationale=(
+            "Carried by RISK-003, which already holds the unencrypted analytics "
+            "replica at Tier 1."
+        ),
+        remediation_target_date=TODAY + timedelta(days=45),
+        created_by=appsec.id,
+    )
+    session.add_all([thr1, thr2, thr3, thr4, thr5])
     session.flush()
 
     # THR-001 is mitigated by the MFA deployment on the Payments API. Failing that
@@ -972,5 +1047,82 @@ def seed(session: Session) -> None:
             linked_by=appsec.id,
         )
     )
+
+    # -- discussion, evidence and risk linkage ----------------------------
+    #
+    # THR-005 is the connective tissue in miniature: a threat that maps onto an
+    # exposure the register already carries (RISK-003), referenced rather than
+    # promoted, with the conversation and the evidence that got it there.
+    session.add(
+        ThreatScenarioRiskLink(
+            scenario_id=thr5.id,
+            risk_id=risk3.id,
+            link_type="Represents",
+            rationale=(
+                "RISK-003 already carries the unencrypted analytics replica at Tier 1. "
+                "This scenario is the threat-model view of that same exposure, so it "
+                "references the existing record rather than minting a duplicate."
+            ),
+            linked_by=appsec.id,
+        )
+    )
+    for scenario, body, author in (
+        (
+            thr5,
+            "Confirmed with the data platform team: the sandbox predates the "
+            "customer-managed key rollout and the replication target has no KMS policy "
+            "attached. Encryption at rest is not on by default in that account.",
+            appsec.id,
+        ),
+        (
+            thr5,
+            "This is the same exposure the audit finding raised. Linking to RISK-003 "
+            "rather than promoting a second record; the treatment plan there covers it.",
+            analyst.id,
+        ),
+        (
+            thr1,
+            "Re-tested after the federation rollout. No static credential paths remain "
+            "on the console.",
+            appsec.id,
+        ),
+    ):
+        session.add(
+            ThreatScenarioComment(scenario_id=scenario.id, body=body, created_by=author)
+        )
+
+    for scenario, title, ref, etype, supports in (
+        (
+            thr1,
+            "IdP conditional access export",
+            "idp-conditional-access-2026-08-14.json; 100% WebAuthn enrolment on admin roles",
+            "Configuration_Export",
+            "Mitigated",
+        ),
+        (
+            thr5,
+            "Data platform architecture review",
+            "DPR-2026-041: replication target account has no default encryption policy",
+            "Design_Review",
+            "Identified",
+        ),
+        (
+            thr3,
+            "Edge rate limiting configuration",
+            "waf-ratelimit-policy-2026-06.yaml plus upstream scrubbing contract",
+            "Configuration_Export",
+            "Accepted",
+        ),
+    ):
+        session.add(
+            ThreatScenarioEvidence(
+                scenario_id=scenario.id,
+                title=title,
+                evidence_ref=ref,
+                evidence_type=etype,
+                supports=supports,
+                created_by=appsec.id,
+            )
+        )
 
     session.commit()

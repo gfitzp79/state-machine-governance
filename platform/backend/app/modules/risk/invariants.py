@@ -186,8 +186,14 @@ invariants.register(
         id="RINV-3",
         entity=ENTITY,
         rule="Control owners are never assigned as risk owners for linked risks",
-        layer=BOTH,
-        mechanism="Risk owner checked against control_owner_id on every linked objective",
+        # Service only: this is a cross-table predicate, which no CHECK constraint
+        # or foreign key can express. Claiming otherwise would overstate where the
+        # enforcement actually lives.
+        layer=SERVICE,
+        mechanism=(
+            "Risk owner checked against control_owner_id on every linked objective, "
+            "both on assignment and at link time"
+        ),
         violation="Assignment rejected; validation error returned",
         spec_ref="codified-rules section 2.2 (SEP-3)",
         holds=_owner_not_control_owner,

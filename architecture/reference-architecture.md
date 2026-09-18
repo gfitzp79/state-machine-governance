@@ -166,11 +166,11 @@ Three deployment paths are supported. The codified specification is portable acr
 
 | Path | Model | Lock-in Risk | Detail |
 |---|---|---|---|
-| **Path 1: Agentic SaaS** | Platform-hosted, credit-based | High (infra is platform-native) | [deployment-saas.md](./deployment-saas.md) |
-| **Path 2: Self-Hosted** | Your infrastructure, full control | Low (IaC reproducible) | [deployment-self-hosted.md](./deployment-self-hosted.md) |
+| **Path 1: Agentic SaaS** | Platform-hosted, credit-based | High (infra is platform-native) | [architecture-deployment-saas.md](./architecture-deployment-saas.md) |
+| **Path 2: Self-Hosted** | Your infrastructure, full control | Low (IaC reproducible) | [architecture-deployment-self-hosted.md](./architecture-deployment-self-hosted.md) |
 | **Path 3: GRC Vendor + AI** | Vendor platform with AI features | High (vendor-native workflows) | [shared-responsibility.md](./shared-responsibility.md) |
 
-Reference self-hosted cost: ~$52-64/month for a low-traffic single-environment deployment. Full cost model and 7-step deployment sequence in [deployment-self-hosted.md](./deployment-self-hosted.md).
+Reference self-hosted cost: ~$52-64/month for a low-traffic single-environment deployment. Full cost model and 7-step deployment sequence in [architecture-deployment-self-hosted.md](./architecture-deployment-self-hosted.md).
 
 Shared responsibility boundary analysis across all three paths: [shared-responsibility.md](./shared-responsibility.md)
 

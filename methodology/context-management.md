@@ -19,7 +19,7 @@
 
 ## 2. GitHub-Connected Builds: What Changes and What Doesn't
 
-If you are using the GitHub-connected operating model described in [deployment-saas.md](../architecture/deployment-saas.md), one category of context drift is mitigated: the agent builds against the live codebase in the connected repository rather than a snapshot held in context. This reduces the risk of the agent re-implementing existing components or contradicting schema decisions it cannot see.
+If you are using the GitHub-connected operating model described in [architecture-deployment-saas.md](../architecture/architecture-deployment-saas.md), one category of context drift is mitigated: the agent builds against the live codebase in the connected repository rather than a snapshot held in context. This reduces the risk of the agent re-implementing existing components or contradicting schema decisions it cannot see.
 
 **What the GitHub connection mitigates:**
 - Agent re-implementing components that already exist in the codebase

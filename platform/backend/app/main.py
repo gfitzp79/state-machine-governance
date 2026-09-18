@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -9,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from app.core.config import settings
+from app.core.config import SHIPPED_SECRETS, settings
 from app.core.errors import DomainError
 from app.db_init import bootstrap
 
@@ -27,9 +28,17 @@ from app.modules.threat import invariants as _threat_invariants  # noqa: F401
 from app.modules.threat import router as threat_router
 from app.modules.treatment import router as treatment_router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.is_development and settings.jwt_secret.strip().lower() in SHIPPED_SECRETS:
+        logger.warning(
+            "Running with the shipped JWT secret and demo data. This is fine for "
+            "local use and refused outside development. Before exposing this to "
+            "anyone: set JWT_SECRET, set SEED_DEMO_DATA=false, set ENVIRONMENT."
+        )
     bootstrap()
     yield
 
@@ -42,15 +51,16 @@ app = FastAPI(
         "transition is gated, every hard rule is an invariant checked before commit, and "
         "state changes propagate across entities rather than sitting in isolated records."
     ),
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    docs_url="/api/docs" if settings.is_development else None,
+    openapi_url="/api/openapi.json" if settings.is_development else None,
+    redoc_url=None,
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -74,13 +84,18 @@ async def integrity_error_handler(_request: Request, exc: IntegrityError) -> JSO
         if token.startswith("ck_") or token.startswith("uq_"):
             constraint = token
             break
+
+    # The constraint name maps a database rejection back to a specification rule,
+    # which is the useful half. The raw driver message is not returned: for a
+    # unique violation it embeds the conflicting values, which would leak record
+    # data through an error path. It goes to the log instead.
+    logger.warning("constraint violation (%s): %s", constraint or "unknown", detail)
     return JSONResponse(
         status_code=409,
         content={
             "code": "constraint_violation",
             "message": "A database constraint rejected this write.",
             "constraint": constraint,
-            "detail": detail.splitlines()[0] if detail else None,
         },
     )
 

@@ -101,12 +101,12 @@ def create_treatment(
 
 
 @router.get("/machine")
-def treatment_machine() -> dict[str, Any]:
+def treatment_machine(user: CurrentUser) -> dict[str, Any]:
     return TREATMENT_MACHINE.describe()
 
 
 @router.get("/reference-data")
-def reference_data() -> dict[str, Any]:
+def reference_data(user: CurrentUser) -> dict[str, Any]:
     return {
         "types": list(TREATMENT_TYPES),
         "loe_bands": list(LOE_BANDS),

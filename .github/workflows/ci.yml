@@ -1,0 +1,214 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  platform:
+    name: Platform build and enforcement tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: platform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure a development environment
+        run: |
+          cp .env.example .env
+          # A real deployment must supply its own. This proves the guard permits
+          # the shipped defaults only when ENVIRONMENT is explicitly development.
+          echo "ENVIRONMENT=development" >> .env
+
+      - name: Build and start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for the API to become healthy
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose ps --format '{{.Service}} {{.Status}}' | grep -q '^api.*healthy'; then
+              echo "api healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "api did not become healthy"
+          docker compose logs api
+          exit 1
+
+      - name: Configuration layer tests
+        run: docker compose exec -T api python config_test.py
+
+      - name: Enforcement layer tests
+        run: docker compose exec -T api python smoke_test.py
+
+      - name: The UI is served
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          test "$code" = "200" || { echo "UI returned $code"; exit 1; }
+
+      - name: The API is reachable through the proxy
+        run: curl -fsS http://localhost:8080/api/health
+
+      - name: Security posture the audit established
+        run: |
+          set -e
+          # The full governance model must NOT be anonymously readable: it
+          # describes the separation-of-duties design.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/config/governance)
+          test "$code" = "403" || { echo "governance config is anonymously readable ($code)"; exit 1; }
+
+          # Machine definitions carry the roles permitted to fire each gate.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/engine/machines)
+          test "$code" = "403" || { echo "machine definitions are anonymously readable ($code)"; exit 1; }
+
+          # Branding is the one thing that must stay open, for the sign-in page.
+          curl -fsS http://localhost:8080/api/config | grep -q organisation
+
+          # The API must run unprivileged.
+          docker compose exec -T api id -u | grep -qv '^0$' || { echo "api runs as root"; exit 1; }
+
+      - name: The boot guard refuses shipped secrets outside development
+        run: |
+          set -e
+          docker compose stop api
+          # Production environment, shipped secret: the API must refuse to start.
+          if ENVIRONMENT=production docker compose run --rm -T \
+               -e ENVIRONMENT=production -e JWT_SECRET=dev-secret-change-me \
+               api python -c "import app.main" 2>&1 | tee /tmp/guard.log; then
+            echo "the API started with the shipped secret in production"
+            exit 1
+          fi
+          grep -qi "refusing to start" /tmp/guard.log || {
+            echo "the failure was not the boot guard:"; cat /tmp/guard.log; exit 1; }
+          echo "boot guard refused as expected"
+          docker compose start api
+
+      - name: Published counts match the code
+        run: |
+          set -e
+          cd "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          import pathlib, re, sys
+
+          root = pathlib.Path("platform/backend/app")
+          modules = root / "modules"
+
+          def count(pattern, glob):
+              return sum(
+                  len(re.findall(pattern, p.read_text(encoding="utf-8")))
+                  for p in modules.glob(glob)
+              )
+
+          machines = count(r"= StateMachine\(", "*/machine.py")
+          transitions = count(r"\bTransition\(", "*/machine.py")
+          invariants = count(r"\bInvariant\(", "*/invariants.py")
+          cascades = len(
+              re.findall(r"@cascades\.on\(", (modules / "cascades.py").read_text(encoding="utf-8"))
+          )
+
+          actual = {
+              "state machines": machines,
+              "gated transitions": transitions,
+              "invariants": invariants,
+              "cascade events": cascades,
+          }
+          print("counted:", actual)
+
+          readmes = [pathlib.Path("README.md"), pathlib.Path("platform/README.md")]
+          failed = False
+          for readme in readmes:
+              text = readme.read_text(encoding="utf-8")
+              for label, value in actual.items():
+                  # Claims are written as "8 state machines", "45 invariants", ...
+                  for m in re.finditer(r"\*?\*?(\d+)\*?\*? " + re.escape(label), text):
+                      claimed = int(m.group(1))
+                      if claimed != value:
+                          print(f"{readme}: claims {claimed} {label}, code has {value}")
+                          failed = True
+          sys.exit(1 if failed else 0)
+          PY
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: docker compose logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  frontend:
+    name: Frontend typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: platform/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: platform/frontend/package-lock.json
+
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc -b --noEmit
+      - name: Build
+        run: npm run build
+
+  hygiene:
+    name: Links, secrets and licence headers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Every relative markdown link resolves
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          bad = []
+          for md in pathlib.Path(".").rglob("*.md"):
+              if any(part in {"node_modules", ".venv", ".git"} for part in md.parts):
+                  continue
+              for m in re.finditer(r"\[[^\]]*\]\((\.{1,2}/[^)#]*)(#[^)]*)?\)", md.read_text(encoding="utf-8")):
+                  if not (md.parent / m.group(1)).resolve().exists():
+                      bad.append(f"{md} -> {m.group(1)}")
+          for b in bad:
+              print("broken link:", b)
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: No unfilled placeholders
+        run: |
+          if grep -rn "<!-- LINK TO" --include="*.md" .; then
+            echo "unfilled link placeholder found"
+            exit 1
+          fi
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Licence files present
+        run: |
+          test -f LICENSE
+          test -f platform/LICENSE
+          test -f platform/NOTICE
+          test -f SECURITY.md
+          grep -q "Apache License" platform/LICENSE
+          grep -q "Creative Commons" LICENSE

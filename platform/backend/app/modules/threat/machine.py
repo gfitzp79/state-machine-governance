@@ -11,6 +11,7 @@ present. The reverse edge exists because a control failure strips those signatur
 
 from __future__ import annotations
 
+from app.core.governance import governance
 from app.engine import Precondition, StateMachine, Transition, TransitionContext
 from app.modules.threat.models import THREAT_MODEL_STATES, ThreatModel
 
@@ -56,6 +57,39 @@ def _signoffs_independent(tm: ThreatModel, _ctx: TransitionContext) -> bool:
     if not tm.appsec_signoff_by or not tm.owner_signoff_by:
         return True  # the presence checks above report the real failure
     return tm.appsec_signoff_by != tm.owner_signoff_by
+
+
+def _sensitive_components_zoned(tm: ThreatModel, _ctx: TransitionContext) -> bool:
+    """TINV-9. Data at or above the sensitive threshold needs a declared zone.
+
+    Where a component sits is half of what a compromise costs, so a crown-jewel
+    datastore with no trust zone is an incomplete decomposition rather than a
+    complete one with a blank field.
+    """
+    return all(
+        bool(c.trust_zone) for c in tm.components if c.is_sensitive
+    )
+
+
+def _sensitive_components_analysed(tm: ThreatModel, _ctx: TransitionContext) -> bool:
+    """TINV-11. Every sensitive component carries at least one scenario.
+
+    The failure mode this catches is silence: a component decomposed, labelled
+    Restricted, and then never thought about. A scenario list cannot surface its
+    own omissions, so the gate walks the decomposition instead.
+    """
+    analysed = {s.component_id for s in tm.scenarios}
+    return all(c.id in analysed for c in tm.components if c.is_sensitive)
+
+
+def _scenarios_have_rationale(tm: ThreatModel, _ctx: TransitionContext) -> bool:
+    """TINV-10. Every resolved scenario carries a reason for its resolution."""
+    for s in tm.scenarios:
+        if s.status == "Accepted" and not s.acceptance_rationale:
+            return False
+        if s.status == "Mitigated" and not (s.mitigations or s.status_rationale):
+            return False
+    return True
 
 
 def _mitigations_backed_by_live_controls(tm: ThreatModel, _ctx: TransitionContext) -> bool:
@@ -109,6 +143,18 @@ THREAT_MODEL_MACHINE = StateMachine(
                     "At least one component or trust boundary defined",
                     _has_trust_boundary,
                     "Decompose the system into processes, datastores, flows and boundaries.",
+                ),
+                Precondition(
+                    "TM-2.1",
+                    "Components declare what data they handle",
+                    lambda tm, c: all(
+                        bool(comp.data_classification)
+                        for comp in tm.components
+                        if comp.component_type in ("Process", "Datastore", "Data_Flow")
+                    ),
+                    "Classify the data each process, datastore and flow handles. What a "
+                    "component handles determines what its compromise costs, so threat "
+                    "analysis cannot be scoped without it.",
                 ),
             ),
         ),
@@ -171,6 +217,28 @@ THREAT_MODEL_MACHINE = StateMachine(
                     _mitigations_backed_by_live_controls,
                     "A scenario marked Mitigated must link to a control deployment that is "
                     "Active or Degraded. A planned or failed control does not mitigate.",
+                ),
+                Precondition(
+                    "TINV-9",
+                    "Sensitive components declare a trust zone",
+                    _sensitive_components_zoned,
+                    "A component handling data at or above the configured sensitivity "
+                    "threshold must declare where it sits. Where it sits is half of "
+                    "what a compromise costs.",
+                ),
+                Precondition(
+                    "TINV-11",
+                    "Every sensitive component has been analysed",
+                    _sensitive_components_analysed,
+                    "A component was decomposed and labelled sensitive but carries no "
+                    "threat scenario. Silence on a crown-jewel component is the one "
+                    "omission a scenario list cannot surface by itself.",
+                ),
+                Precondition(
+                    "TINV-10",
+                    "Every resolved scenario carries a rationale",
+                    _scenarios_have_rationale,
+                    "Accepting or mitigating a scenario is a decision. Record why.",
                 ),
                 Precondition(
                     "TINV-2.1",

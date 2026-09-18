@@ -3,7 +3,7 @@
 **A Reference Architecture for Specification-Driven Security Tooling Built with Agentic AI**
 
 ---
-> **Framework & IP Disclaimer:** This repository represents independent research. All data models, state transitions, and system invariants are strictly based on generic, public-domain industry frameworks (NIST SP 800-30, ISO 27005, FAIR). This codebase does not contain, reflect, or represent proprietary intellectual property, internal product roadmaps, or specific use-cases of any current or former employer. Read the full [DISCLAIMER.md](./DISCLAIMER.md).
+> **Framework & IP Disclaimer:** This repository represents independent research. All data models, state transitions, and system invariants are strictly based on generic, public-domain industry frameworks (NIST SP 800-30, ISO 27005, FAIR). This codebase does not contain, reflect, or represent proprietary intellectual property, internal product roadmaps, or specific use-cases of any current or former employer. Read the full [disclaimer.md](./disclaimer.md).
 ---
 
 ## What This Is
@@ -47,7 +47,7 @@ docker compose up -d
 Open <http://localhost:8080> and sign in as `analyst@example.com` / `changeme123`.
 Docker is the only prerequisite.
 
-**8 state machines · 53 gated transitions · 40 invariants · 23 cascade events**,
+**8 state machines · 53 gated transitions · 46 invariants · 24 cascade events**,
 served live from the running engine at `/api/engine/*` rather than transcribed
 into a document that can drift.
 
@@ -108,7 +108,7 @@ Core principle: fix the specification, not the code. Full detail: [/methodology]
 | Requirement | Regulation | Implementation |
 |---|---|---|
 | Continuous ICT risk monitoring with documented response | DORA Article 9 | Cross-entity FK propagation: issues and findings cascade to risk records |
-| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress — see [APPENDIX.md#vulnerability-management](./APPENDIX.md#vulnerability-management) for the adjacent pattern. |
+| Incident management feeds back into risk register | DORA Article 11 | Planned: incident records will carry FK to risk records with a closure gate requiring risk record update. Specification in progress — see [appendix.md](./appendix.md#vulnerability-management) for the adjacent pattern. |
 | ICT risk management framework maintained and reviewed | DORA Article 6 | Framework codified as machine-readable rule set. Changes trigger re-assessment cascade |
 | ICT third-party register | DORA Article 28 | Third-party risk module: schema extension defined, state machine specified |
 | AI system lifecycle documentation | EU AI Act Article 18 | Lifecycle model: Ideation through Deprecation artefacts satisfy technical documentation requirements |
@@ -119,9 +119,9 @@ Core principle: fix the specification, not the code. Full detail: [/methodology]
 
 ## What's Next
 
-**Vulnerability Management** — Five enforced state transitions: Discovery through Verified Closed. Specification in progress. [Detail](./APPENDIX.md#vulnerability-management).
+**Vulnerability Management** — Five enforced state transitions: Discovery through Verified Closed. Specification in progress. [Detail](./appendix.md#vulnerability-management).
 
-**Resilience** — BIA/RPO/RTO as enforced state variables linked to risk register via FK. [Detail](./APPENDIX.md#resilience).
+**Resilience** — BIA/RPO/RTO as enforced state variables linked to risk register via FK. [Detail](./appendix.md#resilience).
 
 ---
 
@@ -142,8 +142,8 @@ patent grant and contributor terms.
 
 ## Related
 
-- [LinkedIn Article: Governance Is a State Machine. We've Been Treating It Like a Spreadsheet.](<!-- LINK TO ARTICLE -->)
-- [LinkedIn Post Series](<!-- LINK TO POST 1 -->)
+- LinkedIn article: *Governance Is a State Machine. We've Been Treating It Like a Spreadsheet.* (link to follow)
+- LinkedIn post series (links to follow)
 
 ---
 

@@ -137,8 +137,12 @@ def main() -> int:
     )
     check("mitigate accepted on Critical", status == 200, (status, body.get("message")))
 
-    section("A time-bound acceptance commits and is audited")
-    # RISK-002 is Moderate, so acceptance is permitted within its window.
+    section("Acceptance requires approval at the configured seniority")
+    _, all_users = call("GET", "/users", token=ciso)
+    vp = next(u for u in all_users if u["seniority"] == "VP")
+    manager = next(u for u in all_users if u["seniority"] == "Manager")
+
+    # RISK-002 is Moderate, which the shipped config requires a VP or above to accept.
     status, body = call(
         "POST",
         "/risks/" + risk2["id"] + "/treatment-decision",
@@ -149,7 +153,44 @@ def main() -> int:
         },
         analyst,
     )
-    check("a Moderate risk can be accepted", status == 200, (status, body.get("message")))
+    check("acceptance with no named approver is refused", status == 409, status)
+    check(
+        "the refusal names the required seniority",
+        "VP" in str(body.get("message", "")),
+        body.get("message"),
+    )
+
+    status, body = call(
+        "POST",
+        "/risks/" + risk2["id"] + "/treatment-decision",
+        {
+            "treatment_strategy": "Accept",
+            "acceptance_expiry_date": "2026-11-01",
+            "acceptance_rationale": "compensating detection in place pending TRT-002",
+            "acceptance_approved_by": manager["id"],
+        },
+        analyst,
+    )
+    check("approval below the required seniority is refused", status == 409, status)
+    check(
+        "the refusal names the actual seniority",
+        "Manager" in str(body.get("message", "")),
+        body.get("message"),
+    )
+
+    section("A time-bound acceptance commits and is audited")
+    status, body = call(
+        "POST",
+        "/risks/" + risk2["id"] + "/treatment-decision",
+        {
+            "treatment_strategy": "Accept",
+            "acceptance_expiry_date": "2026-11-01",
+            "acceptance_rationale": "compensating detection in place pending TRT-002",
+            "acceptance_approved_by": vp["id"],
+        },
+        analyst,
+    )
+    check("a Moderate risk can be accepted at VP", status == 200, (status, body.get("message")))
     check(
         "the expiry is recorded",
         body.get("acceptance_expiry_date") == "2026-11-01",
@@ -197,10 +238,23 @@ def main() -> int:
     )
     check("an unconfigured control family is refused", status == 409, status)
 
-    section("The configured model is served to the client")
-    status, cfg = call("GET", "/config")
-    check("config endpoint responds", status == 200, status)
-    check("it carries the organisation name", bool(cfg.get("organisation", {}).get("name")))
+    section("The configured model is served, and split by audience")
+    # Branding is anonymous: the sign-in page needs the organisation name.
+    status, public = call("GET", "/config")
+    check("public config responds anonymously", status == 200, status)
+    check("it carries the organisation name", bool(public.get("organisation", {}).get("name")))
+    check(
+        "it carries nothing else",
+        set(public.keys()) == {"organisation"},
+        sorted(public.keys()),
+    )
+
+    # The operating model is not public: it describes the separation of duties.
+    status, _ = call("GET", "/config/governance")
+    check("the governance model is not anonymously readable", status == 403, status)
+
+    status, cfg = call("GET", "/config/governance", token=analyst)
+    check("an authenticated caller gets the full model", status == 200, status)
     check("it carries five rating bands", len(cfg.get("rating_bands", [])) == 5)
     check(
         "it carries the configured control families",
@@ -210,6 +264,26 @@ def main() -> int:
         "Critical is marked unacceptable",
         cfg["acceptance_rules"]["Critical"]["acceptable"] is False,
     )
+
+    section("Machine definitions are not anonymously readable")
+    # StateMachine.describe() carries the roles permitted to fire every gate,
+    # which is the separation-of-duties design.
+    for path in (
+        "/engine/machines",
+        "/engine/invariants",
+        "/engine/cascades",
+        "/engine/scoring",
+        "/risks/machine",
+        "/controls/machines",
+        "/policies/machine",
+        "/threat-models/machine",
+        "/treatments/machine",
+        "/roles",
+    ):
+        status, _ = call("GET", path)
+        check("anonymous " + path + " is refused", status == 403, status)
+    status, machines = call("GET", "/engine/machines", token=analyst)
+    check("authenticated callers still get them", status == 200, status)
 
     section("RINV-8: scoring is refused before the preconditions gate")
     status, body = call(
@@ -394,6 +468,199 @@ def main() -> int:
     check("local acceptance refused above Low", status == 409, status)
     check("refusal names TINV-3", "TINV-3" in str(body.get("message", "")), body.get("message"))
 
+    section("Threat modelling consults the GRC environment")
+    _, ctx = call("GET", "/threat-models/" + models[0]["id"] + "/context", token=appsec)
+    check("context endpoint responds", ctx.get("enabled") is True, ctx.get("enabled"))
+    check(
+        "context declares itself informative",
+        ctx.get("informative_only") is True,
+        ctx.get("informative_only"),
+    )
+    check(
+        "it reports the asset's control posture",
+        ctx["control_posture"]["total_deployments"] > 0,
+        ctx["control_posture"],
+    )
+    check(
+        "coverage applies the same filters as the scoring engine",
+        any(
+            "CE-5" in d["reason"] or "CE-6" in d["reason"] or "CE-Low" in d["reason"]
+            for d in ctx["control_posture"]["deployments"]
+            if d["status"] != "effective"
+        ),
+        [d["reason"] for d in ctx["control_posture"]["deployments"]],
+    )
+    check(
+        "it reports risks depending on controls here",
+        len(ctx["risk_posture"]["risks"]) > 0,
+        ctx["risk_posture"],
+    )
+    check(
+        "it reports residual exposure already accepted",
+        "residual_locked" in ctx["risk_posture"],
+    )
+    check(
+        "it surfaces a control gap",
+        len(ctx["gaps"]) > 0,
+        ctx["gaps"],
+    )
+    check(
+        "sensitive data in a low-trust zone is flagged",
+        any(g["kind"] == "sensitive_data_in_low_trust_zone" for g in ctx["gaps"]),
+        [g["kind"] for g in ctx["gaps"]],
+    )
+
+    section("TINV-7: context is informative, never determinative")
+    _, tm_before = call("GET", "/threat-models/" + models[0]["id"], token=appsec)
+    covered = {
+        s["reference"]: s["status"]
+        for s in tm_before["scenarios"]
+    }
+    # THR-004 is mitigated by DEP-005, which is Degraded with CE-Low. Ambient
+    # coverage on the asset must not have resolved anything by itself.
+    check(
+        "no scenario was resolved by ambient control posture",
+        all(
+            s["status"] != "Mitigated" or len(s["mitigations"]) > 0
+            for s in tm_before["scenarios"]
+        ),
+        covered,
+    )
+    # Removing the only mitigation link must return the scenario to Identified,
+    # even though the control is still deployed on the asset.
+    thr4 = next(s for s in tm_before["scenarios"] if s["reference"] == "THR-004")
+    link_id = thr4["mitigations"][0]["link_id"]
+    status, body = call(
+        "DELETE",
+        "/threat-models/" + models[0]["id"] + "/scenarios/" + thr4["id"]
+        + "/mitigations/" + link_id,
+        token=appsec,
+    )
+    check("mitigation link removed", status == 200, (status, body.get("message")))
+    thr4_after = next(s for s in body["scenarios"] if s["reference"] == "THR-004")
+    check(
+        "the scenario reopened when its link was removed",
+        thr4_after["status"] == "Identified",
+        thr4_after["status"],
+    )
+    check(
+        "the control is still deployed on the asset",
+        body["context"]["control_posture"]["total_deployments"] > 0,
+    )
+    # Restore it so the later cascade section reads a mitigated scenario.
+    call(
+        "POST",
+        "/threat-models/" + models[0]["id"] + "/scenarios/" + thr4["id"] + "/mitigate",
+        {"deployment_id": thr4["mitigations"][0]["deployment_id"]},
+        appsec,
+    )
+
+    section("TINV-8: a scenario references an existing risk without duplicating it")
+    _, risks_before = call("GET", "/risks", token=analyst)
+    count_before = len(risks_before)
+    _, tm_now = call("GET", "/threat-models/" + models[0]["id"], token=appsec)
+    thr5 = next(s for s in tm_now["scenarios"] if s["reference"] == "THR-005")
+    check(
+        "THR-005 references an existing risk",
+        len(thr5["risk_links"]) == 1 and thr5["risk_links"][0]["link_type"] == "Represents",
+        thr5["risk_links"],
+    )
+    check("it counts as carried by the register", thr5["carried_by_register"] is True)
+    check("it therefore satisfies TINV-1", thr5["is_resolved"] is True)
+    check(
+        "no duplicate risk record was created",
+        count_before == 5,
+        count_before,
+    )
+    status, body = call(
+        "POST",
+        "/threat-models/" + models[0]["id"] + "/scenarios/" + thr5["id"] + "/risks",
+        {"risk_id": risk1["id"], "link_type": "Promoted_From"},
+        appsec,
+    )
+    check("linking with the promotion type is refused", status == 409, status)
+    check("refusal names TINV-8", "TINV-8" in str(body.get("message", "")), body.get("message"))
+
+    section("TINV-9: sensitive components declare where they sit")
+    status, body = call(
+        "POST",
+        "/threat-models/" + models[0]["id"] + "/components",
+        {
+            "name": "Unzoned secrets cache",
+            "component_type": "Datastore",
+            "data_classification": "Restricted",
+            "data_types": ["Credentials"],
+        },
+        appsec,
+    )
+    check("a sensitive component without a zone is refused", status == 422, status)
+    check("refusal names TINV-9", "TINV-9" in str(body.get("message", "")), body.get("message"))
+
+    status, body = call(
+        "POST",
+        "/threat-models/" + models[0]["id"] + "/components",
+        {
+            "name": "Unzoned secrets cache",
+            "component_type": "Datastore",
+            "data_classification": "Restricted",
+            "trust_zone": "Atlantis",
+        },
+        appsec,
+    )
+    check("an unconfigured trust zone is refused", status == 409, status)
+    check(
+        "the refusal names the configuration file",
+        "governance.yml" in str(body.get("message", "")),
+        body.get("message"),
+    )
+
+    section("Scenarios are interactive: comments, evidence, status")
+    status, body = call(
+        "POST",
+        "/threat-models/" + models[0]["id"] + "/scenarios/" + thr5["id"] + "/comments",
+        {"body": "Data platform confirmed the KMS policy is now scheduled for Q1."},
+        analyst,
+    )
+    check("a comment can be added", status == 201, status)
+    refreshed = next(s for s in body["scenarios"] if s["reference"] == "THR-005")
+    check("the comment is on the scenario", len(refreshed["comments"]) == 3, len(refreshed["comments"]))
+
+    status, body = call(
+        "POST",
+        "/threat-models/" + models[0]["id"] + "/scenarios/" + thr5["id"] + "/evidence",
+        {
+            "title": "KMS remediation plan",
+            "evidence_ref": "CHG-2026-118: customer-managed key rollout to the sandbox",
+            "evidence_type": "Ticket",
+            "supports": "Identified",
+        },
+        appsec,
+    )
+    check("evidence can be attached", status == 201, status)
+    refreshed = next(s for s in body["scenarios"] if s["reference"] == "THR-005")
+    check("the evidence is on the scenario", len(refreshed["evidence"]) == 2, len(refreshed["evidence"]))
+
+    section("Threat evidence is immutable at the database layer")
+    from sqlalchemy import text
+
+    from app.core.db import SessionLocal
+
+    session = SessionLocal()
+    try:
+        try:
+            session.execute(text("UPDATE threat_scenario_evidence SET title = 'TAMPERED'"))
+            session.commit()
+            check("threat_scenario_evidence rejects UPDATE", False, "the update succeeded")
+        except Exception as exc:
+            session.rollback()
+            check(
+                "threat_scenario_evidence rejects UPDATE",
+                "append-only" in str(exc),
+                str(exc)[:120],
+            )
+    finally:
+        session.close()
+
     section("Threat scenario promotion creates a real risk record")
     status, body = call(
         "POST",
@@ -536,9 +803,14 @@ def main() -> int:
     total_transitions = sum(len(m["transitions"]) for m in machines.values())
     check("transitions declared", total_transitions >= 40, total_transitions)
     status, cat = call("GET", "/engine/invariants", token=analyst)
-    check("invariant catalogue served", cat["total"] >= 37, cat["total"])
+    check("invariant catalogue served", cat["total"] >= 46, cat["total"])
     status, casc = call("GET", "/engine/cascades", token=analyst)
-    check("cascade events registered", len(casc["events"]) >= 20, len(casc["events"]))
+    check("cascade events registered", len(casc["events"]) >= 24, len(casc["events"]))
+    check(
+        "the mitigation-success cascade is registered (codified-rules 20.3)",
+        any(e["event"] == "threat.scenario_mitigated" for e in casc["events"]),
+        [e["event"] for e in casc["events"]],
+    )
 
     section("Audit trail captured the whole run")
     status, audit = call("GET", "/audit?limit=500", token=ciso)

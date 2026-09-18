@@ -198,12 +198,33 @@ def main() -> int:
     )
 
     def own_families(raw):
+        # Replacing the taxonomy means replacing the STRIDE hint map with it: the
+        # two travel together, which is what the cross-reference check enforces.
         raw["controls"]["families"] = ["CC", "AC", "CM", "SC"]
+        raw["threat"]["context"]["stride_control_families"] = {
+            "Spoofing": ["AC"],
+            "Tampering": ["CM"],
+            "Repudiation": ["CC"],
+            "Information_Disclosure": ["SC"],
+            "Denial_of_Service": ["SC"],
+            "Elevation_of_Privilege": ["AC"],
+        }
 
     accepts(
         "a replacement control taxonomy is accepted",
         own_families,
         lambda c: c.control_families == ("CC", "AC", "CM", "SC"),
+    )
+
+    def stale_stride_map(raw):
+        # Replacing families but forgetting the hint map leaves the coverage panel
+        # ranking nothing, silently. The loader refuses instead.
+        raw["controls"]["families"] = ["CC", "AC"]
+
+    rejects(
+        "a stale STRIDE hint map is refused",
+        stale_stride_map,
+        "is not in controls.families",
     )
 
     def own_roles(raw):

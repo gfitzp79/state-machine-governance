@@ -12,6 +12,29 @@ This work does not represent the systems, products, roadmap, intellectual proper
 
 The reference architecture, codified rules, invariant catalogues, and deployment patterns are published for educational and professional development purposes. They are designed to illustrate architectural principles for governance tooling and specification-driven agentic development, not to provide a production-ready system.
 
+## Reference Implementation
+
+This repository includes a working software implementation in `platform/`,
+licensed separately under Apache 2.0.
+
+It is a **reference implementation**: it exists to demonstrate that the rules in
+this framework can be enforced by a system rather than described in a document.
+It has not been through the operational hardening, penetration testing, or
+sustained production use that a system holding real governance data requires.
+The known limitations are stated plainly in
+[platform/README.md](./platform/README.md) rather than left to be discovered.
+
+Anyone deploying it takes on the full operational responsibility described in the
+[AI tool lifecycle model](./architecture/ai-tool-lifecycle.md) and the
+[shared responsibility model](./architecture/shared-responsibility.md): named
+ownership, telemetry, versioning, incident response, and defined decommissioning
+criteria. Speed of deployment does not reduce that obligation.
+
+The software was developed independently, outside and unrelated to any
+employment, using only public-domain frameworks and standards. It contains no
+proprietary intellectual property, internal tooling, control libraries, or
+operating-model detail belonging to any organisation.
+
 ## No Warranty
 
 This material is provided as-is, without warranty of any kind, express or implied. The author assumes no liability for any use of the patterns, specifications, or methodologies described. Any implementation based on this work should be independently validated against the specific requirements, regulatory obligations, and risk appetite of the implementing organisation.
@@ -22,4 +45,4 @@ References to regulatory frameworks (DORA, NIST SP 800-207, OWASP, Central Bank 
 
 ## Contact
 
-For questions about this work, reach out via [LinkedIn](<!-- LINK TO LINKEDIN PROFILE -->).
+For questions about this work, reach out via LinkedIn (link to follow).

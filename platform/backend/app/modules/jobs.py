@@ -9,7 +9,10 @@ RINV-11  expired acceptances escalate; no silent expiry
 CINV-10  expired control effectiveness auto-downgrades to CE-Unvalidated
 PE-4     exceptions within 30 days of expiry notify the owner
 PE-5     exceptions past expiry are flagged as governance gaps
-CINV-5   controls in Failure for more than 15 business days escalate to the CISO
+CINV-5   controls in Failure beyond the escalation window escalate to the CISO
+OL-5     three or more controls failing in one family in one quarter is systemic
+TM-20.2  an unaddressed threat above the promotion threshold promotes itself
+PINV-3/7 policy re-alignment and re-mapping windows are tracked to breach
 """
 
 from __future__ import annotations
@@ -26,6 +29,9 @@ from app.engine.scoring import ScoringEngine
 from app.modules.control.models import ControlDeployment, ControlObjective
 from app.modules.policy.models import PolicyException
 from app.modules.risk.models import Risk, RiskControlLink
+
+# OL-5: controls failing in one family in one quarter before it is systemic.
+SYSTEMIC_FAILURE_THRESHOLD = 3
 
 
 def expire_control_effectiveness(session: Session, actor_id: str | None = None) -> list[str]:
@@ -229,12 +235,209 @@ def refresh_risk_sla(session: Session, actor_id: str | None = None) -> list[str]
     return breached
 
 
+def escalate_systemic_control_failures(
+    session: Session, actor_id: str | None = None
+) -> list[dict[str, Any]]:
+    """OL-5. Three or more controls in Failure within one family in one quarter.
+
+    A single control failing is an operational event. Three failing in the same
+    family in the same quarter is a design problem with the family, and it is
+    the pattern that no per-control check can see.
+    """
+    quarter_start = date.today() - timedelta(days=90)
+    failing = (
+        session.execute(
+            select(ControlObjective).where(ControlObjective.lifecycle_state == "Failure")
+        )
+        .scalars()
+        .all()
+    )
+
+    by_family: dict[str, list[ControlObjective]] = {}
+    for obj in failing:
+        declared = obj.failure_declared_at
+        if declared is not None and declared.date() < quarter_start:
+            continue
+        by_family.setdefault(obj.family, []).append(obj)
+
+    systemic: list[dict[str, Any]] = []
+    for family, objectives in by_family.items():
+        if len(objectives) < SYSTEMIC_FAILURE_THRESHOLD:
+            continue
+        references = sorted(o.reference for o in objectives)
+        AuditTrail.record(
+            session,
+            actor_id=None,
+            entity_type="control_family",
+            entity_id=None,
+            action="SYSTEMIC_FAILURE_ESCALATED",
+            changed_fields={
+                "family": family,
+                "controls": references,
+                "rule": "OL-5",
+                "window_days": 90,
+            },
+        )
+        # Every risk relying on any of them inherits the systemic flag.
+        links = (
+            session.execute(
+                select(RiskControlLink).where(
+                    RiskControlLink.objective_id.in_([o.id for o in objectives])
+                )
+            )
+            .scalars()
+            .all()
+        )
+        risk_ids = {link.risk_id for link in links}
+        if risk_ids:
+            for risk in (
+                session.execute(select(Risk).where(Risk.id.in_(risk_ids))).scalars().all()
+            ):
+                risk.escalation_flag = True
+                risk.escalation_reason = (
+                    str(len(objectives)) + " controls in the " + family
+                    + " family are in Failure this quarter ("
+                    + ", ".join(references)
+                    + "). Escalated as a systemic control weakness (OL-5)."
+                )
+        systemic.append(
+            {"family": family, "controls": references, "linked_risks": len(risk_ids)}
+        )
+    return systemic
+
+
+def promote_stale_threat_scenarios(
+    session: Session, actor_id: str | None = None
+) -> list[str]:
+    """codified-rules section 20.2 / 20.1.
+
+    A scenario at or above the promotion threshold that has sat unaddressed
+    beyond the configured window promotes itself into the register. Local
+    acceptance is not available to it (TINV-3), so leaving it Identified
+    indefinitely is the one outcome the framework does not permit.
+    """
+    from app.modules.threat.models import SEVERITY_ORDER, ThreatModel, ThreatScenario
+    from app.modules.threat.service import ThreatModelService
+
+    cutoff = date.today() - timedelta(days=governance.threat_auto_promotion_days)
+    promoted: list[str] = []
+
+    scenarios = (
+        session.execute(
+            select(ThreatScenario).where(ThreatScenario.status == "Identified")
+        )
+        .scalars()
+        .all()
+    )
+    for scenario in scenarios:
+        if SEVERITY_ORDER.get(scenario.inherent_severity, 0) < (
+            governance.minimum_promotable_severity_rank
+        ):
+            continue
+        # The clock starts when the scenario was raised, or when it re-opened.
+        started = (scenario.reopened_at or scenario.created_at).date()
+        if started > cutoff:
+            continue
+        if scenario.carried_by_register:
+            continue
+
+        model = session.get(ThreatModel, scenario.threat_model_id)
+        if model is None:
+            continue
+
+        # section 20.1: the system owner owns a promoted threat by default.
+        service = ThreatModelService(session, actor_id, ("Admin",))
+        try:
+            risk = service.promote_to_risk(
+                scenario,
+                {
+                    "risk_owner_id": model.system_owner_id,
+                    "risk_analyst_id": model.appsec_partner_id,
+                    "tier": "Tier_3",
+                },
+            )
+        except Exception:
+            session.rollback()
+            continue
+
+        AuditTrail.record(
+            session,
+            actor_id=None,
+            entity_type="threat_scenario",
+            entity_id=scenario.id,
+            action="AUTO_PROMOTED",
+            changed_fields={
+                "risk": risk.reference,
+                "severity": scenario.inherent_severity,
+                "unaddressed_days": governance.threat_auto_promotion_days,
+                "rule": "codified-rules 20.2",
+            },
+        )
+        promoted.append(scenario.reference + " -> " + risk.reference)
+    return promoted
+
+
+def track_policy_realignment(session: Session, actor_id: str | None = None) -> list[str]:
+    """PINV-3 and PINV-7. The windows were being set and never checked.
+
+    An alignment obligation with a due date that nothing watches is a note, not
+    an SLA.
+    """
+    from app.modules.policy.models import Policy, PolicyControlLink
+
+    breached: list[str] = []
+    overdue = (
+        session.execute(
+            select(PolicyControlLink)
+            .where(PolicyControlLink.realignment_required.is_(True))
+            .where(PolicyControlLink.realignment_due < date.today())
+        )
+        .scalars()
+        .all()
+    )
+    for link in overdue:
+        policy = session.get(Policy, link.policy_id)
+        objective = session.get(ControlObjective, link.objective_id)
+        if policy is None or objective is None:
+            continue
+        AuditTrail.notify(
+            session,
+            recipient_id=objective.control_owner_id,
+            entity_type="control_objective",
+            entity_id=objective.id,
+            event_type="realignment_overdue",
+            title="Alignment confirmation overdue on " + objective.reference,
+            body=(
+                "Policy " + policy.reference + " required alignment confirmation by "
+                + link.realignment_due.isoformat()
+                + ". Unconfirmed alignment is a governance gap (PINV-7)."
+            ),
+        )
+        AuditTrail.record(
+            session,
+            actor_id=None,
+            entity_type="policy",
+            entity_id=policy.id,
+            action="REALIGNMENT_OVERDUE",
+            changed_fields={
+                "objective": objective.reference,
+                "due": link.realignment_due.isoformat(),
+                "rule": "PINV-7",
+            },
+        )
+        breached.append(policy.reference + " / " + objective.reference)
+    return breached
+
+
 def run_all(session: Session, actor_id: str | None = None) -> dict[str, Any]:
     result = {
         "ce_expired": expire_control_effectiveness(session, actor_id),
         "acceptances_escalated": escalate_expired_acceptances(session, actor_id),
         "exceptions": expire_policy_exceptions(session, actor_id),
         "control_failures_escalated": escalate_prolonged_control_failures(session, actor_id),
+        "systemic_failures": escalate_systemic_control_failures(session, actor_id),
+        "threats_auto_promoted": promote_stale_threat_scenarios(session, actor_id),
+        "realignment_overdue": track_policy_realignment(session, actor_id),
         "sla_breached": refresh_risk_sla(session, actor_id),
     }
     session.commit()

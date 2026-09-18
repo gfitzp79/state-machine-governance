@@ -112,7 +112,7 @@ def create_policy(payload: PolicyCreate, session: DbSession, user: CurrentUser) 
 
 
 @router.get("/machine")
-def policy_machine() -> dict[str, Any]:
+def policy_machine(user: CurrentUser) -> dict[str, Any]:
     return {
         "policy": POLICY_MACHINE.describe(),
         "exception": POLICY_EXCEPTION_MACHINE.describe(),
@@ -120,7 +120,7 @@ def policy_machine() -> dict[str, Any]:
 
 
 @router.get("/reference-data")
-def reference_data() -> dict[str, Any]:
+def reference_data(user: CurrentUser) -> dict[str, Any]:
     return {
         "policy_types": list(POLICY_TYPES),
         "review_cycles": list(REVIEW_CYCLES),
