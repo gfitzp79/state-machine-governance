@@ -43,6 +43,35 @@ jobs:
           docker compose logs api
           exit 1
 
+      - name: The schema came from migrations, not create_all
+        run: |
+          set -e
+          docker compose exec -T api alembic current | grep -q '(head)'             || { echo "database is not at head"; exit 1; }
+          # Every append-only table carries its trigger. Autogenerate cannot see
+          # triggers, so a migration adding such a table can quietly omit one and
+          # leave an invariant (CINV-7, PINV-9, TSE-1) unenforced.
+          docker compose exec -T api python -c "
+          from app.core.db import engine
+          from app.db_init import APPEND_ONLY_TABLES, _verify_immutability_triggers
+          with engine.connect() as c:
+              _verify_immutability_triggers(c)
+          print('append-only triggers verified on', ', '.join(APPEND_ONLY_TABLES))
+          "
+
+      - name: Models and migrations agree
+        run: |
+          # The same drift argument as the invariant catalogue: a model changed
+          # without a migration is a schema the history no longer describes.
+          docker compose exec -T api alembic check
+
+      - name: A v0.1.0 database upgrades without losing data
+        run: |
+          docker compose exec -T api python upgrade_test.py
+          # That test rebuilds the schema, so restore the seeded database for
+          # anything that runs after it.
+          docker compose down -v
+          docker compose up -d --wait
+
       - name: Configuration layer tests
         run: docker compose exec -T api python config_test.py
 

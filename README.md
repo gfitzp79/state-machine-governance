@@ -140,9 +140,11 @@ implementation carries a licence built for code: permissive, with an explicit
 patent grant and contributor terms.
 
 The platform is versioned separately from the framework documents and follows
-semantic versioning. It is currently **0.1.0**: pre-1.0, because there is no
-schema migration path yet. See [CHANGELOG.md](./CHANGELOG.md) and the known
-limitations in [platform/README.md](./platform/README.md).
+semantic versioning. It is currently **0.2.0**. Upgrades are migrated with
+Alembic and an 0.1.0 database is adopted automatically on first boot. It stays
+pre-1.0 because it has not yet been run in anger by anybody but its author. See
+[CHANGELOG.md](./CHANGELOG.md) and the known limitations in
+[platform/README.md](./platform/README.md).
 
 ---
 

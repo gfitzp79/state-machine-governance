@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
+    version="0.2.0",
     description=(
         "A GRC platform that enforces governance as a state machine. Every lifecycle "
         "transition is gated, every hard rule is an invariant checked before commit, and "

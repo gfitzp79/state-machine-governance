@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -347,7 +348,7 @@ class ThreatMitigationLink(Base, UUIDPrimaryKey):
     )
     linked_by: Mapped[str | None] = mapped_column(String(36))
     linked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     scenario: Mapped[ThreatScenario] = relationship(back_populates="mitigations")
@@ -403,7 +404,7 @@ class ThreatScenarioEvidence(Base, UUIDPrimaryKey):
     supersedes_id: Mapped[str | None] = mapped_column(String(36))
     created_by: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     scenario: Mapped["ThreatScenario"] = relationship(back_populates="evidence")
@@ -436,7 +437,7 @@ class ThreatScenarioRiskLink(Base, UUIDPrimaryKey):
     rationale: Mapped[str | None] = mapped_column(Text)
     linked_by: Mapped[str | None] = mapped_column(String(36))
     linked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     scenario: Mapped["ThreatScenario"] = relationship(back_populates="risk_links")

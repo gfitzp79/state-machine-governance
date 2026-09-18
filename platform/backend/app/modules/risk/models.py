@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -302,7 +303,7 @@ class RiskPhaseHistory(Base, UUIDPrimaryKey):
     gate_evaluation: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     changed_by: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     risk: Mapped[Risk] = relationship(back_populates="phase_history")
@@ -324,7 +325,7 @@ class RiskControlLink(Base, UUIDPrimaryKey):
     ce_at_assessment: Mapped[str | None] = mapped_column(String(32))
     linked_by: Mapped[str | None] = mapped_column(String(36))
     linked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     risk: Mapped[Risk] = relationship(back_populates="control_links")
@@ -344,7 +345,7 @@ class RiskTreatmentLink(Base, UUIDPrimaryKey):
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     linked_by: Mapped[str | None] = mapped_column(String(36))
     linked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     risk: Mapped[Risk] = relationship(back_populates="treatment_links")
@@ -363,7 +364,7 @@ class RiskPolicyLink(Base, UUIDPrimaryKey):
     )
     linked_by: Mapped[str | None] = mapped_column(String(36))
     linked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

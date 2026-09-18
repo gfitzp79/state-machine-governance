@@ -13,6 +13,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.2.0] - Schema migrations and the compliance domain
+
+### Added: schema migrations
+
+- **Alembic owns the schema.** `alembic upgrade head` runs on every boot. This
+  was the headline limitation of 0.1.0, which said in its own release notes that
+  upgrading meant exporting data, recreating the schema and re-importing.
+- **An 0.1.0 database is adopted, not replayed.** It was built by `create_all`
+  and has no migration history, so replaying the initial migration against it
+  would fail on the first `CREATE TABLE`. The first boot stamps it instead and
+  carries on, leaving the data alone. `upgrade_test.py` exercises that path and
+  runs in CI.
+- **The initial migration installs the append-only triggers**, so
+  `alembic upgrade head` on its own produces a correct database rather than one
+  with `control_tests` that anybody can UPDATE.
+- **Boot verifies the triggers are present** rather than assuming the statement
+  that created them worked, and refuses to start if any is missing. Applying a
+  control and evidencing it are different acts.
+- `alembic check` runs in CI: a model changed without a migration is a schema
+  the history no longer describes.
+
+### Fixed: every timestamp default was frozen at schema-creation time
+
+Fifteen columns declared `server_default="now()"` as a plain Python string.
+SQLAlchemy treats that as a literal, so PostgreSQL evaluated it once while
+running the DDL and stored the result as a constant. Every row written to
+`control_tests`, `audit_log`, `policy_versions`, `threat_scenario_evidence`,
+`treatment_checkins` and the link tables took the moment the schema was created
+as its timestamp, not the moment it was written, unless the application happened
+to set the value in Python.
+
+`control_tests.tested_at` is the date an assessor reads when checking when a
+control was last tested. It was the date the database was built.
+
+Now `func.now()`, matching the `Timestamped` mixin that was always correct.
+Proven by inserting a row two seconds after the seed and confirming the
+timestamp advanced.
+
 ### Added: Compliance and Assurance (Domain 8)
 
 - **Requirements are records, not framework names.** §15 CF-2 had controls
@@ -158,5 +200,6 @@ changes needed to describe what it actually does.
   Permissions-Policy, and `server_tokens off`.
 - Both containers run unprivileged.
 
-[Unreleased]: https://github.com/gfitzp79/state-machine-governance/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/gfitzp79/state-machine-governance/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/gfitzp79/state-machine-governance/releases/tag/v0.2.0
 [0.1.0]: https://github.com/gfitzp79/state-machine-governance/releases/tag/v0.1.0

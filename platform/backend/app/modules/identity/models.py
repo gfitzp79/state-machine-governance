@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -84,7 +84,7 @@ class AuditLog(Base, UUIDPrimaryKey):
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     changed_fields: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
@@ -99,5 +99,5 @@ class Notification(Base, UUIDPrimaryKey):
     body: Mapped[str | None] = mapped_column(Text)
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

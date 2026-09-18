@@ -19,6 +19,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -125,7 +126,7 @@ class TreatmentApproval(Base, UUIDPrimaryKey):
     decision_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     treatment: Mapped[Treatment] = relationship(back_populates="approvals")
@@ -144,7 +145,7 @@ class TreatmentCheckin(Base, UUIDPrimaryKey):
     blockers: Mapped[str | None] = mapped_column(Text)
     submitted_by: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     treatment: Mapped[Treatment] = relationship(back_populates="checkins")

@@ -113,6 +113,31 @@ Concretely:
 | A new hard rule | `modules/<domain>/invariants.py`, with a specification reference |
 | Cross-entity propagation | `modules/cascades.py`, which is the only place one module reaches into another |
 | A new domain | `models · machine · invariants · service · router` |
+| A schema change | a model edit **and** an Alembic migration. `alembic check` runs in CI |
+
+### Migrations
+
+A model change without a migration is a schema the history no longer describes,
+so `alembic check` fails the build.
+
+```bash
+docker compose exec api alembic revision --autogenerate -m "what changed"
+```
+
+Read what it generated. Autogenerate handles columns, constraints and indexes,
+and is blind to the two things most likely to matter in this repository:
+
+- **Triggers.** The append-only tables are enforced by trigger and autogenerate
+  cannot see one. A migration adding an append-only table adds it to
+  `APPEND_ONLY_TABLES` in `app/db_init.py` too, which is the authoritative list,
+  and boot verifies every entry is really present before serving a request.
+- **Data.** A column gaining `NOT NULL` needs a backfill you write yourself.
+
+A `server_default` goes in as `func.now()` or `sa.text(...)`, never as a bare
+string. A bare string is a literal: PostgreSQL evaluates it once while running
+the DDL and freezes the result, which is how fifteen timestamp columns spent
+0.1.0 recording the moment the schema was built instead of the moment the row
+was written.
 
 ### Adding or changing a rule
 

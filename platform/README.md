@@ -328,13 +328,41 @@ This is a reference implementation. Before it carries real governance data:
 
 ---
 
-## Known limitations
+## Schema migrations
 
-**Schema migrations.** The schema is created with `create_all` on first boot and
-stamped with the immutability triggers. That is correct for a fresh install, but
-there is no migration path between versions yet. Upgrading today means exporting
-your data, recreating the schema and re-importing. Alembic is the next
-infrastructure task.
+The schema is owned by Alembic. `alembic upgrade head` runs on every boot, so a
+container started against an older database brings it forward rather than
+running against a schema it does not match.
+
+```bash
+docker compose exec api alembic current     # where this database is
+docker compose exec api alembic history     # how it got there
+docker compose exec api alembic check       # do the models and migrations agree
+```
+
+Changing a model means writing a migration:
+
+```bash
+docker compose exec api alembic revision --autogenerate -m "what changed"
+```
+
+Read what it generated before committing it. Autogenerate is good at columns and
+constraints and blind to three things that matter here:
+
+- **triggers.** The append-only tables (CINV-7, PINV-9, TSE-1) are enforced by
+  trigger, and autogenerate cannot see one. A migration adding an append-only
+  table must add it to `APPEND_ONLY_TABLES` in `app/db_init.py` as well, which is
+  the authoritative list and is re-asserted and verified at every boot.
+- **data.** A column that gains a `NOT NULL` needs a backfill written by hand.
+- **intent.** The generated message is whatever you typed. A governance system's
+  migration history gets read by people reconstructing when a rule changed.
+
+**Upgrading from 0.1.0.** That release built its schema with `create_all` and has
+no migration history. The first boot on 0.2.0 detects this, stamps the database
+at the initial revision rather than replaying it, and carries on. Your data is
+untouched. `upgrade_test.py` exercises exactly this path.
+
+## Known limitations
 
 **Vendor and third-party risk** (data-model §7) is specified but not built. The
 engine makes it a follow-on module rather than a rework: the same five files as

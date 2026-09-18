@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -278,7 +279,7 @@ class ControlTest(Base, UUIDPrimaryKey):
     notes: Mapped[str | None] = mapped_column(Text)
     tested_by: Mapped[str | None] = mapped_column(String(36))
     tested_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     supersedes_id: Mapped[str | None] = mapped_column(String(36))
     sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

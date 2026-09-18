@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -144,7 +145,7 @@ class PolicyVersion(Base, UUIDPrimaryKey):
     lifecycle_state_at_capture: Mapped[str | None] = mapped_column(String(32))
     edited_by: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     policy: Mapped[Policy] = relationship(back_populates="versions")
@@ -199,7 +200,7 @@ class PolicyControlLink(Base, UUIDPrimaryKey):
     realignment_due: Mapped[date | None] = mapped_column(Date)
     linked_by: Mapped[str | None] = mapped_column(String(36))
     linked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     policy: Mapped[Policy] = relationship(back_populates="control_links")

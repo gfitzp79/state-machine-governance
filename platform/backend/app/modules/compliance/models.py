@@ -35,6 +35,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -239,7 +240,7 @@ class ControlRequirementLink(Base, UUIDPrimaryKey):
     rationale: Mapped[str | None] = mapped_column(Text)
     asserted_by: Mapped[str | None] = mapped_column(String(36))
     asserted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default="now()"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     requirement: Mapped[ComplianceRequirement] = relationship(back_populates="control_links")
