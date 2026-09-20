@@ -1,4 +1,4 @@
-"""Threat management invariants (TINV-1 .. TINV-11).
+"""Threat management invariants (TINV-1 .. TINV-12).
 
 TINV-1..6 govern the scenario lifecycle. TINV-7..11 govern the connective
 tissue between threat modelling and the rest of GRC: what the environment is
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from app.core import ownership
 from app.core.governance import governance
 from app.engine import BOTH, SCHEMA, SERVICE, Invariant, invariants
 from app.modules.threat.models import (
@@ -170,7 +171,23 @@ def _sensitive_components_analysed(model: ThreatModel, _ctx) -> bool:
     return True
 
 
+# TINV-12 ------------------------------------------------------------------
+MODEL_OWNER_ROLES = {
+    "system_owner_id": "System_Owner",
+    "appsec_partner_id": "AppSec",
+}
+
 invariants.register(
+    Invariant(
+        id="TINV-12",
+        entity=MODEL,
+        rule="The system owner and AppSec partner on a threat model hold those roles",
+        layer=SERVICE,
+        mechanism=ownership.describe(MODEL_OWNER_ROLES),
+        violation="Named owner does not hold the required role",
+        spec_ref="codified-rules section 2.4",
+        holds=ownership.holder_of(fields=MODEL_OWNER_ROLES),
+    ),
     Invariant(
         id="TINV-1",
         entity=SCENARIO,

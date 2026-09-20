@@ -139,9 +139,76 @@ class RiskService(LifecycleService[Risk]):
         return risk
 
     def resolve_ce(self, risk: Risk):
-        """Traceable CE resolution across every linked control."""
+        """Traceable CE resolution across every linked control, within scope.
+
+        The scope is the assets the risk names. Passing it means a control
+        deployed elsewhere is excluded with a reason rather than quietly
+        counted (RINV-14).
+        """
         objectives = [link.objective for link in risk.control_links if link.objective]
-        return ScoringEngine.resolve_ce(objectives)
+        return ScoringEngine.resolve_ce(objectives, scope=risk.scope_asset_ids)
+
+    # -- scope -------------------------------------------------------------
+
+    def link_asset(self, risk: Risk, attack_surface_id: str) -> Risk:
+        """Name an asset this risk concerns. Narrows the CE filter (RINV-14)."""
+        from app.modules.control.models import AttackSurface
+        from app.modules.risk.models import RiskAssetLink
+
+        asset = self.session.get(AttackSurface, attack_surface_id)
+        if asset is None:
+            raise NotFound("asset " + attack_surface_id + " not found")
+        if any(l.attack_surface_id == attack_surface_id for l in risk.asset_links):
+            raise Conflict(asset.name + " is already in this risk's scope")
+
+        self.session.add(
+            RiskAssetLink(
+                risk_id=risk.id, attack_surface_id=attack_surface_id, linked_by=self.actor_id
+            )
+        )
+        self.session.flush()
+        self.session.refresh(risk)
+        self.enforce(risk)
+        AuditTrail.record(
+            self.session,
+            actor_id=self.actor_id,
+            entity_type="risk",
+            entity_id=risk.id,
+            action="SCOPE_ADD",
+            changed_fields={"asset": asset.name},
+        )
+        self.session.commit()
+        return risk
+
+    def unlink_asset(self, risk: Risk, attack_surface_id: str) -> Risk:
+        """Remove an asset from scope.
+
+        This can widen what counts toward CE, so the invariants run afterwards:
+        a residual reduction that only the removed asset's control justified is
+        refused, and the whole operation rolls back.
+        """
+        from app.modules.risk.models import RiskAssetLink
+
+        link = next(
+            (l for l in risk.asset_links if l.attack_surface_id == attack_surface_id), None
+        )
+        if link is None:
+            raise NotFound("that asset is not in this risk's scope")
+        name = getattr(link.surface, "name", attack_surface_id)
+        self.session.delete(link)
+        self.session.flush()
+        self.session.refresh(risk)
+        self.enforce(risk)
+        AuditTrail.record(
+            self.session,
+            actor_id=self.actor_id,
+            entity_type="risk",
+            entity_id=risk.id,
+            action="SCOPE_REMOVE",
+            changed_fields={"asset": name, "removed": True},
+        )
+        self.session.commit()
+        return risk
 
     # -- treatment decision -----------------------------------------------
 
@@ -437,6 +504,11 @@ class RiskService(LifecycleService[Risk]):
             "evidence_ref": risk.evidence_ref,
             "readout_conducted_at": risk.readout_conducted_at,
             "readout_adjustment_rationale": risk.readout_adjustment_rationale,
+            "scope_assets": [
+                {"id": l.attack_surface_id, "name": getattr(l.surface, "name", None)}
+                for l in risk.asset_links
+            ],
+            "scope_declared": bool(risk.asset_links),
             "preconditions": risk.preconditions,
             # Which of them the engine computes, so the UI shows them as
             # state rather than offering a tick it would ignore.

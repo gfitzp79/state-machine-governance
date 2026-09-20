@@ -28,6 +28,7 @@ from app.modules.risk import invariants as _risk_invariants  # noqa: F401
 from app.modules.risk import router as risk_router
 from app.modules.threat import invariants as _threat_invariants  # noqa: F401
 from app.modules.threat import router as threat_router
+from app.modules.treatment import invariants as _treatment_invariants  # noqa: F401
 from app.modules.treatment import router as treatment_router
 
 logger = logging.getLogger(__name__)

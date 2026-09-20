@@ -326,6 +326,79 @@ def main() -> int:
     check("transition refused by the gate", status == 409, status)
     check("refusal is gate_blocked", body.get("code") == "gate_blocked", body.get("code"))
 
+    section("RINV-14: a control only counts where it is deployed")
+    # Adding the identity provider to scope should bring its deployment back,
+    # and removing it should exclude it again. The round trip is the test:
+    # a filter that only ever narrows could be a bug that drops everything.
+    _, assets = call("GET", "/assets", token=analyst)
+    idp = next(a for a in assets if "Identity" in a["name"])
+    status, _ = call("POST", "/risks/" + risk1["id"] + "/assets", {"id": idp["id"]}, analyst)
+    check("an asset can be added to scope", status == 200, status)
+    _, wide = call("GET", "/risks/" + risk1["id"] + "/ce-resolution", token=analyst)
+    check("the newly scoped deployment now counts", len(wide["contributing"]) == 2,
+          len(wide["contributing"]))
+
+    status, body = call("POST", "/risks/" + risk1["id"] + "/assets", {"id": idp["id"]}, analyst)
+    check("the same asset twice is refused", status == 409, status)
+
+    status, _ = call("DELETE", "/risks/" + risk1["id"] + "/assets/" + idp["id"], token=analyst)
+    check("an asset can be removed from scope", status == 200, status)
+    _, narrow = call("GET", "/risks/" + risk1["id"] + "/ce-resolution", token=analyst)
+    check("removing it excludes the deployment again", len(narrow["contributing"]) == 1,
+          len(narrow["contributing"]))
+
+    status, body = call("DELETE", "/risks/" + risk1["id"] + "/assets/" + idp["id"], token=analyst)
+    check("removing it twice is refused", status == 404, status)
+
+    section("RINV-15 and siblings: a named owner holds the role")
+    _, people = call("GET", "/users", token=analyst)
+    person = {u["full_name"]: u for u in people}
+
+    status, filtered = call("GET", "/users?role=Risk_Owner", token=analyst)
+    check("the role filter returns only holders",
+          status == 200 and filtered and all("Risk_Owner" in u["roles"] for u in filtered),
+          [u["full_name"] for u in filtered])
+    check("and is narrower than the full list", len(filtered) < len(people),
+          str(len(filtered)) + " of " + str(len(people)))
+
+    _, appsec_people = call("GET", "/users?role=AppSec", token=analyst)
+    check("the filter matches on a prefix", len(appsec_people) > 0,
+          [u["full_name"] for u in appsec_people])
+
+    status, body = call("GET", "/users?role=Not_A_Role", token=analyst)
+    # An unknown role returning an empty list would look identical to "nobody
+    # holds this", and a typo in a caller would silently empty a dropdown.
+    check("an unknown role is refused, not silently empty", status == 409, status)
+
+    status, body = call(
+        "PATCH", "/risks/" + risk1["id"],
+        {"risk_owner_id": person["Tomas Lindqvist"]["id"]}, analyst,
+    )
+    check("a GRC Engineer is refused as Risk Owner", status == 422, status)
+    check("and RINV-15 is named", body.get("invariant") == "RINV-15", body.get("invariant"))
+
+    status, _ = call(
+        "PATCH", "/risks/" + risk1["id"],
+        {"risk_owner_id": person["Elena Vasquez"]["id"]}, analyst,
+    )
+    check("a real Risk_Owner is accepted", status == 200, status)
+
+    status, body = call(
+        "PATCH", "/risks/" + risk1["id"],
+        {"risk_analyst_id": person["Elena Vasquez"]["id"]}, analyst,
+    )
+    check("a Risk_Owner is refused as Risk Analyst", status == 422, status)
+    call("PATCH", "/risks/" + risk1["id"],
+         {"risk_analyst_id": person["Priya Raman"]["id"]}, analyst)
+
+    _, pols = call("GET", "/policies", token=analyst)
+    status, body = call(
+        "PATCH", "/policies/" + pols[0]["id"],
+        {"policy_owner_id": person["Tomas Lindqvist"]["id"]}, ciso,
+    )
+    check("PINV-10 refuses a non Policy_Owner", status == 422,
+          (status, body.get("invariant")))
+
     section("Role enforcement on transitions")
     status, body = call(
         "POST", "/risks/" + risk4["id"] + "/transition", {"target": "Treatment"}, control_owner
@@ -340,7 +413,17 @@ def main() -> int:
         ce["max_likelihood_reduction"] == 1,
         ce["max_likelihood_reduction"],
     )
-    check("both deployments contribute", len(ce["contributing"]) == 2, len(ce["contributing"]))
+    # RISK-001 concerns the Payments API. CTL-001 is deployed there and on the
+    # Corporate Identity Provider, and only the first one is about this risk.
+    check("only the in-scope deployment contributes", len(ce["contributing"]) == 1,
+          len(ce["contributing"]))
+    check("the scope is declared", ce.get("scope_declared") is True, ce.get("scope_assets"))
+    check(
+        "RINV-14 names the asset it excluded for",
+        any("RINV-14" in str(e.get("reason")) and "Identity Provider" in str(e.get("reason"))
+            for e in ce["excluded"]),
+        [e.get("reason") for e in ce["excluded"]],
+    )
 
     status, ce4 = call("GET", "/risks/" + risk4["id"] + "/ce-resolution", token=analyst)
     check(
@@ -1064,8 +1147,11 @@ def main() -> int:
         "PATCH",
         "/risks/" + rid,
         {
+            # Each has to hold the role the field names (RINV-15). Elena
+            # Vasquez is a Risk_Owner, so she cannot stand in as the
+            # stakeholder here however senior she is.
             "risk_owner_id": by_name["Dmitri Sokolov"],
-            "risk_stakeholder_id": by_name["Elena Vasquez"],
+            "risk_stakeholder_id": by_name["Marcus Bell"],
             "risk_analyst_id": by_name["Priya Raman"],
         },
         token=analyst,

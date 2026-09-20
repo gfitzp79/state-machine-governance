@@ -163,7 +163,10 @@ class ScoringEngine:
 
     @classmethod
     def resolve_ce(
-        cls, objectives: Iterable[Any], today: date | None = None
+        cls,
+        objectives: Iterable[Any],
+        today: date | None = None,
+        scope: set[str] | None = None,
     ) -> CEResolution:
         """STEP 1 of the CE resolution order.
 
@@ -171,11 +174,18 @@ class ScoringEngine:
         every deployment that does not qualify, then takes the worst case across
         whatever survives (CE-4 / CINV-6). Never averages, never takes best case.
 
+        `scope` is the set of attack surface ids the risk concerns. When it is
+        given and non-empty, a deployment on an asset outside it is discarded:
+        a control that runs somewhere else does not reduce this exposure
+        (RINV-14). When it is empty or None the filter does not apply, because
+        an organisation-level risk legitimately names no single asset.
+
         Everything discarded is returned in `excluded` with the rule that
         discarded it, so an analyst can see why a control they expected to reduce
         the score did not.
         """
         today = today or date.today()
+        scope = scope or None
         contributing: list[dict[str, Any]] = []
         excluded: list[dict[str, Any]] = []
 
@@ -216,6 +226,22 @@ class ScoringEngine:
                     "ce_rating": getattr(dep, "ce_rating", CE_UNVALIDATED),
                     "asset": getattr(getattr(dep, "surface", None), "name", None),
                 }
+                # RINV-14: location before quality. A control that does not
+                # run where the risk lives cannot reduce it, however good its
+                # evidence is.
+                if scope is not None:
+                    dep_asset = getattr(dep, "attack_surface_id", None)
+                    if dep_asset not in scope:
+                        excluded.append(
+                            {
+                                **entry,
+                                "reason": "RINV-14: deployed on "
+                                + str(entry.get("asset") or "an asset")
+                                + ", which is outside this risk's declared scope",
+                            }
+                        )
+                        continue
+
                 status = getattr(dep, "deployment_status", None)
                 if status not in ("Active", "Degraded"):
                     excluded.append(

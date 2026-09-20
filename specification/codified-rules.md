@@ -126,6 +126,44 @@ OWNERSHIP_MATRIX:
   Low          → min_level: Director
 ```
 
+### §2.4 Role Integrity (MANDATORY)
+
+```
+RULE ROLE-1: a field that names a person as accountable REQUIRES that person
+             to hold the corresponding role
+  risk.risk_owner_id          -> Risk_Owner
+  risk.risk_stakeholder_id    -> Risk_Stakeholder
+  risk.risk_analyst_id        -> Risk_Analyst
+  treatment.treatment_owner_id -> Risk_Treatment_Owner
+  control_objective.control_owner_id -> Control_Owner
+  control_activity.control_operator_id -> Control_Operator
+  attack_surface.system_owner_id -> System_Owner
+  policy.policy_owner_id      -> Policy_Owner
+  threat_model.system_owner_id -> System_Owner
+  threat_model.appsec_partner_id -> AppSec_Lead | AppSec_Engineer
+
+RULE ROLE-2: an unassigned field is permitted. ROLE-1 governs who may be named,
+             not whether somebody must be
+RULE ROLE-3: [CUSTOMISE] the platform administration role is accepted in any
+             owner field, so a record whose owner has left can be reassigned.
+             The audit trail records the administrator, not the role they stood in for
+```
+
+**Why this is stated separately from §2.3.** Separation rules say who may *not*
+hold two roles at once. Ownership by severity says how senior an owner must be.
+Neither says the owner must hold the role in the first place, and an
+accountability the named person does not hold is not a weaker form of
+ownership: it is the absence of ownership wearing its name.
+
+The failure is quiet, which is why it needs a rule rather than a convention.
+Nothing breaks when a risk is owned by an engineer with no risk authority. The
+record simply asserts an accountability nobody holds, and every gate downstream
+that trusts the field inherits the assertion.
+
+Enforced by `RINV-15`, `RINV-16`, `CINV-13`, `CINV-14`, `CINV-15`, `PINV-10`
+and `TINV-12`: see the [Invariants
+Catalogue](./invariants-catalogue.md#risk-management-invariants-rinv).
+
 ---
 
 ## §3 RISK IDENTIFICATION
@@ -342,7 +380,30 @@ CE_LIKELIHOOD_ADJUSTMENT:
 
 WORST_CASE_RULE: if control has multiple deployments with different CE ratings,
   use the WORST CE across all deployments for scoring purposes
+
+SCOPE_RULE: a deployment counts toward a risk ONLY IF it runs on an asset inside
+  that risk's declared scope. Location is assessed BEFORE quality: a deployment
+  outside scope is discarded whatever its CE rating and however fresh its
+  evidence
+  IF risk declares no asset -> the filter does not apply and every deployment of
+    every linked control is considered
+  EXCLUSION is always surfaced with the asset that caused it, never silent
 ```
+
+**On declaring scope.** A risk names the assets it concerns. Declaring them
+makes the check stricter, never looser, and a risk that names none keeps the
+unfiltered behaviour.
+
+That asymmetry is deliberate. A Tier 1 organisational risk legitimately concerns
+no single system, so an empty scope has to remain a valid state rather than a
+missing field. Reinterpreting every undeclared risk as concerning nothing would
+zero out control effectiveness across an entire existing register at the moment
+this rule is adopted, which is a worse answer than the gap it closes.
+
+Threat modelling has carried the same rule since `TINV-4` (a scenario is
+mitigated only by a deployment on the asset its component sits on) and
+compliance since `AINV-2` (a requirement is covered only inside its declared
+scope). Enforced for risk by `RINV-14`.
 
 ### §4.7 Residual Risk Validation Gate (MANDATORY: ALL must pass)
 

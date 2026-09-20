@@ -44,6 +44,7 @@ from app.modules.identity.models import User, UserRole
 from app.modules.policy.models import Policy, PolicyControlLink, PolicyException, PolicyVersion
 from app.modules.risk.models import (
     Risk,
+    RiskAssetLink,
     RiskControlLink,
     RiskPhaseHistory,
     RiskTreatmentLink,
@@ -128,7 +129,10 @@ def seed(session: Session) -> None:
     )
     control_owner = _user(
         session, "control@example.com", "Jonah Weiss", "Head of Platform Security", "Director",
-        ["Control_Owner", "Control_Operator"],
+        # System_Owner because he owns the identity provider and the build
+        # pipeline below. CINV-14 checks the field against the role, so the
+        # seed has to be honest about it rather than relying on nobody looking.
+        ["Control_Owner", "Control_Operator", "System_Owner"],
     )
     delivery = _user(
         session, "delivery@example.com", "Sam Okonkwo", "Engineering Manager", "Manager",
@@ -906,6 +910,26 @@ def seed(session: Session) -> None:
         (risk5, [(None, "Intake", "CREATE")]),
     ):
         _history(session, risk, pairs)
+
+    # Which assets each risk concerns (RINV-14). A control only reduces a risk
+    # where it is deployed, and without this the Corporate Identity Provider
+    # deployment of CTL-001 counted toward a risk about payment systems.
+    #
+    # RISK-005 is deliberately left unscoped. It is still in Intake, and an
+    # undeclared scope is a real state the interface has to show honestly rather
+    # than a gap in the seed.
+    for risk, assets in (
+        (risk1, [payments]),
+        (risk2, [payments]),
+        (risk3, [warehouse]),
+        (risk4, [build]),
+    ):
+        for asset in assets:
+            session.add(
+                RiskAssetLink(
+                    risk_id=risk.id, attack_surface_id=asset.id, linked_by=analyst.id
+                )
+            )
 
     # Risk to control linkage, with the CE snapshot taken at link time.
     for risk, objectives in (

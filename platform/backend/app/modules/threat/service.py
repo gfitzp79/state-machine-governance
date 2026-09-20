@@ -262,6 +262,22 @@ class ThreatModelService(LifecycleService[ThreatModel]):
         self.session.commit()
         return scenario
 
+    def _if_holds(self, user_id: str | None, role: str) -> str | None:
+        """The user id, but only if they hold the role the field requires.
+
+        Used for defaults rather than for user input: somebody who explicitly
+        names an owner gets RINV-15's refusal and can see what was wrong. A
+        default that quietly fails would just look like a broken button.
+        """
+        if not user_id:
+            return None
+        from app.modules.identity.models import User
+
+        person = self.session.get(User, user_id)
+        if person is None:
+            return None
+        return user_id if any(r.startswith(role) for r in person.role_names) else None
+
     def promote_to_risk(self, scenario: ThreatScenario, data: dict[str, Any]):
         """The bidirectional link that makes threat modelling part of GRC rather
         than an adjacent activity."""
@@ -303,10 +319,20 @@ class ThreatModelService(LifecycleService[ThreatModel]):
                 # system owner unless the promoter names someone else. A promotion
                 # that produces an ownerless risk has moved the problem, not the
                 # accountability.
+                #
+                # Both defaults are filtered through the role they are about to
+                # fill. The system owner of a service does not necessarily hold
+                # Risk_Owner, and the person who clicked promote is usually an
+                # AppSec engineer rather than a Risk Analyst. Defaulting anyway
+                # would fail the whole promotion on RINV-15, for a reason that
+                # has nothing to do with the threat. Leaving the field empty is
+                # the honest outcome: the risk lands in Intake and the Phase 2
+                # preconditions ask for a named analyst before scoring opens.
                 "risk_owner_id": data.get("risk_owner_id")
-                or (model.system_owner_id if model else None),
+                or self._if_holds(model.system_owner_id if model else None, "Risk_Owner"),
                 "risk_stakeholder_id": data.get("risk_stakeholder_id"),
-                "risk_analyst_id": data.get("risk_analyst_id") or self.actor_id,
+                "risk_analyst_id": data.get("risk_analyst_id")
+                or self._if_holds(self.actor_id, "Risk_Analyst"),
                 "identified_by": "Threat model " + (model.reference if model else ""),
             }
         )

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, Link2, Plus, X } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import {
   Badge,
   Card,
@@ -167,14 +168,13 @@ export default function PolicyDetail() {
                       PINV-5: approval requires CISO or above, and never the policy owner.
                     </p>
                     <div className="flex gap-2">
-                      <select className="field" id="approver">
-                        <option value="">Select approver</option>
-                        {users.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.full_name} — {u.seniority}
-                          </option>
-                        ))}
-                      </select>
+                      <PersonSelect
+                        label=""
+                        role="CISO,Admin"
+                        name="approver"
+                        placeholder="Select approver"
+                        showSeniority
+                      />
                       <button
                         className="btn-primary shrink-0"
                         disabled={busy === 'approve'}
@@ -195,25 +195,18 @@ export default function PolicyDetail() {
                 )}
               </Detail>
               <Detail label="Policy owner">
-                <select
-                  className="field"
-                  value={policy.policy_owner_id ?? ''}
-                  onChange={(e) =>
+                <PersonSelect
+                  label=""
+                  role="Policy_Owner"
+                  value={policy.policy_owner_id}
+                  onChange={(owner) =>
                     run(
                       'patch',
-                      () =>
-                        api.patch(`/policies/${id}`, { policy_owner_id: e.target.value || null }),
+                      () => api.patch(`/policies/${id}`, { policy_owner_id: owner }),
                       'Owner updated',
                     )
                   }
-                >
-                  <option value="">Unassigned</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name}
-                    </option>
-                  ))}
-                </select>
+                />
               </Detail>
               <Detail label="Effective date">
                 <input

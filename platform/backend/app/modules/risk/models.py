@@ -199,6 +199,13 @@ class Risk(Base, UUIDPrimaryKey, Timestamped):
     created_by: Mapped[str | None] = mapped_column(String(36))
 
     # -- relationships ----------------------------------------------------
+    # Which assets this risk concerns. Zero is a legitimate answer: a Tier 1
+    # organisational risk names no single system. Naming them makes the CE
+    # filter stricter rather than looser (RINV-14).
+    asset_links: Mapped[list["RiskAssetLink"]] = relationship(
+        back_populates="risk", cascade="all, delete-orphan", lazy="selectin"
+    )
+
     control_links: Mapped[list["RiskControlLink"]] = relationship(
         back_populates="risk", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -243,6 +250,15 @@ class Risk(Base, UUIDPrimaryKey, Timestamped):
             "governance_approved": self.gate_governance_approved,
             "drift_tracked": self.gate_drift_tracked,
         }
+
+    @property
+    def scope_asset_ids(self) -> set[str]:
+        """The assets this risk concerns, as the scoring engine wants them.
+
+        Empty means undeclared, not "none": the CE filter does not apply, and
+        the resolution panel says so rather than reporting a scope of nothing.
+        """
+        return {link.attack_surface_id for link in self.asset_links}
 
     @property
     def stakeholders_identified(self) -> bool:
@@ -363,6 +379,34 @@ class RiskPhaseHistory(Base, UUIDPrimaryKey):
     )
 
     risk: Mapped[Risk] = relationship(back_populates="phase_history")
+
+
+class RiskAssetLink(Base, UUIDPrimaryKey):
+    """Risk to the asset it concerns.
+
+    Many-to-many on purpose. A risk about privileged access to payment systems
+    spans several assets, and an organisational risk spans none in particular.
+    Forcing exactly one would have made the field a lie on both.
+    """
+
+    __tablename__ = "risk_assets"
+    __table_args__ = (
+        UniqueConstraint("risk_id", "attack_surface_id", name="uq_risk_assets"),
+    )
+
+    risk_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("risks.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attack_surface_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("attack_surfaces.id", ondelete="CASCADE"), nullable=False
+    )
+    linked_by: Mapped[str | None] = mapped_column(String(36))
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    risk: Mapped["Risk"] = relationship(back_populates="asset_links")
+    surface = relationship("AttackSurface", lazy="selectin")
 
 
 class RiskControlLink(Base, UUIDPrimaryKey):

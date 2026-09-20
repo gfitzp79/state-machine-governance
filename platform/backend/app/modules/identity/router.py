@@ -77,8 +77,33 @@ def me(user: CurrentUser) -> dict[str, Any]:
 
 
 @router.get("/users")
-def list_users(session: DbSession, user: CurrentUser) -> list[dict[str, Any]]:
+def list_users(
+    session: DbSession,
+    user: CurrentUser,
+    role: list[str] = Query(default=[]),
+    active_only: bool = Query(True),
+) -> list[dict[str, Any]]:
+    """Users, optionally narrowed to those holding any of the named roles.
+
+    `role` is repeatable and matches on a prefix, so `role=AppSec` covers
+    AppSec_Lead and AppSec_Engineer. An unknown role name is a 409 rather than
+    an empty list: a typo in a caller should not look like "nobody holds this".
+    """
+    unknown = [
+        r for r in role if not any(known.startswith(r) for known in APP_ROLES)
+    ]
+    if unknown:
+        raise Conflict("unknown roles: " + ", ".join(unknown))
+
     users = session.execute(select(User).order_by(User.full_name)).scalars().all()
+    if active_only:
+        users = [u for u in users if u.is_active]
+    if role:
+        users = [
+            u
+            for u in users
+            if any(held.startswith(r) for r in role for held in u.role_names)
+        ]
     return [_user_dict(u) for u in users]
 
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Plus } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import { Badge, Card, Field, Modal, PageLoader, Table, useToast } from '../components/ui'
 import { cx, formatDate, label } from '../lib/format'
 
@@ -194,23 +195,13 @@ function TreatmentForm({
             ))}
           </select>
         </Field>
-        <Field
+        <PersonSelect
           label="Treatment owner"
+          role="Risk_Treatment_Owner"
           hint="SEP-2: cannot be the Risk Owner of a risk this treats."
-        >
-          <select
-            className="field"
-            value={form.treatment_owner_id}
-            onChange={(e) => set('treatment_owner_id', e.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name} — {u.job_title}
-              </option>
-            ))}
-          </select>
-        </Field>
+          value={form.treatment_owner_id}
+          onChange={(id) => set('treatment_owner_id', id ?? '')}
+        />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Target date">

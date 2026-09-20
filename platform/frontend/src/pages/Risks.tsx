@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, Lock, Plus, Search } from 'lucide-react'
 import { api, ApiError, getStoredUser } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import { Badge, Card, Field, Modal, PageLoader, Table, useToast } from '../components/ui'
 import { cx, formatDate, label } from '../lib/format'
 
@@ -382,20 +383,12 @@ function CreateRiskModal({
                   ))}
             </select>
           </Field>
-          <Field label="Risk analyst">
-            <select
-              className="field"
-              value={form.risk_analyst_id}
-              onChange={(e) => set('risk_analyst_id', e.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <PersonSelect
+            label="Risk analyst"
+            role="Risk_Analyst"
+            value={form.risk_analyst_id}
+            onChange={(id) => set('risk_analyst_id', id ?? '')}
+          />
         </div>
 
         <div className="flex justify-end gap-2 border-t pt-4">

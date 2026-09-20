@@ -29,7 +29,7 @@ enforced by a named invariant alongside it: AINV-5 keeps AINV-2 true.
 | **Violation Behaviour** | What happens when something attempts to violate the invariant. |
 | **Spec Reference** | Cross-reference to the Codified Rules Specification section. |
 
-**Counts.** 57 invariants: 14 risk, 12 control, 10 policy, 12 threat, 9 compliance.
+**Counts.** 65 invariants: 17 risk, 15 control, 11 policy, 13 threat, 9 compliance.
 
 ---
 
@@ -51,6 +51,9 @@ enforced by a named invariant alongside it: AINV-5 keeps AINV-2 true.
 | RINV-11 | Expired acceptances are always escalated; no silent expiry | Service | Daily scheduled job flags expired acceptances; an unflagged one is invalid | Auto-escalation to Risk Owner, then Risk Stakeholder, then CISO | §5.5, §6.1 |
 | RINV-12 | Treatments are never presented at readout without GRC Engineer validation and treatment owner commitment | Service | Phase 4 gate checks both flags on every linked treatment record | Phase transition blocked; treatment records flagged incomplete | §5.2 |
 | RINV-13 | Partial treatment selection is always documented with a rationale | Service | Rationale required when fewer treatments are selected than proposed | Save rejected; rationale field required | §5.2 |
+| RINV-14 | A control reduces a risk only where it is deployed inside the risk's declared scope | Service | The scoring engine excludes deployments on assets outside the risk's scope, naming the asset in the exclusion reason. Applies only once a risk declares its assets | Residual reduction rejected; the control does not run where the risk is | §4.6 |
+| RINV-15 | A person named as risk owner, stakeholder or analyst holds that role | Service | Each of `risk_owner_id`, `risk_stakeholder_id` and `risk_analyst_id` is checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
+| RINV-16 | A person named as treatment owner holds the Risk_Treatment_Owner role | Service | `treatment_owner_id` checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
 
 > **On RINV-3.** This is deliberately `Service`, not `Both`. The separation it enforces is relational: it depends on which controls are linked to the risk at the moment of assignment, and a `CHECK` constraint cannot see across tables. Enforcing it means checking on *both* sides: RINV-3 when the risk owner is set, CINV-3 when the control owner is set. Either one alone is defeated by performing the two assignments in the other order.
 
@@ -60,6 +63,35 @@ boxes: a risk with no owner, no tier rationale and no linked control could pass
 three of them. They are now read from the record. The distinction is the one
 this catalogue exists to make, and it applies to any checklist: a condition the
 system can evaluate should never be offered as a claim the user can make.
+
+> **On RINV-14.** Threat models have carried this rule since TINV-4 and
+compliance since AINV-2. Risk, the oldest domain, had neither, so a control
+deployed on the corporate identity provider reduced the likelihood of a risk
+about the payments API, because nothing in the model connected a risk to a
+place.
+
+Scope is *declared*, and declaring it makes the check stricter rather than
+looser. A risk that names no asset keeps the unfiltered behaviour. That is not
+a loophole: a Tier 1 organisational risk legitimately concerns no single system,
+and reinterpreting every existing risk as covering nothing would have been a
+worse answer than the gap it fixes. The interface says which of the two states a
+risk is in, because an empty exclusion list means nothing on its own.
+
+> **On RINV-15 and its siblings.** `CINV-13`, `CINV-14`, `CINV-15`, `PINV-10`,
+`TINV-12` and `RINV-16` are the same rule in six places: the person a record
+names as accountable holds the role that name implies. The roles were
+configured, the role levels were configured, the ownership matrix was
+configured, and the acting user's role gated every transition. The person the
+record named was checked against nothing, so a risk could be owned by the GRC
+Engineer and an asset by somebody with no system ownership anywhere.
+
+The failure is quiet, which is what makes it worth a rule. Nothing breaks. The
+record simply asserts an accountability the person does not hold, and every
+gate downstream that trusts the field inherits it.
+
+Admin is accepted in any owner field. Somebody has to be able to unstick a
+record whose owner has left, and the audit trail records that it was the
+administrator rather than the role they stood in for.
 
 > **On RINV-2.** Appetite thresholds are configuration, not data. There is no endpoint that writes them because there is no table that holds them. Changing appetite means changing the operating model and redeploying it, which leaves a reviewable diff: the formal governance the rule asks for.
 
@@ -81,6 +113,9 @@ system can evaluate should never be offered as a claim the user can make.
 | CINV-10 | Expired control effectiveness auto-downgrades to CE-Unvalidated with no override | Service | Scheduled job downgrades on expiry; no endpoint permits a manual override | Automatic downgrade; Risk Analyst notified | §10.2 |
 | CINV-11 | Control effectiveness never exceeds the ceiling its automation level supports | Service | CE compared against `controls.automation_ce_ceiling` for the parent objective's automation level. A manual control cannot hold the top rating however good its last test | CE rating rejected; raise the automation level or lower the claim | §24.1 |
 | CINV-12 | A key control never evidences a requirement on assurance weaker than the configured floor | Service | Assurance methods are ordered weakest first; a key control must sit at or above `controls.key_control_minimum_assurance` | Link rejected; strengthen the assurance method or unmark the key control | §24.2 |
+| CINV-13 | A person named as control owner holds the Control_Owner role | Service | `control_owner_id` checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
+| CINV-14 | A person named as system owner holds the System_Owner role | Service | `system_owner_id` on an attack surface checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
+| CINV-15 | A person named as control operator holds the Control_Operator role | Service | `control_operator_id` on a control activity checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
 
 > **On CINV-11.** Without a ceiling, a spreadsheet reviewed quarterly can claim
 the same effectiveness as an enforced platform policy, and buy the same
@@ -105,6 +140,7 @@ That occasion is what the control exists for.
 | PINV-7 | Standard revision always triggers a control alignment check | Service | Revision cascade notifies linked control owners with a 30-day SLA | Automatic notification; SLA tracking begins | §14.1 (PC-1) |
 | PINV-8 | Policy retirement is blocked if linked risks are Critical or High and unmitigated | Service | Deprecation gate walks every linked risk before permitting the transition | Lifecycle transition rejected | §13.1 (PL-2) |
 | PINV-9 | Version history is immutable and always retained for audit | Schema | Database trigger rejects `UPDATE` and `DELETE` on `policy_versions` | `UPDATE` and `DELETE` rejected at the database layer | §12.2 |
+| PINV-10 | A person named as policy owner holds the Policy_Owner role | Service | `policy_owner_id` checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
 | **PE-5** | An approved exception past its expiry date is a governance gap, not a valid state | Service | Scheduled job expires overdue exceptions and notifies the CISO | Governance gap flagged; CISO notified | [state-transitions §6](./state-transitions.md) |
 
 > **On PINV-4.** This is `Service`, not `Both`. Which frameworks demand an annual cycle is configuration, and a `CHECK` constraint cannot read a configuration file. The check belongs where the framework list lives.
@@ -129,6 +165,7 @@ That occasion is what the control exists for.
 | TINV-9 | A component handling data at or above the sensitive threshold must declare the trust zone it sits in | Service | Component save validates `trust_zone` against the configured zones | Save rejected; declare where the component sits | §19.1 |
 | TINV-10 | A scenario status change always carries a rationale or a linked artefact | Service | Accepted requires an acceptance rationale; Mitigated requires a link or a rationale. Evidence records are append-only at the database layer | Status change rejected without a reason | §19.5 |
 | TINV-11 | An Active threat model has no sensitive component without at least one threat scenario | Service | Review → Active gate walks every component at or above the classification threshold | Sign-off blocked; the component was decomposed but never analysed | §19.4 |
+| TINV-12 | The system owner and AppSec partner on a threat model hold those roles | Service | `system_owner_id` and `appsec_partner_id` checked against the named users' roles on every write. Promotion to a risk applies the same filter to the owner it would otherwise default to, so a promotion is never refused for a reason unrelated to the threat | Save rejected; the named owner does not hold the required role | §2.4 |
 
 > **TINV-4 links to a deployment, not a control.** This is the single most consequential modelling decision in the threat domain. A control objective is an intention; a deployment is the instance running on the asset the component sits on. Linking a scenario to an objective would let a scenario be "mitigated" by a control that exists everywhere except where the threat is. It also gives §20.2 something to fire on: a deployment that fails re-opens exactly the scenarios that depended on it.
 

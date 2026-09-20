@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, ShieldCheck } from 'lucide-react'
 import { api, ApiError, getStoredUser } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import { Badge, Card, Detail, Empty, Field, PageLoader, useToast } from '../components/ui'
 import { GatePanel } from '../components/governance'
 import { cx, formatDate, formatDateTime, label } from '../lib/format'
@@ -218,27 +219,18 @@ export default function TreatmentDetail() {
         <Card title="Plan" className="lg:col-span-1">
           <dl className="divide-y">
             <Detail label="Owner">
-              <select
-                className="field"
-                value={t.treatment_owner_id ?? ''}
-                onChange={(e) =>
+<PersonSelect
+                label=""
+                role="Risk_Treatment_Owner"
+                value={t.treatment_owner_id}
+                onChange={(owner) =>
                   run(
                     'patch',
-                    () =>
-                      api.patch(`/treatments/${id}`, {
-                        treatment_owner_id: e.target.value || null,
-                      }),
+                    () => api.patch(`/treatments/${id}`, { treatment_owner_id: owner }),
                     'Owner updated',
                   )
                 }
-              >
-                <option value="">Unassigned</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.full_name}
-                  </option>
-                ))}
-              </select>
+              />
             </Detail>
             <Detail label="Target date">
               <input

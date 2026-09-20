@@ -322,9 +322,35 @@ export interface CEResolutionData {
  * rule that excluded each one. This is the answer to "why didn't my control
  * reduce the score?", which is the question GRC tooling usually cannot answer.
  */
-export function CEResolution({ data }: { data: CEResolutionData }) {
+export function CEResolution({
+  data,
+  scope,
+}: {
+  data: CEResolutionData
+  /** The assets the risk declared. An empty list and an undeclared scope look
+   *  identical in the exclusion list, so the panel has to say which it is. */
+  scope?: { id: string; name: string | null }[]
+}) {
   return (
     <div className="space-y-4">
+      {scope !== undefined && (
+        <p className="rounded-md bg-surface-sunken px-3 py-2 text-xs leading-relaxed text-ink-muted">
+          {scope.length > 0 ? (
+            <>
+              <span className="font-semibold text-ink">Scope:</span>{' '}
+              {scope.map((a) => a.name ?? a.id).join(', ')}. A control deployed anywhere
+              else is excluded below, however good its evidence is (RINV-14).
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-ink">No scope declared.</span> Every
+              deployment of every linked control counts. Name the assets this risk
+              concerns to hold control effectiveness to where the control actually runs
+              (RINV-14).
+            </>
+          )}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-surface-sunken px-4 py-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">

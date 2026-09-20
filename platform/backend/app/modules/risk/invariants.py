@@ -1,4 +1,4 @@
-"""Risk management invariants (RINV-1 .. RINV-13).
+"""Risk management invariants (RINV-1 .. RINV-15).
 
 These are hard rules. They are evaluated on every write to a risk record, before
 commit, regardless of which API path reached the record or what role the caller
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.core import ownership
 from app.engine import BOTH, SCHEMA, SERVICE, Invariant, invariants
 from app.engine.scoring import ACCEPTANCE_RULES, ScoringEngine
 from app.modules.risk.models import Risk
@@ -77,7 +78,46 @@ def _only_operating_controls_reduce(risk: Risk, _ctx) -> bool:
         return True
     if risk.residual_likelihood >= risk.likelihood:
         return True
-    resolution = ScoringEngine.resolve_ce(_linked_objectives(risk))
+    resolution = ScoringEngine.resolve_ce(
+        _linked_objectives(risk), scope=risk.scope_asset_ids
+    )
+    ok, _ = ScoringEngine.validate_residual_likelihood(
+        risk.likelihood, risk.residual_likelihood, resolution
+    )
+    return ok
+
+
+# RINV-15 -----------------------------------------------------------------
+OWNER_ROLES = {
+    "risk_owner_id": "Risk_Owner",
+    "risk_stakeholder_id": "Risk_Stakeholder",
+    "risk_analyst_id": "Risk_Analyst",
+}
+_named_owners_hold_their_role = ownership.holder_of(fields=OWNER_ROLES)
+
+
+# RINV-14 -----------------------------------------------------------------
+def _reduction_earned_within_scope(risk: Risk, _ctx) -> bool:
+    """A control reduces this risk only where it is deployed.
+
+    RINV-9 is about whether a control is good enough. This is about whether it
+    is in the right place, which is a different failure and needs its own rule:
+    a control can be Operating, freshly evidenced and rated CE-High, and still
+    have nothing to do with the asset the risk concerns.
+
+    Only bites once the risk names its assets. An organisational risk that names
+    none keeps the unscoped behaviour, because narrowing every existing risk to
+    a scope of nothing would be a worse answer than the gap.
+    """
+    if not risk.asset_links:
+        return True
+    if risk.residual_likelihood is None or risk.likelihood is None:
+        return True
+    if risk.residual_likelihood >= risk.likelihood:
+        return True
+    resolution = ScoringEngine.resolve_ce(
+        _linked_objectives(risk), scope=risk.scope_asset_ids
+    )
     ok, _ = ScoringEngine.validate_residual_likelihood(
         risk.likelihood, risk.residual_likelihood, resolution
     )
@@ -262,6 +302,33 @@ invariants.register(
         holds=_only_operating_controls_reduce,
     ),
     Invariant(
+        id="RINV-15",
+        entity=ENTITY,
+        rule="A person named as risk owner, stakeholder or analyst holds that role",
+        layer=SERVICE,
+        mechanism=ownership.describe(OWNER_ROLES),
+        violation="Named owner does not hold the required role",
+        spec_ref="codified-rules section 2.4",
+        holds=_named_owners_hold_their_role,
+    ),
+    Invariant(
+        id="RINV-14",
+        entity=ENTITY,
+        rule=(
+            "A control reduces a risk only where it is deployed inside the risk's "
+            "declared scope"
+        ),
+        layer=SERVICE,
+        mechanism=(
+            "The scoring engine excludes deployments on assets outside the risk's "
+            "scope, naming the asset in the exclusion reason. Only applies once a "
+            "risk declares its assets. Analogue of TINV-4 and AINV-2."
+        ),
+        violation="Residual reduction rejected; the control does not run where the risk is",
+        spec_ref="codified-rules section 4.6",
+        holds=_reduction_earned_within_scope,
+    ),
+    Invariant(
         id="RINV-10",
         entity=ENTITY,
         rule="Every risk has both a Risk Owner and a Risk Stakeholder",
@@ -278,7 +345,7 @@ invariants.register(
         layer=BOTH,
         mechanism="CHECK constraint on the risks table plus service validation",
         violation="Assignment rejected",
-        spec_ref="codified-rules section 2.2",
+        spec_ref="codified-rules section 2.4",
         holds=_sep1,
     ),
     Invariant(

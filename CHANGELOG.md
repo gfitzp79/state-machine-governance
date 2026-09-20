@@ -13,6 +13,74 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added: a risk declares the assets it concerns (RINV-14)
+
+Found by reading the scoring output rather than the code. A control deployed on
+the Corporate Identity Provider was reducing the likelihood of a risk about the
+Payments API, because nothing in the model connected a risk to a place. Threat
+modelling has had this since `TINV-4` and compliance since `AINV-2`. Risk, the
+oldest domain, had neither.
+
+A new `risk_assets` table names the assets a risk concerns, and the scoring
+engine discards any deployment outside them. Location is now assessed before
+quality: a deployment out of scope is excluded whatever its CE rating and
+however fresh its evidence, and the exclusion names the asset that caused it.
+
+Scope is **declared**, and declaring it makes the check stricter rather than
+looser. A risk that names no asset keeps the unfiltered behaviour, so no
+existing score moves when the migration runs. That asymmetry is deliberate: an
+organisational risk legitimately concerns no single system, and reinterpreting
+every undeclared risk as concerning nothing would zero out control
+effectiveness across an entire register at the moment the rule is adopted. The
+CE panel says which of the two states a risk is in, because an empty exclusion
+list means nothing on its own.
+
+Removing an asset from scope widens what counts, so the invariants run after the
+delete and the whole operation rolls back if a residual reduction stops being
+earned.
+
+Specification: `codified-rules` §4.6 `SCOPE_RULE`. Migration `b71c04e98d12`.
+
+### Added: a named owner has to hold the role (§2.4, seven invariants)
+
+Every owner dropdown in the platform listed all fourteen users. A risk could be
+owned by the GRC Engineer, a policy by a Control Operator, an asset by somebody
+with no system ownership anywhere in their role set. The roles were configured,
+the role levels were configured, the ownership matrix was configured, and the
+acting user's role gated every transition. The person the record named as
+accountable was checked against nothing.
+
+The failure is quiet, which is what makes it worth a rule. Nothing breaks. The
+record asserts an accountability the person does not hold, and every gate
+downstream that trusts the field inherits it.
+
+`RINV-15`, `RINV-16`, `CINV-13`, `CINV-14`, `CINV-15`, `PINV-10` and `TINV-12`
+are the same rule in seven places, built from one shared predicate so it reads
+identically everywhere. `/users` gained a `?role=` filter and the pickers ask
+for exactly the set the write will accept, so the interface stops offering what
+the engine would refuse. Filtering the dropdown alone would have been
+presentation, which is why the rule went in first.
+
+Admin is accepted in any owner field: somebody has to be able to reassign a
+record whose owner has left, and the audit trail records that it was the
+administrator rather than the role they stood in for.
+
+Two consequences worth naming:
+
+- **Threat scenario promotion** defaulted the new risk's analyst to whoever
+  clicked promote, usually an AppSec engineer. Both defaults are now filtered
+  through the role they are about to fill, so a promotion is never refused for a
+  reason unrelated to the threat. An unfilled owner is the honest outcome: the
+  risk lands in Intake and the Phase 2 preconditions ask for a named analyst
+  before scoring opens.
+- **The seed data was wrong** in two places the rule caught: the identity
+  provider and the build pipeline named a System Owner who did not hold
+  `System_Owner`, and a test named a Risk Owner as the Risk Stakeholder.
+
+Specification: `codified-rules` §2.4 `ROLE-1..3`, a section that did not exist.
+The platform inherited the gap from the specification rather than diverging from
+it.
+
 ### Changed: three Phase 2 preconditions are derived, not attested
 
 Found by using the tool rather than testing it. RINV-8 says all four Phase 2

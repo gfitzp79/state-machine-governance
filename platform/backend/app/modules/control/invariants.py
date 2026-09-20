@@ -1,7 +1,8 @@
-"""Control management invariants (CINV-1 .. CINV-10)."""
+"""Control management invariants (CINV-1 .. CINV-15)."""
 
 from __future__ import annotations
 
+from app.core import ownership
 from app.core.governance import CE_RATING_NAMES, governance
 from app.engine import BOTH, SCHEMA, SERVICE, Invariant, invariants
 from app.engine.scoring import ScoringEngine
@@ -9,6 +10,8 @@ from app.modules.control.models import ControlDeployment, ControlObjective
 
 OBJECTIVE = "control_objective"
 DEPLOYMENT = "control_deployment"
+SURFACE = "attack_surface"
+ACTIVITY = "control_activity"
 
 
 # CINV-1 ------------------------------------------------------------------
@@ -146,7 +149,48 @@ def _ce_within_automation_ceiling(dep, _ctx) -> bool:
     return order.index(dep.ce_rating) <= order.index(ceiling)
 
 
+# CINV-13 / CINV-14 / CINV-15 ----------------------------------------------
+OBJECTIVE_OWNER_ROLES = {
+    "control_owner_id": "Control_Owner",
+}
+SURFACE_OWNER_ROLES = {
+    "system_owner_id": "System_Owner",
+}
+ACTIVITY_OWNER_ROLES = {
+    "control_operator_id": "Control_Operator",
+}
+
 invariants.register(
+    Invariant(
+        id="CINV-13",
+        entity=OBJECTIVE,
+        rule="A person named as control owner holds the Control_Owner role",
+        layer=SERVICE,
+        mechanism=ownership.describe(OBJECTIVE_OWNER_ROLES),
+        violation="Named owner does not hold the required role",
+        spec_ref="codified-rules section 2.4",
+        holds=ownership.holder_of(fields=OBJECTIVE_OWNER_ROLES),
+    ),
+    Invariant(
+        id="CINV-14",
+        entity=SURFACE,
+        rule="A person named as system owner holds the System_Owner role",
+        layer=SERVICE,
+        mechanism=ownership.describe(SURFACE_OWNER_ROLES),
+        violation="Named owner does not hold the required role",
+        spec_ref="codified-rules section 2.4",
+        holds=ownership.holder_of(fields=SURFACE_OWNER_ROLES),
+    ),
+    Invariant(
+        id="CINV-15",
+        entity=ACTIVITY,
+        rule="A person named as control operator holds the Control_Operator role",
+        layer=SERVICE,
+        mechanism=ownership.describe(ACTIVITY_OWNER_ROLES),
+        violation="Named owner does not hold the required role",
+        spec_ref="codified-rules section 2.4",
+        holds=ownership.holder_of(fields=ACTIVITY_OWNER_ROLES),
+    ),
     Invariant(
         id="CINV-1",
         entity=DEPLOYMENT,

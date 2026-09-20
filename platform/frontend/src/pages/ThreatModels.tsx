@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Plus, ShieldCheck } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import { Badge, Card, Field, Modal, PageLoader, Table, useToast } from '../components/ui'
 import { cx, formatDate, label } from '../lib/format'
 
 export default function ThreatModels() {
   const [rows, setRows] = useState<any[] | null>(null)
   const [assets, setAssets] = useState<any[]>([])
-  const [users, setUsers] = useState<any[]>([])
   const [open, setOpen] = useState(false)
   const { push } = useToast()
 
@@ -18,7 +18,6 @@ export default function ThreatModels() {
   useEffect(() => {
     load().catch(() => undefined)
     api.get<any[]>('/assets').then(setAssets).catch(() => undefined)
-    api.get<any[]>('/users').then(setUsers).catch(() => undefined)
   }, [])
 
   if (!rows) return <PageLoader />
@@ -119,7 +118,6 @@ export default function ThreatModels() {
       >
         <ModelForm
           assets={assets}
-          users={users}
           onSubmit={async (body) => {
             try {
               await api.post('/threat-models', body)
@@ -139,11 +137,9 @@ export default function ThreatModels() {
 
 function ModelForm({
   assets,
-  users,
   onSubmit,
 }: {
   assets: any[]
-  users: any[]
   onSubmit: (b: any) => void
 }) {
   const [form, setForm] = useState<any>({
@@ -189,40 +185,21 @@ function ModelForm({
         </select>
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field
+        <PersonSelect
           label="System owner"
+          role="System_Owner"
           hint="TINV-2: cannot also provide the AppSec signature."
-        >
-          <select
-            className="field"
-            value={form.system_owner_id}
-            onChange={(e) => set('system_owner_id', e.target.value)}
-            required
-          >
-            <option value="">Select</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="AppSec partner">
-          <select
-            className="field"
-            value={form.appsec_partner_id}
-            onChange={(e) => set('appsec_partner_id', e.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {users
-              .filter((u) => u.roles.some((r: string) => r.startsWith('AppSec')))
-              .map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name}
-                </option>
-              ))}
-          </select>
-        </Field>
+          placeholder="Select"
+          value={form.system_owner_id}
+          onChange={(id) => set('system_owner_id', id ?? '')}
+        />
+        <PersonSelect
+          label="AppSec partner"
+          role="AppSec"
+          hint="AppSec_Lead or AppSec_Engineer (TINV-12)."
+          value={form.appsec_partner_id}
+          onChange={(id) => set('appsec_partner_id', id ?? '')}
+        />
       </div>
       <Field label="Description">
         <textarea

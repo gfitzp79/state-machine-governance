@@ -236,7 +236,17 @@ def ce_resolution(risk_id: str, session: DbSession, user: CurrentUser) -> dict[s
     """Shows exactly which controls counted toward the score and which did not,
     with the rule that excluded each one."""
     svc = _service(session, user)
-    return svc.resolve_ce(svc.get(risk_id)).as_dict()
+    risk = svc.get(risk_id)
+    return {
+        **svc.resolve_ce(risk).as_dict(),
+        # Without this the panel cannot tell "scope matched everything" from
+        # "no scope declared, so nothing was filtered".
+        "scope_declared": bool(risk.asset_links),
+        "scope_assets": [
+            {"id": l.attack_surface_id, "name": getattr(l.surface, "name", None)}
+            for l in risk.asset_links
+        ],
+    }
 
 
 @router.post("/{risk_id}/residual/unlock")
@@ -271,6 +281,27 @@ def transition(
     risk = svc.get(risk_id)
     result = svc.transition(risk, payload.target, **payload.model_dump(exclude={"target"}))
     return {"transition": result, "risk": svc.detail(risk)}
+
+
+@router.post("/{risk_id}/assets")
+def link_asset(
+    risk_id: str, payload: LinkRequest, session: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """Name an asset this risk concerns (RINV-14)."""
+    svc = _service(session, user)
+    risk = svc.get(risk_id)
+    svc.link_asset(risk, payload.id)
+    return svc.detail(risk)
+
+
+@router.delete("/{risk_id}/assets/{attack_surface_id}")
+def unlink_asset(
+    risk_id: str, attack_surface_id: str, session: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    svc = _service(session, user)
+    risk = svc.get(risk_id)
+    svc.unlink_asset(risk, attack_surface_id)
+    return svc.detail(risk)
 
 
 @router.post("/{risk_id}/controls")

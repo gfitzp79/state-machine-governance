@@ -1,6 +1,6 @@
 # Data Model
 
-**Version:** 1.3 | **License:** CC BY 4.0
+**Version:** 1.4 | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](../specification/codified-rules.md) and validated against the [reference implementation](../platform).
 **Purpose:** Complete relational schema for the governance platform. 49 tables across 8 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
 
@@ -67,6 +67,7 @@ risks ←── risk_phase_history
       ←── risk_comments (threaded)
       ←── risk_attachments
       ←── risk_reviews
+      ←── risk_assets ──→ attack_surfaces
       ←── risk_controls ──→ control_objectives
       ←── risk_treatments ──→ treatments
       ←── risk_policy_links ──→ policies
@@ -351,6 +352,28 @@ Periodic review records. Tracks who reviewed and when next review is due.
 | review_notes | text | NO | | |
 | next_review_date | date | YES | | |
 | created_at | timestamptz | NO | now() | |
+
+### risk_assets
+
+Junction: risks to the assets they concern. Declares the scope a control has to
+be deployed inside before it reduces this risk (RINV-14).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| risk_id | uuid | NO | | FK to risks |
+| attack_surface_id | uuid | NO | | FK to attack_surfaces |
+| linked_at | timestamptz | NO | now() | |
+| linked_by | uuid | YES | | |
+
+**Constraints:** UNIQUE on (risk_id, attack_surface_id).
+
+**On the absent row.** A risk with no row here has an *undeclared* scope, not an
+empty one, and the CE filter does not run. Zero is a legitimate answer for an
+organisational risk that concerns no single system, so this cannot be modelled
+as a mandatory column on `risks` without making the field a lie on every such
+record. The distinction is surfaced in the interface rather than inferred,
+because an empty exclusion list means nothing on its own.
 
 ### risk_controls
 
@@ -1237,6 +1260,8 @@ A person's assertion that a control objective addresses a requirement.
 | risk_attachments | risk_id | risks | id |
 | risk_phase_history | risk_id | risks | id |
 | risk_reviews | risk_id | risks | id |
+| risk_assets | risk_id | risks | id |
+| risk_assets | attack_surface_id | attack_surfaces | id |
 | risk_controls | risk_id | risks | id |
 | risk_controls | control_id | control_objectives | id |
 | risk_treatments | risk_id | risks | id |

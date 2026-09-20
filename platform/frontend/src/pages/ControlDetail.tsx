@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, FlaskConical, Plus, ShieldCheck } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect, peopleWithRole } from '../components/people'
 import {
   Badge,
   Card,
@@ -35,7 +36,9 @@ export default function ControlDetail() {
     load().catch(() => undefined)
     api.get<any[]>('/assets').then(setAssets).catch(() => undefined)
     api.get('/controls/reference-data').then(setRef).catch(() => undefined)
-    api.get<any[]>('/users').then(setUsers).catch(() => undefined)
+    // CINV-15 refuses an operator who does not hold the role, so the picker
+    // asks for exactly the set the write will accept.
+    peopleWithRole('Control_Operator').then(setUsers).catch(() => undefined)
   }, [load])
 
   const fail = (err: unknown, title = 'Refused') =>
@@ -297,27 +300,18 @@ export default function ControlDetail() {
                 />
               </Detail>
               <Detail label="Control owner">
-                <select
-                  className="field"
-                  value={ctl.control_owner_id ?? ''}
-                  onChange={(e) =>
+                <PersonSelect
+                  label=""
+                  role="Control_Owner"
+                  value={ctl.control_owner_id}
+                  onChange={(owner) =>
                     run(
                       'patch',
-                      () =>
-                        api.patch(`/controls/${id}`, {
-                          control_owner_id: e.target.value || null,
-                        }),
+                      () => api.patch(`/controls/${id}`, { control_owner_id: owner }),
                       'Owner updated',
                     )
                   }
-                >
-                  <option value="">Unassigned</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name}
-                    </option>
-                  ))}
-                </select>
+                />
               </Detail>
             </dl>
           </Card>

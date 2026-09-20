@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Plus } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import { Badge, Card, Empty, Field, Modal, PageLoader, Table, Tabs, useToast } from '../components/ui'
 import { cx, formatDate, label, relativeDays } from '../lib/format'
 
@@ -10,7 +11,6 @@ export default function Policies() {
   const [policies, setPolicies] = useState<any[] | null>(null)
   const [exceptions, setExceptions] = useState<any[]>([])
   const [ref, setRef] = useState<any>(null)
-  const [users, setUsers] = useState<any[]>([])
   const [tab, setTab] = useState('policies')
   const [modal, setModal] = useState<'policy' | 'exception' | null>(null)
   const { push } = useToast()
@@ -23,7 +23,6 @@ export default function Policies() {
   useEffect(() => {
     load().catch(() => undefined)
     api.get('/policies/reference-data').then(setRef).catch(() => undefined)
-    api.get<any[]>('/users').then(setUsers).catch(() => undefined)
   }, [])
 
   if (!policies) return <PageLoader />
@@ -196,7 +195,6 @@ export default function Policies() {
       >
         <PolicyForm
           refData={ref}
-          users={users}
           onSubmit={async (body) => {
             try {
               await api.post('/policies', body)
@@ -239,11 +237,9 @@ export default function Policies() {
 
 function PolicyForm({
   refData,
-  users,
   onSubmit,
 }: {
   refData: any
-  users: any[]
   onSubmit: (body: any) => void
 }) {
   const [form, setForm] = useState<any>({
@@ -360,20 +356,12 @@ function PolicyForm({
           onChange={(e) => set('body', e.target.value)}
         />
       </Field>
-      <Field label="Policy owner">
-        <select
-          className="field"
-          value={form.policy_owner_id}
-          onChange={(e) => set('policy_owner_id', e.target.value)}
-        >
-          <option value="">Unassigned</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.full_name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <PersonSelect
+        label="Policy owner"
+        role="Policy_Owner"
+        value={form.policy_owner_id}
+        onChange={(id) => set('policy_owner_id', id ?? '')}
+      />
       <div className="flex justify-end border-t pt-4">
         <button className="btn-primary" disabled={!form.title.trim()}>
           Create draft

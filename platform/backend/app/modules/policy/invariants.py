@@ -1,9 +1,10 @@
-"""Policy management invariants (PINV-1 .. PINV-9)."""
+"""Policy management invariants (PINV-1 .. PINV-10)."""
 
 from __future__ import annotations
 
 from datetime import date
 
+from app.core import ownership
 from app.engine import BOTH, SCHEMA, SERVICE, Invariant, invariants
 from app.modules.policy.models import Policy, PolicyException
 
@@ -79,7 +80,22 @@ def _always(entity, _ctx) -> bool:
     return True
 
 
+# PINV-10 ------------------------------------------------------------------
+POLICY_OWNER_ROLES = {
+    "policy_owner_id": "Policy_Owner",
+}
+
 invariants.register(
+    Invariant(
+        id="PINV-10",
+        entity=POLICY,
+        rule="A person named as policy owner holds the Policy_Owner role",
+        layer=SERVICE,
+        mechanism=ownership.describe(POLICY_OWNER_ROLES),
+        violation="Named owner does not hold the required role",
+        spec_ref="codified-rules section 2.4",
+        holds=ownership.holder_of(fields=POLICY_OWNER_ROLES),
+    ),
     Invariant(
         id="PINV-1",
         entity=POLICY,

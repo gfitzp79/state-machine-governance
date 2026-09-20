@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, Link2, Lock, Plus, Send, Unlock, X } from 'lucide-react'
 import { api, ApiError, getStoredUser } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import {
   Badge,
   Card,
@@ -63,6 +64,7 @@ export default function RiskDetail() {
   const [tab, setTab] = useState('lifecycle')
   const [busy, setBusy] = useState<string | null>(null)
   const [users, setUsers] = useState<any[]>([])
+  const [assets, setAssets] = useState<any[]>([])
   const [controls, setControls] = useState<any[]>([])
   const [treatments, setTreatments] = useState<any[]>([])
   const [modal, setModal] = useState<string | null>(null)
@@ -73,6 +75,7 @@ export default function RiskDetail() {
   useEffect(() => {
     load().catch(() => undefined)
     api.get<any[]>('/users').then(setUsers).catch(() => undefined)
+    api.get<any[]>('/assets').then(setAssets).catch(() => undefined)
     api.get<any[]>('/controls').then(setControls).catch(() => undefined)
     api.get<any[]>('/treatments').then(setTreatments).catch(() => undefined)
   }, [load])
@@ -249,31 +252,55 @@ export default function RiskDetail() {
               />
             </Card>
 
+            <Card
+              title="Scope"
+              subtitle="Which assets this risk concerns. A control only reduces it where it is deployed (RINV-14)."
+            >
+              <ScopeEditor
+                scope={risk.scope_assets ?? []}
+                assets={assets}
+                busy={busy === 'scope'}
+                onAdd={(assetId) =>
+                  run('scope', () => api.post(`/risks/${id}/assets`, { id: assetId }), 'Scope updated')
+                }
+                onRemove={(assetId) =>
+                  run('scope', () => api.del(`/risks/${id}/assets/${assetId}`), 'Scope updated')
+                }
+              />
+            </Card>
+
             <Card title="Ownership" subtitle="RINV-10 and SEP-1 are enforced on these fields.">
               <div className="space-y-3">
                 {[
-                  ['risk_owner_id', 'Risk Owner', 'Accountable for the decision and the residual.'],
+                  [
+                    'risk_owner_id',
+                    'Risk Owner',
+                    'Accountable for the decision and the residual.',
+                    'Risk_Owner',
+                  ],
                   [
                     'risk_stakeholder_id',
                     'Risk Stakeholder',
                     'Senior oversight. Must differ from the Risk Owner (SEP-1).',
+                    'Risk_Stakeholder',
                   ],
-                  ['risk_analyst_id', 'Risk Analyst', 'Assessment, scoring and validation.'],
-                ].map(([field, text, hint]) => (
-                  <Field key={field} label={text} hint={hint}>
-                    <select
-                      className="field"
-                      value={risk[field] ?? ''}
-                      onChange={(e) => patch({ [field]: e.target.value || null }, 'Ownership updated')}
-                    >
-                      <option value="">Unassigned</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.full_name} — {u.job_title}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                  [
+                    'risk_analyst_id',
+                    'Risk Analyst',
+                    'Assessment, scoring and validation.',
+                    'Risk_Analyst',
+                  ],
+                ].map(([field, text, hint, role]) => (
+                  <PersonSelect
+                    key={field}
+                    label={text}
+                    hint={hint}
+                    role={role}
+                    value={risk[field]}
+                    onChange={(id) => patch({ [field]: id }, 'Ownership updated')}
+                    exclude={field === 'risk_stakeholder_id' ? risk.risk_owner_id : undefined}
+                    excludeReason="already the Risk Owner"
+                  />
                 ))}
               </div>
             </Card>
@@ -410,7 +437,7 @@ export default function RiskDetail() {
             title="Control effectiveness resolution"
             subtitle="Which linked controls counted toward the score, and which did not, with the rule that excluded each one."
           >
-            <CEResolution data={risk.ce_resolution} />
+            <CEResolution data={risk.ce_resolution} scope={risk.scope_assets ?? []} />
           </Card>
         </div>
       )}
@@ -1044,6 +1071,79 @@ function CommentBox({ onSubmit }: { onSubmit: (body: string) => Promise<boolean>
       >
         <Send className="h-4 w-4" />
       </button>
+    </div>
+  )
+}
+
+/** Add and remove the assets a risk concerns.
+ *
+ * Removal is the interesting direction. Taking an asset out of scope widens
+ * what counts toward control effectiveness, so a residual reduction that only
+ * the removed asset's control justified stops being earned. The API runs the
+ * invariants after the delete and rolls the whole thing back if they refuse,
+ * which is why this does not try to warn beforehand: the engine gives a better
+ * answer than a guess would.
+ */
+function ScopeEditor({
+  scope,
+  assets,
+  busy,
+  onAdd,
+  onRemove,
+}: {
+  scope: { id: string; name: string | null }[]
+  assets: any[]
+  busy: boolean
+  onAdd: (assetId: string) => void
+  onRemove: (assetId: string) => void
+}) {
+  const inScope = new Set(scope.map((a) => a.id))
+  const available = assets.filter((a) => !inScope.has(a.id))
+
+  return (
+    <div className="space-y-3">
+      {scope.length === 0 ? (
+        <p className="text-sm text-ink-faint">
+          No assets named. Control effectiveness is resolved across every deployment of
+          every linked control, wherever it runs. That is right for an organisational
+          risk and wrong for most others.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {scope.map((a) => (
+            <li
+              key={a.id}
+              className="flex items-center gap-2 rounded-md border bg-surface-sunken px-3 py-2 text-sm"
+            >
+              <span className="text-ink">{a.name ?? a.id}</span>
+              <button
+                type="button"
+                className="btn-ghost ml-auto shrink-0 text-xs"
+                disabled={busy}
+                onClick={() => onRemove(a.id)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {available.length > 0 && (
+        <select
+          className="field"
+          value=""
+          disabled={busy}
+          onChange={(e) => e.target.value && onAdd(e.target.value)}
+        >
+          <option value="">Add an asset...</option>
+          {available.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+              {a.tier ? ', ' + String(a.tier).replace('_', ' ') : ''}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Plus, Search } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import { Badge, Card, Field, Modal, PageLoader, Table, useToast } from '../components/ui'
 import { cx, formatDate, label } from '../lib/format'
 
@@ -276,23 +277,13 @@ function CreateControlModal({
             </select>
           </Field>
         </div>
-        <Field
+        <PersonSelect
           label="Control owner"
+          role="Control_Owner"
           hint="SEP-3: a control owner cannot also be the Risk Owner of a risk this control scores."
-        >
-          <select
-            className="field"
-            value={form.control_owner_id}
-            onChange={(e) => set('control_owner_id', e.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name} — {u.job_title}
-              </option>
-            ))}
-          </select>
-        </Field>
+          value={form.control_owner_id}
+          onChange={(id) => set('control_owner_id', id ?? '')}
+        />
         <div className="flex justify-end gap-2 border-t pt-4">
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
@@ -373,20 +364,13 @@ function CreateAssetModal({
             onChange={(e) => set('description', e.target.value)}
           />
         </Field>
-        <Field label="System owner">
-          <select
-            className="field"
-            value={form.system_owner_id}
-            onChange={(e) => set('system_owner_id', e.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <PersonSelect
+          label="System owner"
+          role="System_Owner"
+          hint="CINV-14: the named owner has to hold System_Owner."
+          value={form.system_owner_id}
+          onChange={(id) => set('system_owner_id', id ?? '')}
+        />
         <div className="flex justify-end gap-2 border-t pt-4">
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel

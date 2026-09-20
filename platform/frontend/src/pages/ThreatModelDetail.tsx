@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { api, ApiError, getStoredUser } from '../lib/api'
 import { PageHeader } from '../components/Layout'
+import { PersonSelect } from '../components/people'
 import { Badge, Card, Empty, Field, Modal, PageLoader, Tabs, useToast } from '../components/ui'
 import { GatePanel, InvariantList } from '../components/governance'
 import {
@@ -1586,26 +1587,19 @@ function PromoteModal({
           </select>
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Risk owner">
-            <select className="field" name="risk_owner_id">
-              <option value="">Assign later</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Risk stakeholder">
-            <select className="field" name="risk_stakeholder_id">
-              <option value="">Assign later</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <PersonSelect
+            label="Risk owner"
+            role="Risk_Owner"
+            name="risk_owner_id"
+            placeholder="Assign later"
+            hint="Left empty, the system owner takes it if they hold the role (RINV-15)."
+          />
+          <PersonSelect
+            label="Risk stakeholder"
+            role="Risk_Stakeholder"
+            name="risk_stakeholder_id"
+            placeholder="Assign later"
+          />
         </div>
         <div className="flex justify-end border-t pt-4">
           <button className="btn-primary">Create risk record</button>
