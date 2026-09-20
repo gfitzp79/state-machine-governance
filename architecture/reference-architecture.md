@@ -249,4 +249,4 @@ The core governance engine does not change. The data model extends. The invarian
 
 ---
 
-*This architecture document is released under CC BY 4.0. Adapt freely with attribution. See [DISCLAIMER.md](../DISCLAIMER.md) for context on origin and scope.*
+*This architecture document is released under CC BY 4.0. Adapt freely with attribution. See [disclaimer.md](../disclaimer.md) for context on origin and scope.*
