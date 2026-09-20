@@ -630,7 +630,22 @@ class ThreatModelService(LifecycleService[ThreatModel]):
 
     # -- serialisation ----------------------------------------------------
 
+    def _refresh_for_report(self, entity) -> None:
+        """Re-read the entity before evaluating gates against it.
+
+        Gate preconditions walk relationships. Any mutation that added or
+        removed a child in this session leaves those collections cached, so a
+        gate evaluated without this reports the state before the write the user
+        just made. Cheap, and the alternative is remembering a refresh at every
+        call site that touches a collection.
+        """
+        try:
+            self.session.refresh(entity)
+        except Exception:  # detached or pending: the caller's view is already fresh
+            pass
+
     def detail(self, tm: ThreatModel) -> dict[str, Any]:
+        self._refresh_for_report(tm)
         return {
             **summarise_model(tm),
             "description": tm.description,

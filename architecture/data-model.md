@@ -232,11 +232,7 @@ Core risk register. 7-phase lifecycle with phase-gated transitions enforced at s
 | next_review_date | date | YES | | |
 | sla_status | text | NO | 'On_Track' | CHECK constraint |
 | escalation_flag | boolean | NO | false | |
-| pre_true_risk_confirmed | boolean | NO | false | Phase 2 gate |
-| pre_materiality_classified | boolean | NO | false | Phase 2 gate |
-| pre_risk_level_assigned | boolean | NO | false | Phase 2 gate |
-| pre_stakeholders_identified | boolean | NO | false | Phase 2 gate |
-| pre_ce_assessed | boolean | NO | false | Phase 2 gate |
+| pre_true_risk_confirmed | boolean | NO | false | **RINV-8.1**, and the only stored Phase 2 condition. Triage deciding that an item is a risk rather than an issue is a judgement the record cannot supply |
 | gate_mitigations_implemented | boolean | NO | false | Phase 6 gate |
 | gate_evidence_provided | boolean | NO | false | Phase 6 gate |
 | gate_effectiveness_confirmed | boolean | NO | false | Phase 6 gate |
@@ -280,6 +276,13 @@ Core risk register. 7-phase lifecycle with phase-gated transitions enforced at s
 | updated_at | timestamptz | NO | now() | |
 
 **Named CHECK constraints:** phase (1-7), lifecycle_state, intake_source, risk_level, tier, impact (1-5), likelihood (1-5), inherent_rating, ce_rating, residual_impact (1-5), residual_likelihood (1-5), residual_rating, treatment_strategy, sla_status, expected_residual_impact (1-5), expected_residual_likelihood (1-5).
+
+> **The other three Phase 2 conditions are columns no longer.** `tier_assigned`,
+> `stakeholders_identified` and `control_effectiveness_assessed` were stored
+> booleans, so RINV-8's "all four must hold" was satisfied by ticking four
+> boxes. They are computed from the record: the tier and its rationale, the
+> three named roles, and a linked control the scoring engine would actually
+> count. See [codified-rules §4.1](../specification/codified-rules.md).
 
 ### risk_phase_history
 

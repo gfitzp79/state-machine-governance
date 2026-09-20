@@ -1011,6 +1011,130 @@ def main() -> int:
     )
     check("the same control may hold CE-Medium, which Manual permits", status == 200, body)
 
+    section("RINV-8: the Phase 2 preconditions are read, not asserted")
+    # Three of the four used to be booleans a user ticked, so the rule that
+    # "all four must hold" meant "somebody ticked four boxes". A risk with no
+    # owner, no tier rationale and no linked control satisfied three of them.
+    status, risks_now = call("GET", "/risks", token=analyst)
+    intake = next(r for r in risks_now if r["reference"] == "RISK-005")
+    rid = intake["id"]
+
+    status, body = call("PATCH", "/risks/" + rid, {"pre_ce_assessed": True}, token=analyst)
+    check(
+        "the removed attestation field is refused rather than silently dropped",
+        status >= 400,
+        status,
+    )
+
+    status, detail = call("GET", "/risks/" + rid, token=analyst)
+    check(
+        "the API names the conditions it derives",
+        set(detail.get("derived_preconditions", []))
+        == {"tier_assigned", "stakeholders_identified", "control_effectiveness_assessed"},
+        detail.get("derived_preconditions"),
+    )
+    check(
+        "control effectiveness is false with no qualifying control linked",
+        detail["preconditions"]["control_effectiveness_assessed"] is False,
+    )
+
+    call("PATCH", "/risks/" + rid, {"tier": "Tier_2", "tier_rationale": None}, token=analyst)
+    status, detail = call("GET", "/risks/" + rid, token=analyst)
+    check(
+        "RINV-8.2: a tier with no rationale does not satisfy the rule, which asks "
+        "for a documented one",
+        detail["preconditions"]["tier_assigned"] is False,
+    )
+    call(
+        "PATCH",
+        "/risks/" + rid,
+        {"tier_rationale": "Scoped to the access management process."},
+        token=analyst,
+    )
+    status, detail = call("GET", "/risks/" + rid, token=analyst)
+    check("adding the rationale satisfies it", detail["preconditions"]["tier_assigned"] is True)
+
+    check(
+        "RINV-8.3: false until the three roles are named",
+        detail["preconditions"]["stakeholders_identified"] is False,
+    )
+    status, people = call("GET", "/users", token=analyst)
+    by_name = {u["full_name"]: u["id"] for u in people}
+    call(
+        "PATCH",
+        "/risks/" + rid,
+        {
+            "risk_owner_id": by_name["Dmitri Sokolov"],
+            "risk_stakeholder_id": by_name["Elena Vasquez"],
+            "risk_analyst_id": by_name["Priya Raman"],
+        },
+        token=analyst,
+    )
+    status, detail = call("GET", "/risks/" + rid, token=analyst)
+    check(
+        "true once owner, stakeholder and analyst are named",
+        detail["preconditions"]["stakeholders_identified"] is True,
+    )
+
+    section("A gate report reflects the write that produced it")
+    # Adding a scenario left the lifecycle panel saying the transition was
+    # blocked while the server's own gate said it was open: the relationship
+    # was cached, so the gate was evaluated against the model as it was before
+    # the insert. The UI showed a blocked gate until the page was reloaded.
+    status, assets_now = call("GET", "/assets", token=analyst)
+    sysowner = next(u for u in people if "System_Owner" in u["roles"])
+    status, probe = call(
+        "POST",
+        "/threat-models",
+        {
+            "title": "Gate freshness probe",
+            "attack_surface_id": assets_now[0]["id"],
+            "system_owner_id": sysowner["id"],
+            "description": "Confirms the gate report is recomputed on write.",
+        },
+        token=appsec,
+    )
+    check("probe model created", status in (200, 201), status)
+    pid = probe["id"]
+    call("POST", "/threat-models/" + pid + "/transition", {"target": "Decomposition"}, token=appsec)
+    call(
+        "POST",
+        "/threat-models/" + pid + "/components",
+        {"name": "Probe component", "component_type": "Process", "data_classification": "Internal"},
+        token=appsec,
+    )
+    call(
+        "POST",
+        "/threat-models/" + pid + "/transition",
+        {"target": "Threat_Analysis"},
+        token=appsec,
+    )
+
+    status, pre = call("GET", "/threat-models/" + pid, token=appsec)
+    blocked = next((g for g in pre["gates"] if g["target"] == "Mitigation_Design"), None)
+    check("with no scenario, Mitigation Design is blocked", blocked and not blocked["passed"])
+
+    status, after_add = call(
+        "POST",
+        "/threat-models/" + pid + "/scenarios",
+        {
+            "component_id": pre["components"][0]["id"],
+            "category": "Tampering",
+            "description": "Probe scenario, added to confirm the gate report is recomputed.",
+            "inherent_severity": "Low",
+        },
+        token=appsec,
+    )
+    check("scenario added", status in (200, 201), status)
+    opened = next(
+        (g for g in after_add.get("gates", []) if g["target"] == "Mitigation_Design"), None
+    )
+    check(
+        "the same response reports the gate open, with no second request",
+        opened is not None and opened["passed"],
+        opened,
+    )
+
     section("Every route answers")
     # /api/controls/reference-data raised a NameError for three commits. Nothing
     # caught it: the typecheck is frontend-only, no test called the route, and

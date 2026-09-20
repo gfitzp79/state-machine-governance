@@ -117,13 +117,14 @@ class Risk(Base, UUIDPrimaryKey, Timestamped):
     intake_source: Mapped[str | None] = mapped_column(String(48))
     identified_by: Mapped[str | None] = mapped_column(String(200))
 
-    # -- Phase 2 preconditions checklist ----------------------------------
+    # -- Phase 2 preconditions --------------------------------------------
+    #
+    # Only the first is stored. Triage deciding that an item is a risk rather
+    # than an issue is a judgement nobody else can make for them. The other
+    # three are facts about this record, derived in `preconditions` below,
+    # because a stored tick asserting "the tier has a documented rationale"
+    # while `tier_rationale` is NULL is not a control, it is a claim.
     pre_true_risk_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    pre_tier_assigned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    pre_stakeholders_identified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
-    pre_ce_assessed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     precondition_notes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     tier: Mapped[str | None] = mapped_column(String(16))
@@ -244,13 +245,68 @@ class Risk(Base, UUIDPrimaryKey, Timestamped):
         }
 
     @property
+    def stakeholders_identified(self) -> bool:
+        """RINV-8.3, read from the record rather than attested.
+
+        The Risk Owner, Risk Stakeholder and Risk Analyst are the three roles a
+        risk carries in its own right, and SEP-1 already forbids the first two
+        being the same person. Treatment and control owners are named on the
+        treatment and control records, so they are checked where they live
+        rather than asserted here.
+        """
+        return all(
+            (self.risk_owner_id, self.risk_stakeholder_id, self.risk_analyst_id)
+        )
+
+    @property
+    def tier_assigned(self) -> bool:
+        """RINV-8.2. The specification says "with documented rationale", so the
+        rationale is part of the condition rather than a field somebody is
+        encouraged to fill in afterwards."""
+        return bool(self.tier) and bool((self.tier_rationale or "").strip())
+
+    @property
+    def control_effectiveness_assessed(self) -> bool:
+        """RINV-8.4, derived with the same filters the scoring engine applies.
+
+        A control only counts when its objective is Operating and a deployment
+        carries a rating above CE-Unvalidated with an evidence reference, which
+        is CINV-1 and CINV-2 stated once and read here. Anything the engine
+        would refuse to score with is not evidence that effectiveness has been
+        assessed.
+        """
+        for link in self.control_links:
+            objective = link.objective
+            if objective is None or objective.lifecycle_state != "Operating":
+                continue
+            for activity in objective.activities:
+                for deployment in activity.deployments:
+                    if (
+                        deployment.ce_rating != "CE-Unvalidated"
+                        and (deployment.ce_evidence_ref or "").strip()
+                    ):
+                        return True
+        return False
+
+    @property
     def preconditions(self) -> dict[str, bool]:
         return {
             "true_risk_confirmed": self.pre_true_risk_confirmed,
-            "tier_assigned": self.pre_tier_assigned and bool(self.tier),
-            "stakeholders_identified": self.pre_stakeholders_identified,
-            "control_effectiveness_assessed": self.pre_ce_assessed,
+            "tier_assigned": self.tier_assigned,
+            "stakeholders_identified": self.stakeholders_identified,
+            "control_effectiveness_assessed": self.control_effectiveness_assessed,
         }
+
+    @property
+    def derived_preconditions(self) -> tuple[str, ...]:
+        """Which keys the user cannot tick. The UI reads this rather than
+        hardcoding the list, so adding a derived condition does not need a
+        matching edit in the frontend."""
+        return (
+            "tier_assigned",
+            "stakeholders_identified",
+            "control_effectiveness_assessed",
+        )
 
     @property
     def rating_drift(self) -> dict[str, str] | None:

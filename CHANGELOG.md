@@ -13,7 +13,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed: three Phase 2 preconditions are derived, not attested
+
+Found by using the tool rather than testing it. RINV-8 says all four Phase 2
+preconditions must hold before scoring opens. Three of them were booleans a user
+ticked, so what the rule actually required was that somebody had ticked four
+boxes. A risk with no owner, no tier rationale and no linked control satisfied
+"all stakeholders identified", "tier assigned with documented rationale" and
+"control effectiveness assessed with evidence" by assertion alone. Demonstrated
+against a running instance: `control_effectiveness_assessed` accepted `true`
+with zero linked controls.
+
+They are now read from the record:
+
+- **RINV-8.2** needs the tier AND a non-empty `tier_rationale`, because the rule
+  says "with documented rationale" and a rule that accepts an empty rationale is
+  not asking for one.
+- **RINV-8.3** needs the Risk Owner, Risk Stakeholder and Risk Analyst named.
+  Treatment and control owners are named on those records, so they are checked
+  where they live.
+- **RINV-8.4** uses the same filters the scoring engine applies: an Operating
+  objective with a deployment above CE-Unvalidated carrying evidence. A control
+  the engine would refuse to score with is not an assessment.
+
+`true_risk_confirmed` remains attested. Whether an item belongs in the register
+is a judgement, and the record cannot supply it.
+
+The three columns are dropped by migration `aaa34e5fc638`. Every risk write
+model now sets `extra="forbid"`, so a client still sending a removed field is
+told rather than silently ignored.
+
+### Fixed: a gate report could describe the state before the write
+
+Adding a threat scenario left the lifecycle panel saying "1 blocking: at least
+one threat scenario identified" while the server's own gate report said the
+transition was open. The relationship was already loaded, so the gate was
+evaluated against the model as it was before the insert, and the UI stayed
+wrong until the page was reloaded. `detail()` now refreshes before evaluating,
+which is the one place this state reaches a client and therefore the one place
+it cannot be forgotten.
+
+### Fixed: a disabled control now says why it is disabled
+
+The threat module already did this: `Accept locally` on a Critical scenario
+carries `TINV-3` in its tooltip. The shared gate panel did not, so every
+lifecycle in the product had a greyed-out Advance button with no explanation and
+the user had to expand the gate to guess. The pattern existed; it was not
+applied.
 
 ---
 

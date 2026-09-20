@@ -4,8 +4,8 @@
 
 ## Which part of the repository
 
-- [ ] **Platform** (`platform/`) — software
-- [ ] **Framework** (root: `specification/`, `architecture/`, `methodology/`) — the published specification
+- [ ] **Platform** (`platform/`): software
+- [ ] **Framework** (root: `specification/`, `architecture/`, `methodology/`): the published specification
 - [ ] Both
 
 > A rule that changes in one has to change in the other. CI fails a PR that adds

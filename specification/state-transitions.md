@@ -50,10 +50,10 @@
 | Attribute | Value |
 |---|---|
 | **Gate name** | `GATE_PRECONDITIONS_MET` |
-| **Preconditions** | All 4 items checked: (1) True risk confirmed per §3.6, (2) Risk tier assigned per §3.7, (3) All stakeholders identified (Risk_Owner, Risk_Analyst, Treatment_Owner, Control_Owner(s), Control_Operator(s)), (4) Control effectiveness assessed with evidence per §4.5. |
-| **Blocks if** | Any precondition item unchecked. |
+| **Preconditions** | Four, of which one is attested and three are derived. (1) **RINV-8.1** True risk confirmed per §3.6, a triage judgement, attested. (2) **RINV-8.2** Tier set and `tier_rationale` non-empty per §3.7. (3) **RINV-8.3** Risk Owner, Risk Stakeholder and Risk Analyst all named, with owner ≠ stakeholder per SEP-1. (4) **RINV-8.4** A linked control objective is Operating with a deployment above CE-Unvalidated carrying evidence, per §4.5 and §4.6. |
+| **Blocks if** | The triage attestation is missing, or any derived condition is not true of the record. |
 | **On pass** | Scoring fields (inherent_impact, inherent_likelihood) become editable. |
-| **Enforcement** | Service layer: 4-item checklist API. All items must return TRUE. Enforces RINV-8. |
+| **Enforcement** | Service layer. The three derived conditions are computed from the record on every read and are not writable; only the triage attestation is stored. Enforces RINV-8. |
 
 #### Phase 3 → Phase 4: Scoring to Treatment
 

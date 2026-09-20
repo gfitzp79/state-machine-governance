@@ -44,7 +44,7 @@ enforced by a named invariant alongside it: AINV-5 keeps AINV-2 true.
 | RINV-5 | Critical risks are never accepted | Both | `CHECK` constraint plus service-layer rejection of Accept on a Critical rating | Decision rejected; must select Mitigate, Transfer or Avoid | §5.5 |
 | RINV-6 | Risk readout is never skipped for risks rated Moderate or above | Service | Phase 5 gate requires `readout_confirmed` for Moderate, High and Critical | Phase transition blocked | §7.4 |
 | RINV-7 | Issues are never scored as risks without promotion criteria met | Service | Promoted items must carry triage confirmation before leaving Preconditions | Risk record creation blocked; item remains in issue management | §3.6 |
-| RINV-8 | Scoring never begins without preconditions satisfied | Service | Scoring fields remain unwritable until the 4-item Phase 2 checklist passes | Phase transition blocked; scoring fields stay read-only | §4.1 |
+| RINV-8 | Scoring never begins without preconditions satisfied | Service | Three of the four conditions are computed from the record and are not writable; only the triage judgement is attested. Scoring fields stay closed until all four hold | Phase transition blocked; scoring fields stay read-only | §4.1 |
 | RINV-9 | Planned, partial or unvalidated controls never reduce residual risk | Service | Scoring engine filters to Operating objectives with live deployments and non-expired evidence, then caps the likelihood reduction at the resolved CE | Residual likelihood reduction beyond the CE ceiling is rejected | §4.6 |
 | RINV-10 | Every risk has both a Risk Owner and a Risk Stakeholder | Both | Service enforcement from Phase 3 onward; `CHECK` constraint enforces SEP-1 | Write rejected; constraint violation | §2.1 |
 | **SEP-1** | The Risk Owner is never also the Risk Stakeholder | Both | `CHECK` constraint on the risks table plus service validation | Assignment rejected | §2.2 |
@@ -53,6 +53,13 @@ enforced by a named invariant alongside it: AINV-5 keeps AINV-2 true.
 | RINV-13 | Partial treatment selection is always documented with a rationale | Service | Rationale required when fewer treatments are selected than proposed | Save rejected; rationale field required | §5.2 |
 
 > **On RINV-3.** This is deliberately `Service`, not `Both`. The separation it enforces is relational: it depends on which controls are linked to the risk at the moment of assignment, and a `CHECK` constraint cannot see across tables. Enforcing it means checking on *both* sides: RINV-3 when the risk owner is set, CINV-3 when the control owner is set. Either one alone is defeated by performing the two assignments in the other order.
+
+> **On RINV-8.** Three of its four conditions used to be stored booleans a user
+ticked, which meant the rule "all four must hold" was satisfied by ticking four
+boxes: a risk with no owner, no tier rationale and no linked control could pass
+three of them. They are now read from the record. The distinction is the one
+this catalogue exists to make, and it applies to any checklist: a condition the
+system can evaluate should never be offered as a claim the user can make.
 
 > **On RINV-2.** Appetite thresholds are configuration, not data. There is no endpoint that writes them because there is no table that holds them. Changing appetite means changing the operating model and redeploying it, which leaves a reviewable diff: the formal governance the rule asks for.
 

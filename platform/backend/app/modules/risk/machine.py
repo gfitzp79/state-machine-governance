@@ -158,22 +158,24 @@ RISK_MACHINE = StateMachine(
                 Precondition(
                     "RINV-8.2",
                     "Risk tier assigned",
-                    lambda r, c: r.pre_tier_assigned and bool(r.tier),
-                    "Assign a NIST RMF tier (1-4) with documented rationale before scoring.",
+                    lambda r, c: r.tier_assigned,
+                    "Assign a NIST RMF tier (1-4) and record why that tier is the "
+                    "right scope for the impact assessment.",
                 ),
                 Precondition(
                     "RINV-8.3",
                     "All stakeholders identified",
-                    lambda r, c: r.pre_stakeholders_identified,
-                    "Risk Owner, Risk Analyst, Treatment Owner, Control Owner(s) and "
-                    "Control Operator(s) must all be named.",
+                    lambda r, c: r.stakeholders_identified,
+                    "Name the Risk Owner, Risk Stakeholder and Risk Analyst. The "
+                    "owner and the stakeholder must be different people (SEP-1).",
                 ),
                 Precondition(
                     "RINV-8.4",
                     "Control effectiveness assessed with evidence",
-                    lambda r, c: r.pre_ce_assessed,
-                    "At least one linked control must carry a CE rating above Unvalidated "
-                    "with an evidence reference.",
+                    lambda r, c: r.control_effectiveness_assessed,
+                    "Link a control whose objective is Operating and which carries a "
+                    "rating above CE-Unvalidated with an evidence reference. A control "
+                    "the scoring engine would exclude is not an assessment.",
                 ),
             ),
         ),

@@ -238,15 +238,41 @@ CONSTRAINT: NOT assigned to Issues or Out-of-Scope items
 
 ### §4.1 Preconditions (ALL MUST be satisfied before scoring)
 
+One of these is a judgement. Three are facts about the record, and a
+specification that accepts an assertion in place of the fact has written a
+checklist rather than a control.
+
 ```
 PRECONDITIONS := {
-  true_risk_confirmed,              # per §3.6
-  risk_tier_assigned,               # per §3.7
-  stakeholders_identified: {        # Risk_Owner, Risk_Analyst, Risk_Treatment_Owner,
-                                    # Control_Owner(s), Control_Operator(s)
-  },
-  control_effectiveness_assessed    # per §4.5, evidence-backed
+  # ATTESTED. Whether an item belongs in the register at all is a triage
+  # decision, and nobody can derive it from the record (§3.6).
+  true_risk_confirmed,
+
+  # DERIVED. The tier is set AND carries its rationale. "Assigned with
+  # documented rationale" is the rule; a tier with an empty rationale does
+  # not satisfy it (§3.7).
+  risk_tier_assigned := tier IS NOT NULL AND tier_rationale IS NOT EMPTY,
+
+  # DERIVED. The three roles a risk carries in its own right are named, and
+  # SEP-1 already forbids the first two being the same person. Treatment and
+  # control owners are named on the treatment and control records, so they
+  # are checked where they live rather than asserted here.
+  stakeholders_identified := risk_owner IS NOT NULL
+                             AND risk_stakeholder IS NOT NULL
+                             AND risk_analyst IS NOT NULL,
+
+  # DERIVED, using the same filters the scoring engine applies (§4.5, §4.6).
+  # A control the engine would refuse to score with is not evidence that
+  # effectiveness has been assessed.
+  control_effectiveness_assessed := EXISTS linked control_objective
+      WHERE lifecycle_state = Operating
+        AND EXISTS deployment WHERE ce_rating <> CE-Unvalidated
+                                AND ce_evidence_ref IS NOT EMPTY
 }
+
+RULE PRE-1: A derived precondition is never writable. An endpoint that accepts
+            it is offering the user a way to assert a fact the system can see.
+RULE PRE-2: An attested precondition records WHO attested and when.
 
 VIOLATION: scoring_without_preconditions → NON_COMPLIANT
 ```

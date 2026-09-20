@@ -37,11 +37,12 @@ const PHASES = [
 const PRECONDITION_HELP: Record<string, string> = {
   true_risk_confirmed:
     'Triage confirms this is a risk requiring business accountability, not an issue or an out-of-scope item.',
-  tier_assigned: 'A NIST RMF tier is assigned with documented rationale. Impact is scored within that tier scope.',
+  tier_assigned:
+    'A NIST RMF tier is set and the rationale below records why that tier is the right scope for the impact assessment.',
   stakeholders_identified:
-    'Risk Owner, Risk Analyst, Treatment Owner, Control Owner(s) and Control Operator(s) are all named.',
+    'Risk Owner, Risk Stakeholder and Risk Analyst are all named below, and the owner and stakeholder are different people (SEP-1).',
   control_effectiveness_assessed:
-    'At least one linked control carries a rating above CE-Unvalidated with an evidence reference.',
+    'A linked control is Operating and carries a rating above CE-Unvalidated with an evidence reference. A control the scoring engine would exclude is not an assessment.',
 }
 
 const RESIDUAL_HELP: Record<string, string> = {
@@ -238,14 +239,12 @@ export default function RiskDetail() {
                 conditions={risk.preconditions}
                 descriptions={PRECONDITION_HELP}
                 disabled={risk.phase > 2}
+                derived={risk.derived_preconditions ?? []}
                 onToggle={(key, value) => {
-                  const map: Record<string, string> = {
-                    true_risk_confirmed: 'pre_true_risk_confirmed',
-                    tier_assigned: 'pre_tier_assigned',
-                    stakeholders_identified: 'pre_stakeholders_identified',
-                    control_effectiveness_assessed: 'pre_ce_assessed',
-                  }
-                  patch({ [map[key]]: value }, 'Precondition updated')
+                  // Only the triage judgement is writable. The rest are read
+                  // from the record, so there is nothing to send.
+                  if (key !== 'true_risk_confirmed') return
+                  patch({ pre_true_risk_confirmed: value }, 'Triage decision recorded')
                 }}
               />
             </Card>

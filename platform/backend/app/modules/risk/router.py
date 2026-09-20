@@ -6,7 +6,7 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.governance import TREATMENT_STRATEGIES, governance
 from app.core.security import CurrentUser, DbSession
@@ -25,6 +25,8 @@ def _service(session, user) -> RiskService:
 
 
 class RiskCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(min_length=3, max_length=300)
     cause: str | None = None
     threat_event: str | None = None
@@ -40,6 +42,12 @@ class RiskCreate(BaseModel):
 
 
 class RiskUpdate(BaseModel):
+    # extra="forbid": a field this schema does not know is dropped silently
+    # by default, so a client still sending a removed precondition field
+    # would get 200 and no change. Three Phase 2 attestations were removed
+    # in favour of derived values, and a stale client should be told.
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = None
     cause: str | None = None
     threat_event: str | None = None
@@ -53,9 +61,6 @@ class RiskUpdate(BaseModel):
     risk_stakeholder_id: str | None = None
     risk_analyst_id: str | None = None
     pre_true_risk_confirmed: bool | None = None
-    pre_tier_assigned: bool | None = None
-    pre_stakeholders_identified: bool | None = None
-    pre_ce_assessed: bool | None = None
     gate_mitigations_implemented: bool | None = None
     gate_evidence_provided: bool | None = None
     gate_effectiveness_confirmed: bool | None = None
@@ -71,6 +76,8 @@ class RiskUpdate(BaseModel):
 
 
 class InherentScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     impact: int = Field(ge=1, le=5)
     likelihood: int = Field(ge=1, le=5)
     impact_justification: str | None = None
@@ -78,6 +85,8 @@ class InherentScore(BaseModel):
 
 
 class ResidualScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     residual_impact: int = Field(ge=1, le=5)
     residual_likelihood: int = Field(ge=1, le=5)
     residual_impact_rationale: str | None = None
@@ -85,6 +94,8 @@ class ResidualScore(BaseModel):
 
 
 class TreatmentDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     treatment_strategy: str
     acceptance_expiry_date: date | None = None
     acceptance_rationale: str | None = None
@@ -96,17 +107,23 @@ class TreatmentDecision(BaseModel):
 
 
 class TransitionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     target: str
     reason: str | None = None
     treatments_proposed: int | None = None
 
 
 class LinkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     is_primary: bool = False
 
 
 class CommentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     body: str
     parent_comment_id: str | None = None
 

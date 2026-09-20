@@ -63,6 +63,19 @@ export function GatePanel({
         const failures = gate.checks.filter((c) => !c.passed)
         const canFire = gate.passed && gate.role_permitted
         const needsReason = reasonPrompt?.(gate.target) ?? false
+        const reasonMissing = needsReason && !reason.trim()
+
+        // Why the button is disabled, in the order the engine would refuse.
+        // A greyed-out control that does not say why is the same failure as a
+        // rule that is documented and not enforced: the user is told no and
+        // left to guess at the reason.
+        const blockedBecause = blockedByRole
+          ? 'Requires one of: ' + gate.roles.map(label).join(', ')
+          : failures.length
+            ? failures.map((c) => c.id + ': ' + c.name).join(' \u00b7 ')
+            : reasonMissing
+              ? 'A reason is required before this transition can be fired'
+              : null
 
         return (
           <div
@@ -99,6 +112,9 @@ export function GatePanel({
                   <ShieldAlert className="h-3 w-3" />
                   {blockedByRole ? 'Role' : `${failures.length} blocking`}
                 </span>
+              )}
+              {!canFire && blockedBecause && (
+                <span className="sr-only">{blockedBecause}</span>
               )}
             </button>
 
@@ -167,7 +183,8 @@ export function GatePanel({
                 <div className="flex justify-end">
                   <button
                     className="btn-primary btn-sm"
-                    disabled={!canFire || busy === gate.target || (needsReason && !reason.trim())}
+                    disabled={!canFire || busy === gate.target || reasonMissing}
+                    title={blockedBecause ?? undefined}
                     onClick={() => onFire(gate.target, reason.trim() || undefined)}
                   >
                     {busy === gate.target && <Spinner className="h-3 w-3" />}
@@ -479,39 +496,64 @@ export function ConditionList({
   descriptions,
   onToggle,
   disabled,
+  derived = [],
 }: {
   conditions: Record<string, boolean>
   descriptions?: Record<string, string>
   onToggle?: (key: string, value: boolean) => void
   disabled?: boolean
+  /** Keys the engine computes. Shown as state rather than offered as a tick. */
+  derived?: string[]
 }) {
   return (
     <ul className="space-y-1.5">
-      {Object.entries(conditions).map(([key, value]) => (
-        <li
-          key={key}
-          className={cx(
-            'flex items-start gap-3 rounded-md border px-3 py-2.5',
-            value
-              ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20'
-              : 'bg-surface-sunken',
-          )}
-        >
-          <input
-            type="checkbox"
-            checked={value}
-            disabled={disabled || !onToggle}
-            onChange={(e) => onToggle?.(key, e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-600"
-          />
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">{label(key)}</p>
-            {descriptions?.[key] && (
-              <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">{descriptions[key]}</p>
+      {Object.entries(conditions).map(([key, value]) => {
+        const isDerived = derived.includes(key)
+        return (
+          <li
+            key={key}
+            className={cx(
+              'flex items-start gap-3 rounded-md border px-3 py-2.5',
+              value
+                ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20'
+                : 'bg-surface-sunken',
             )}
-          </div>
-        </li>
-      ))}
+          >
+            {isDerived ? (
+              <span
+                className={cx(
+                  'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                  value ? 'bg-emerald-500 text-white' : 'border border-border bg-surface',
+                )}
+                title="Read from the record. Satisfy it by completing the work, not by ticking it."
+              >
+                {value && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+              </span>
+            ) : (
+              <input
+                type="checkbox"
+                checked={value}
+                disabled={disabled || !onToggle}
+                onChange={(e) => onToggle?.(key, e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-600"
+              />
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">
+                {label(key)}
+                {isDerived && (
+                  <span className="ml-2 align-middle text-[10px] uppercase tracking-wide text-ink-faint">
+                    derived
+                  </span>
+                )}
+              </p>
+              {descriptions?.[key] && (
+                <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">{descriptions[key]}</p>
+              )}
+            </div>
+          </li>
+        )
+      })}
     </ul>
   )
 }

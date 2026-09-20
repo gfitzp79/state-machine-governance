@@ -395,7 +395,24 @@ class RiskService(LifecycleService[Risk]):
 
     # -- serialisation ----------------------------------------------------
 
+    def _refresh_for_report(self, entity) -> None:
+        """Re-read the entity before evaluating gates against it.
+
+        Gate preconditions walk relationships. Any mutation that added or
+        removed a child in this session leaves those collections cached, so a
+        gate evaluated without this reports the state before the write the user
+        just made. Cheap, and the alternative is remembering a refresh at every
+        call site that touches a collection.
+        """
+        try:
+            self.session.refresh(entity)
+        except Exception:  # detached or pending: the caller's view is already fresh
+            pass
+
     def detail(self, risk: Risk) -> dict[str, Any]:
+        # Before resolve_ce, so control effectiveness is resolved against the
+        # links as they are now rather than as they were when first loaded.
+        self._refresh_for_report(risk)
         resolution = self.resolve_ce(risk)
         return {
             **summarise(risk),
@@ -421,6 +438,9 @@ class RiskService(LifecycleService[Risk]):
             "readout_conducted_at": risk.readout_conducted_at,
             "readout_adjustment_rationale": risk.readout_adjustment_rationale,
             "preconditions": risk.preconditions,
+            # Which of them the engine computes, so the UI shows them as
+            # state rather than offering a tick it would ignore.
+            "derived_preconditions": list(risk.derived_preconditions),
             "residual_gate": risk.residual_gate_conditions,
             "ce_resolution": resolution.as_dict(),
             "controls": [
