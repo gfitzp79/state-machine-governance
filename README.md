@@ -126,6 +126,20 @@ Core principle: fix the specification, not the code. Full detail: [/methodology]
 
 ---
 
+## Contributing
+
+The repository moves at two speeds. The framework at the root is a published
+specification people cite and build against, so it changes rarely and on
+purpose. The platform is software and should move quickly.
+
+Both halves are held together by checks rather than by review discipline: an
+invariant added to the code without a catalogue entry fails the build, as does
+one citing a specification section nobody wrote. See
+[CONTRIBUTING.md](./CONTRIBUTING.md) for how a framework improvement lands, and
+[SECURITY.md](./SECURITY.md) before reporting a vulnerability.
+
+---
+
 ## Licensing
 
 This repository carries two licences, deliberately.

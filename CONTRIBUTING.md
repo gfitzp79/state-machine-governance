@@ -33,6 +33,80 @@ If you have adapted the framework for your own organisation, that adaptation is
 yours. CC BY 4.0 asks only for attribution. I would be glad to hear what you
 changed and why, but you owe nothing back.
 
+### The two speeds
+
+The repository moves at two speeds on purpose, and knowing which one you are in
+saves an argument later.
+
+| | Framework (repository root) | Platform (`platform/`) |
+|---|---|---|
+| What it is | A published specification people cite and build against | Software |
+| Licence | CC BY 4.0 | Apache 2.0 |
+| Changes | Rarely, deliberately, discussed first | Continuously |
+| Versioning | Per document, in its `**Version:**` line | Semantic, in `CHANGELOG.md` |
+| Review | Maintainer, always. See [CODEOWNERS](./.github/CODEOWNERS) | Normal pull request review |
+
+Static does not mean frozen. It means a change arrives as a proposal with a
+reason rather than as a side effect of somebody fixing something else. A
+specification that shifts under its readers is worth less than one that is
+slightly wrong in a known way.
+
+### How a framework improvement lands
+
+Most improvements are found while building: a rule turns out to be unenforceable,
+or two documents disagree, or the code needs something the specification never
+said. That is the normal case, not a failure, and this is the route.
+
+**1. Open an issue.** Name the rule, say what is wrong with it, and say what you
+found that proves it. "TINV-4 says the foreign key targets `controls`, and the
+schema targets `control_deployments`" is a complete issue.
+
+**2. Agree the shape before writing it.** Framework changes fall into three
+kinds, and they carry different weight:
+
+- a **correction**, where the documents disagree with each other or with a
+  public standard. No discussion needed beyond confirming the facts.
+- an **extension**, which adds a rule without changing an existing one. Needs
+  agreement that it belongs in the framework rather than in one deployment's
+  configuration.
+- a **change of meaning**, where an existing rule now says something different.
+  Rare, and it invalidates work people have done against the old text. It needs
+  a stated reason, a version bump, and a `CHANGELOG.md` entry that says plainly
+  what is no longer true.
+
+**3. Move every affected document together.** `codified-rules.md` is the source
+of truth. `state-transitions.md`, `invariants-catalogue.md` and `data-model.md`
+derive from it, and a pull request that updates one and not the others will fail
+CI rather than be caught in review:
+
+```bash
+python tools/check_invariant_drift.py     # code and catalogue agree
+python tools/check_spec_references.py     # every spec_ref points at a real section
+python tools/check_em_dashes.py           # the editorial rule, enforced
+```
+
+**4. Enforce it or do not add it.** An invariant with no predicate behind it is
+a sentence. If the rule cannot be checked, say so in the catalogue by giving it
+an honest enforcement layer rather than an aspirational one.
+
+**5. Record it.** Bump the document's `**Version:**` line and add an entry under
+the framework heading in `CHANGELOG.md`. Somebody who adopted the framework six
+months ago needs to be able to see what moved.
+
+### What is configuration, not framework
+
+Before proposing a framework change, check whether it is really a change to one
+organisation's operating model. Appetite bands, SLAs, control families, role
+definitions, taxonomies and framework catalogues all live in
+`platform/config/governance.yml` and are marked `[CUSTOMISE]` in the
+specification. Adding a value there is not a framework change and needs no
+discussion.
+
+The distinction is worth defending. The band *names*, the 1-5 scales, the CE
+ratings and the treatment strategies are fixed, because invariants and `CHECK`
+constraints reference them by name. Their boundaries and their contents are
+yours.
+
 ---
 
 ## Contributing to the platform

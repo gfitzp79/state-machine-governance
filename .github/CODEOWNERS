@@ -1,0 +1,45 @@
+# Who reviews what.
+#
+# This repository moves at two speeds, and the split is deliberate.
+#
+# The framework at the root is a published specification under CC BY 4.0. People
+# cite it, adapt it, and build against it, so its rules change rarely and never
+# by accident. Every framework path here requires the maintainer's review.
+#
+# The platform is software. It should move quickly, and a second pair of hands
+# on it is the point. It carries no owner line below, so the repository's normal
+# review rules apply.
+#
+# GitHub applies the LAST matching pattern, so the specific rules sit at the
+# bottom.
+
+# Default: the maintainer sees everything until the review habit settles.
+*                               @gfitzp79
+
+# -- the framework: stable, cited, changed on purpose ----------------------
+/specification/                 @gfitzp79
+/architecture/                  @gfitzp79
+/methodology/                   @gfitzp79
+/appendix.md                    @gfitzp79
+/disclaimer.md                  @gfitzp79
+/LICENSE                        @gfitzp79
+/platform/LICENSE               @gfitzp79
+/platform/NOTICE                @gfitzp79
+
+# Licensing, security policy and the contribution rules themselves.
+/SECURITY.md                    @gfitzp79
+/CONTRIBUTING.md                @gfitzp79
+/.github/                       @gfitzp79
+
+# The checks that keep the specification and the code honest. Weakening one of
+# these is a governance change wearing an infrastructure hat.
+/tools/                         @gfitzp79
+
+# The operating model shipped as a worked example, and the framework catalogues
+# whose licensing AINV-6 enforces.
+/platform/config/               @gfitzp79
+
+# -- the platform: the part a contributor should be able to move -----------
+#
+# Left unowned on purpose. Everything under platform/ other than the paths
+# above follows the repository's normal review settings.
