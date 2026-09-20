@@ -29,3 +29,20 @@ Desktop.ini
 .idea/
 .vscode/
 *.swp
+
+# Governance data
+#
+# Nothing the platform writes reaches the working tree: the database is a Docker
+# named volume (grc-data) and the API writes no files. These patterns cover what
+# a person puts here by hand. A database dump, a risk register or a control
+# export carries the organisation's real risks, controls, exceptions and audit
+# trail, which is the one category of content this repository must never hold.
+*.sql
+*.dump
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+*.tsv
+*.xls
+*.xlsx
