@@ -6,3 +6,20 @@ dist/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Your operating model
+#
+# config/governance.yml here is the reference model and stays tracked. A local
+# variant does not: it carries your appetite thresholds, control families, role
+# names and escalation SLAs. Better still, keep yours out of the checkout
+# altogether by pointing GOVERNANCE_CONFIG_FILE at it.
+config/*.local.yml
+config/governance.*.yml
+
+# Framework catalogues are added by dropping a YAML file in, so one found here
+# locally is either your own control set or licensed standard text. That is the
+# same concern AINV-6 refuses at boot, applied to the repository. The two
+# shipped catalogues stay tracked; to contribute a third, git add -f it.
+config/frameworks/*
+!config/frameworks/iso-27001-2022.yml
+!config/frameworks/nist-csf-2.0.yml
