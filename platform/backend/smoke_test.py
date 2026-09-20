@@ -1011,6 +1011,30 @@ def main() -> int:
     )
     check("the same control may hold CE-Medium, which Manual permits", status == 200, body)
 
+    section("Every route answers")
+    # /api/controls/reference-data raised a NameError for three commits. Nothing
+    # caught it: the typecheck is frontend-only, no test called the route, and
+    # the UI swallows the failure with `.catch(() => undefined)`, so the control
+    # create form simply had empty Family and Type dropdowns. A route that
+    # raises on every request is the cheapest possible bug to detect and this is
+    # the check that detects it.
+    status, spec = call("GET", "/openapi.json", token=analyst)
+    if status != 200:
+        check("the OpenAPI schema is available to enumerate routes", False, status)
+    else:
+        parameterless = sorted(
+            path
+            for path, ops in spec.get("paths", {}).items()
+            if "get" in ops and "{" not in path and path.startswith("/api/")
+        )
+        check("routes discovered to sweep", len(parameterless) >= 10, len(parameterless))
+        broken = []
+        for path in parameterless:
+            code, body = call("GET", path[len("/api"):], token=analyst)
+            if code >= 500:
+                broken.append((path, code, str(body)[:120]))
+        check("no GET route returns a server error", not broken, broken)
+
     section("Engine introspection")
     status, machines = call("GET", "/engine/machines", token=analyst)
     check("8 state machines exposed", len(machines) == 8, len(machines))

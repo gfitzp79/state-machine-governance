@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.governance import governance
 from app.core.security import CurrentUser, DbSession
 from app.modules.control.machine import (
     CONTROL_ACTIVITY_MACHINE,
