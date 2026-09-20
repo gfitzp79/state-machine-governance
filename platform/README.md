@@ -278,11 +278,12 @@ docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py
 ```
 
-Expect **33 passed** and **160 passed**, zero failures. CI asserts the state
-machine, transition, invariant and cascade counts published above against the
-code, so those cannot drift again. The two test totals are not checked that way
-yet, which is why they have drifted before: read them as the figure at the last
-release rather than as an enforced guarantee.
+Expect zero failures. CI asserts the state machine, transition, invariant and
+cascade counts published above against the code, and it now asserts each suite
+total in the comments above against what that suite actually reports when it
+runs, so neither can drift again. The totals used to be restated here as prose
+as well, and the two copies disagreed without anyone noticing, which is the
+argument for stating a figure once and letting the build hold it to the run.
 
 Two further checks run against the schema rather than the API:
 
