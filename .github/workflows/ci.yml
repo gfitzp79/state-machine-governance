@@ -117,6 +117,10 @@ jobs:
       - name: The boot guard refuses shipped secrets outside development
         run: |
           set -e
+          # pipefail because the test below is inverted: it wants the command to
+          # fail. Without it the `if` reads tee's status, which is always 0, so
+          # the "it started" branch fires however well the guard did its job.
+          set -o pipefail
           docker compose stop api
           # Production environment, shipped secret: the API must refuse to start.
           if ENVIRONMENT=production docker compose run --rm -T \
