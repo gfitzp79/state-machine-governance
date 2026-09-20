@@ -66,17 +66,27 @@ jobs:
 
       - name: A v0.1.0 database upgrades without losing data
         run: |
-          docker compose exec -T api python upgrade_test.py
+          # Every suite is teed because "Published counts match the code" runs at
+          # the end of this job, where no container is guaranteed, and a test
+          # total is a property of a run rather than of the source. pipefail
+          # because tee returns its own status, so without it a failing suite
+          # would report the build green.
+          set -o pipefail
+          docker compose exec -T api python upgrade_test.py | tee /tmp/upgrade_test.log
           # That test rebuilds the schema, so restore the seeded database for
           # anything that runs after it.
           docker compose down -v
           docker compose up -d --wait
 
       - name: Configuration layer tests
-        run: docker compose exec -T api python config_test.py
+        run: |
+          set -o pipefail
+          docker compose exec -T api python config_test.py | tee /tmp/config_test.log
 
       - name: Enforcement layer tests
-        run: docker compose exec -T api python smoke_test.py
+        run: |
+          set -o pipefail
+          docker compose exec -T api python smoke_test.py | tee /tmp/smoke_test.log
 
       - name: The UI is served
         run: |
@@ -174,6 +184,66 @@ jobs:
                       if claimed != value:
                           print(f"{readme}: claims {claimed} {label}, code has {value}")
                           failed = True
+
+          # The four counts above are derived from the source. A test total
+          # cannot be: it only exists once a suite has run. So it comes from the
+          # runs earlier in this job rather than from a run started here, which
+          # for smoke_test.py would mean another full database reset, since it
+          # refuses anything but a freshly seeded one.
+          suites = {
+              "config_test.py": "/tmp/config_test.log",
+              "smoke_test.py": "/tmp/smoke_test.log",
+              "upgrade_test.py": "/tmp/upgrade_test.log",
+          }
+          totals = {}
+          for script, log in suites.items():
+              log_path = pathlib.Path(log)
+              if not log_path.exists():
+                  print(f"no run captured for {script} at {log}")
+                  failed = True
+                  continue
+              # Both runners end with "passed: N   failed: M". Take the last, so
+              # a suite printing the block more than once reports its real total.
+              seen = re.findall(
+                  r"^passed: (\d+)", log_path.read_text(encoding="utf-8"), re.M
+              )
+              if not seen:
+                  print(f"{log} holds no 'passed: N' line for {script}")
+                  failed = True
+                  continue
+              totals[script] = int(seen[-1])
+          print("ran:", totals)
+
+          # A published total is only checkable if we can tell which suite it
+          # belongs to, so the rule is that it shares a line with exactly one
+          # script name. The drift this catches was "147 tests" in a comment and
+          # "126 passed" three lines below, neither attached to a suite and both
+          # wrong, which is how the two copies came to disagree unnoticed.
+          claim = re.compile(r"\*?\*?(\d+)\*?\*? (?:tests|passed)\b")
+          for doc in readmes + [pathlib.Path("CONTRIBUTING.md")]:
+              lines = doc.read_text(encoding="utf-8").splitlines()
+              for n, line in enumerate(lines, 1):
+                  values = [int(m.group(1)) for m in claim.finditer(line)]
+                  if not values:
+                      continue
+                  named = {s for s in suites if s in line}
+                  if len(named) != 1:
+                      print(
+                          f"{doc}:{n}: a test total has to sit on a line naming "
+                          f"exactly one of {', '.join(sorted(suites))}, so that "
+                          f"CI knows which suite it claims: {line.strip()}"
+                      )
+                      failed = True
+                      continue
+                  script = named.pop()
+                  for value in values:
+                      if script in totals and value != totals[script]:
+                          print(
+                              f"{doc}:{n}: claims {value} for {script}, "
+                              f"the run reports {totals[script]}"
+                          )
+                          failed = True
+
           sys.exit(1 if failed else 0)
           PY
 

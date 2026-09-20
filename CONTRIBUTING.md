@@ -144,14 +144,19 @@ Then <http://localhost:8080>, signing in as `analyst@example.com` /
 Both suites must pass before a pull request is reviewed.
 
 ```bash
-# 33 tests: the configuration layer. Fast, no database needed.
+# config_test.py: 33 tests of the configuration layer. Fast, no database needed.
 docker compose exec api python config_test.py
 
-# 160 tests: gates, invariants, cascades, and direct-SQL bypass attempts.
-# Mutates state deliberately, so it needs a freshly seeded database.
+# smoke_test.py: 160 tests of gates, invariants, cascades, and direct-SQL bypass
+# attempts. Mutates state deliberately, so it needs a freshly seeded database.
 docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py
 ```
+
+CI asserts those totals against what the suites report, so adding a test means
+updating the figure here and in `platform/README.md`. Each one is written beside
+its script name because that is how the check knows which suite a number claims
+to describe; a bare total is refused rather than guessed at.
 
 Both exit non-zero on failure. Neither uses a test framework yet: they are
 plain scripts with a `check()` helper, which keeps the output readable as a
