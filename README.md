@@ -31,6 +31,74 @@ The same capability that makes internal builds fast also removes the operational
 
 ---
 
+## How This Repository Is Organised
+
+Two things live here, and the relationship between them is the whole point.
+
+| | What it is | Where | Licence | How you build it |
+|---|---|---|---|---|
+| **The framework** | A published specification: codified rules, state machines, invariants, data model, architecture, methodology | repository root | [CC BY 4.0](./LICENSE) | You do not. It is documents. |
+| **The platform** | A reference implementation of that specification | [`platform/`](./platform) | [Apache 2.0](./platform/LICENSE) | `docker compose up -d`. See [platform/README.md](./platform/README.md). |
+
+The framework drives the build, not the other way round. The specification is
+the asset and the platform is the variable, so when the two disagree the
+specification is right and the code has a defect. That ordering is the reason
+the platform can be rewritten in a different language next year without any of
+the governance work being lost.
+
+### The framework documents
+
+[`specification/codified-rules.md`](./specification/codified-rules.md) is the
+source of truth. The rest derive from it and move with it.
+
+| Document | What it holds | Source |
+|---|---|---|
+| [codified-rules.md](./specification/codified-rules.md) | Every governance rule, numbered, in machine-parseable form | The source of truth |
+| [state-transitions.md](./specification/state-transitions.md) | Each lifecycle as states, gates, roles and preconditions | codified-rules §4-5, §9, §13, §19-20 |
+| [invariants-catalogue.md](./specification/invariants-catalogue.md) | Every hard rule with its enforcement layer and mechanism | codified-rules §16-24 |
+| [scoring-model.md](./specification/scoring-model.md) | The deterministic 5x5 scoring and control effectiveness model | codified-rules §4 |
+| [architecture/data-model.md](./architecture/data-model.md) | The relational schema those rules require | codified-rules |
+
+[`architecture/`](./architecture/) also covers deployment topologies, the shared
+responsibility boundary, agent identity and the AI tool lifecycle.
+[`methodology/`](./methodology/) covers how to build from a specification like
+this one.
+
+**There is no build step for the framework.** No toolchain, no generator,
+nothing to install: the documents are the deliverable. Read them, cite them,
+adapt them. What is automated is not a build but a consistency check, described
+below, which fails CI if the documents and the code drift apart.
+
+### One rule, end to end
+
+The claim that the specification drives the build is only worth making if you
+can follow a single rule the whole way. Take **RINV-5**, "Critical risks are
+never accepted".
+
+| Stage | Where | What is there |
+|---|---|---|
+| The rule | [codified-rules §5.5](./specification/codified-rules.md), `ACCEPTANCE_RULES` | `Critical: acceptance NOT PERMITTED, must Mitigate, Transfer, or Avoid` |
+| The invariant | [invariants-catalogue.md](./specification/invariants-catalogue.md), row RINV-5 | Enforcement layer `Both`: a `CHECK` constraint and a service-layer rejection |
+| Service enforcement | `platform/backend/app/modules/risk/invariants.py` | `_critical_never_accepted`, registered as `Invariant(id="RINV-5", ..., spec_ref="codified-rules section 5.5")` |
+| Schema enforcement | `platform/backend/app/modules/risk/models.py` | `CheckConstraint(..., name="ck_risks_critical_never_accepted")` on the `risks` table |
+| The test | `platform/backend/smoke_test.py` | Section `RINV-5: a Critical risk cannot be accepted`: asserts HTTP 409 and that the refusal names RINV-5 |
+| The running system | `GET /api/engine/invariants` | Serves the RINV-5 row live. `RISK-003` in the demo data is Critical, so you can try it yourself |
+
+The middle of that chain is not held together by review discipline. Two checks
+run in CI on every push:
+
+- `python tools/check_invariant_drift.py` fails the build if an invariant
+  registered in code has no catalogue row, or declares an enforcement layer the
+  catalogue disagrees with.
+- `python tools/check_spec_references.py` fails it if an invariant cites a
+  section of codified-rules that nobody wrote.
+
+A rule enforced in code but absent from the documents is exactly the drift this
+project exists to argue against, so it breaks the build rather than
+accumulating quietly.
+
+---
+
 ## Run It
 
 The reference implementation is in [`/platform`](./platform). It is a working,
@@ -62,7 +130,7 @@ See the [configuration guide](./platform/docs/CONFIGURATION.md).
 
 ## The GRC Platform
 
-The reference implementation demonstrates state machine governance applied to a multi-module GRC platform.
+The reference implementation demonstrates state machine governance applied to a multi-module GRC platform. Each section below names the specification section it implements, so the rule and the behaviour can be read side by side.
 
 ### Risk Lifecycle
 
@@ -70,11 +138,15 @@ Multi-phase lifecycle with hard-coded gate enforcement. Critical risks cannot be
 
 ### Cross-Entity Propagation
 
-Control failure freezes linked risk scores. Policy update flags mapped controls for re-assessment. Open issues above threshold prevent risk closure. Full cascade rules: [State Transitions §7](./specification/state-transitions.md#7-cross-lifecycle-cascade-rules).
+Control failure freezes linked risk scores. Policy update flags mapped controls for re-assessment. Open issues above threshold prevent risk closure. Full cascade rules: [State Transitions §10](./specification/state-transitions.md#10-cross-lifecycle-cascade-rules).
 
 ### Threat Management and Engineering Integration
 
-Engineering state (STRIDE threat models) governed through a 9-phase lifecycle bidirectionally linked to GRC state. Hard sign-offs enforced from AppSec and System_Owner. Active controls required for mitigation mappings (TINV-4). Unmitigated Medium+ threats automatically promoted. If a production control mitigating a threat fails, the cascade engine reverts the threat to Identified and demands rework.
+Engineering state (STRIDE threat models) governed through an 8-state lifecycle bidirectionally linked to GRC state. Hard sign-offs enforced from AppSec and System_Owner. Active controls required for mitigation mappings (TINV-4). Unmitigated Medium+ threats automatically promoted. If a production control mitigating a threat fails, the cascade engine reverts the threat to Identified and demands rework. Full detail: [State Transitions §7](./specification/state-transitions.md#7-threat-model-lifecycle-8-states).
+
+### Compliance and Assurance
+
+Every requirement of an adopted framework carries exactly one position, which makes the register a Statement of Applicability rather than a list of intentions. Coverage is derived from the control layer rather than asserted: a requirement is Covered only while a satisfying objective is Operating with a live deployment inside the framework's scope (AINV-2), and partial coverage is a gap, never coverage (AINV-3). When the control beneath a position fails, the cascade returns the requirement to Gap without anyone revisiting the register (AINV-5). Full detail: [State Transitions §9](./specification/state-transitions.md#9-requirement-assessment-lifecycle-6-states).
 
 ### Agent Identity
 

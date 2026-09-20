@@ -1,12 +1,25 @@
 # Data Model
 
-**Version:** 1.2 | **License:** CC BY 4.0
-**Source:** Derived from [Codified Rules Specification](../specification/codified-rules.md) and validated against a working Supabase implementation.
+**Version:** 1.3 | **License:** CC BY 4.0
+**Source:** Derived from [Codified Rules Specification](../specification/codified-rules.md) and validated against the [reference implementation](../platform).
 **Purpose:** Complete relational schema for the governance platform. 49 tables across 8 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
 
 > **Design principle:** The schema is the first line of enforcement. Every NOT NULL, CHECK, UNIQUE, and FK constraint exists because a codified rule requires it. If a constraint is absent, the rule is not enforced at the data layer and must be enforced at the service layer. See [Invariants Catalogue](../specification/invariants-catalogue.md) for the complete enforcement mapping.
 
-> **Implementation note:** This schema was built on PostgreSQL (Supabase). All tables use `uuid` primary keys with `gen_random_uuid()` defaults. Timestamps are `timestamptz` with `now()` defaults. Row Level Security (RLS) is enforced on all tables. The schema is portable to any PostgreSQL-compatible database. Adapt RLS and auth functions for non-Supabase environments.
+> **Implementation note:** PostgreSQL. All tables use `uuid` primary keys,
+> timestamps are `timestamptz` defaulting to `now()`, and the schema is created
+> and versioned by Alembic.
+>
+> **On where enforcement lives.** An earlier revision of this document said row
+> level security was enforced on every table. The [reference
+> implementation](../platform) uses none: immutability is enforced by database
+> trigger on the six append-only tables, hard rules by `CHECK` and `NOT NULL`
+> constraints, and authorisation at the service layer, where the state machine
+> can name the rule that refused. That distinction is the whole subject of the
+> [Invariants Catalogue](../specification/invariants-catalogue.md), so this
+> document should not have described a mechanism the implementation does not
+> use. RLS remains a reasonable choice for a deployment that wants it, and the
+> schema does not prevent it.
 
 ---
 
@@ -20,9 +33,10 @@
 6. [Domain 5: Policy and Standards](#6-domain-5-policy-and-standards)
 7. [Domain 6: Vendor and Third-Party Risk](#7-domain-6-vendor-and-third-party-risk)
 8. [Domain 7: Threat Management](#8-domain-7-threat-management)
-9. [Foreign Key Relationship Map](#9-foreign-key-relationship-map)
-10. [Schema-Level Constraint Summary](#10-schema-level-constraint-summary)
-11. [Invariant Enforcement at Schema Layer](#11-invariant-enforcement-at-schema-layer)
+9. [Domain 8: Compliance and Assurance](#9-domain-8-compliance-and-assurance)
+10. [Foreign Key Relationship Map](#10-foreign-key-relationship-map)
+11. [Schema-Level Constraint Summary](#11-schema-level-constraint-summary)
+12. [Invariant Enforcement at Schema Layer](#12-invariant-enforcement-at-schema-layer)
 
 ---
 
@@ -1119,7 +1133,7 @@ Scenario to **existing** risk record. Distinct from promotion.
 
 ---
 
-## 8b. Domain 8: Compliance and Assurance
+## 9. Domain 8: Compliance and Assurance
 
 The register holds framework **requirements** as records rather than deriving
 compliance from the policies that reference a control. See
@@ -1212,7 +1226,7 @@ A person's assertion that a control objective addresses a requirement.
 
 ---
 
-## 9. Foreign Key Relationship Map
+## 10. Foreign Key Relationship Map
 
 55 foreign key relationships across the schema.
 
@@ -1274,7 +1288,7 @@ A person's assertion that a control objective addresses a requirement.
 
 ---
 
-## 10. Schema-Level Constraint Summary
+## 11. Schema-Level Constraint Summary
 
 | Constraint Type | Count | Purpose |
 |---|---|---|
@@ -1308,7 +1322,7 @@ A person's assertion that a control objective addresses a requirement.
 
 ---
 
-## 11. Invariant Enforcement at Schema Layer
+## 12. Invariant Enforcement at Schema Layer
 
 Cross-reference to [Invariants Catalogue](../specification/invariants-catalogue.md). Only schema-enforced invariants listed here. Service-layer invariants are enforced in the API and are not visible in the DDL.
 

@@ -8,6 +8,18 @@ interconnected state machines: every lifecycle transition is gated, every hard
 rule is an invariant checked before commit, and a state change in one entity
 propagates to every entity it affects.
 
+**This directory implements a specification; it does not define one.** The rules
+live in [`specification/codified-rules.md`](../specification/codified-rules.md),
+their lifecycles in
+[`state-transitions.md`](../specification/state-transitions.md), and their
+enforcement layers in
+[`invariants-catalogue.md`](../specification/invariants-catalogue.md). Every
+invariant registered below carries a `spec_ref` back to the section that
+justifies it, and CI fails if one points at a section that does not exist. Where
+the code and the specification disagree, the specification is right. The
+repository root has a [worked example](../README.md#one-rule-end-to-end) that
+follows one rule from the specification through to the test that proves it.
+
 ## Install
 
 Requires Docker with Compose v2. Nothing else: no Python, Node or PostgreSQL on
@@ -120,6 +132,7 @@ platform/
 │       │   ├── policy/         policies, standards, exceptions
 │       │   ├── treatment/
 │       │   ├── threat/         STRIDE models bound to GRC state
+│       │   ├── compliance/     frameworks, requirements, the Statement of Applicability
 │       │   ├── cascades.py     every cross-module propagation, in one file
 │       │   └── jobs.py         the time-based invariants
 │       └── seed.py
@@ -186,21 +199,33 @@ Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 
 **9 state machines · 65 gated transitions · 57 invariants · 28 cascade events**
 
-| Lifecycle | States | Source |
-|---|---|---|
-| Risk | 7 phases + Closed | state-transitions §1 |
-| Control objective | Design → Implementation → Operating ⇄ Failure ⇄ Redesign → Deprecated | §2 |
-| Control activity | Draft → Active ⇄ Suspended → Retired | §3 |
-| Control deployment | Planned → Active ⇄ Degraded ⇄ Failed → Decommissioned | §4 |
-| Policy | Draft → Under_Review → Approved → Active ⇄ Under_Revision → Deprecated | §5 |
-| Policy exception | Requested → Approved → Expired / Rejected | §6 |
-| Treatment | Proposed → Validated → Approved → In_Progress → Complete | §5.2 |
-| Threat model | Scope → Decomposition → Threat_Analysis → Mitigation_Design → Review ⇄ Active | §7 |
+Nine state machines, one per row, each declared in
+`modules/<domain>/machine.py` and specified in the section named beside it.
 
-Invariants: **RINV-1..13**, **CINV-1..10**, **PINV-1..9**, **TINV-1..11**, plus
-**SEP-1**, **PE-5** and **TM-PARTIAL**. Every one is listed at
+| Lifecycle | States | Specification |
+|---|---|---|
+| Risk | 7 phases + Closed | [state-transitions §1](../specification/state-transitions.md#1-risk-lifecycle-7-phases) |
+| Control objective | Design → Implementation → Operating ⇄ Failure ⇄ Redesign → Deprecated | [§2](../specification/state-transitions.md#2-control-objective-lifecycle-6-states) |
+| Control activity | Draft → Active ⇄ Suspended → Retired | [§3](../specification/state-transitions.md#3-control-activity-lifecycle-4-states) |
+| Control deployment | Planned → Active ⇄ Degraded ⇄ Failed → Decommissioned | [§4](../specification/state-transitions.md#4-control-deployment-lifecycle-5-states) |
+| Policy | Draft → Under_Review → Approved → Active ⇄ Under_Revision → Deprecated | [§5](../specification/state-transitions.md#5-policy-lifecycle-6-states) |
+| Policy exception | Requested → Approved → Expired / Rejected | [§6](../specification/state-transitions.md#6-policy-exception-lifecycle-4-states) |
+| Threat model | Scope → Decomposition → Threat_Analysis → Mitigation_Design → Review ⇄ Active → Deprecated, or Abandoned | [§7](../specification/state-transitions.md#7-threat-model-lifecycle-8-states) |
+| Treatment | Proposed → Validated → Approved → In_Progress → Complete, or Cancelled | [§8](../specification/state-transitions.md#8-treatment-lifecycle-6-states) |
+| Requirement assessment | Not_Assessed → Applicable ⇄ Covered ⇄ Gap ⇄ Compensating, or Not_Applicable | [§9](../specification/state-transitions.md#9-requirement-assessment-lifecycle-6-states) |
+
+Invariants: **RINV-1..13**, **CINV-1..12**, **PINV-1..9**, **TINV-1..11**,
+**AINV-1..4** and **AINV-6..10**, plus **SEP-1**, **PE-5** and **TM-PARTIAL**.
+That is 57, and it matches the
+[invariants catalogue](../specification/invariants-catalogue.md) because CI
+compares the two on every push. Every one is listed at
 `/api/engine/invariants` with its enforcement layer and mechanism, and the
 layer it declares is the layer it actually uses.
+
+AINV-5 is in the catalogue but not in that list, deliberately: it is a `Cascade`
+rule, something that must *happen* when a control fails rather than a condition
+an entity must satisfy, so it has a handler in `modules/cascades.py` instead of
+a predicate in an invariant registry.
 
 ### Enforced at the database layer
 
@@ -239,7 +264,7 @@ cascade and direct-SQL attempts to bypass the service layer.
 
 ```bash
 docker compose exec api python config_test.py     # 33 tests: the configuration layer
-docker compose exec api python smoke_test.py      # 147 tests: the enforcement layer
+docker compose exec api python smoke_test.py      # 160 tests: the enforcement layer
 ```
 
 `config_test.py` proves both halves of configurability: that invalid governance
@@ -253,8 +278,42 @@ docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py
 ```
 
-Expect **33 passed** and **126 passed**, zero failures. CI asserts the counts
-published above against the code, so this section cannot drift again.
+Expect **33 passed** and **160 passed**, zero failures. CI asserts the state
+machine, transition, invariant and cascade counts published above against the
+code, so those cannot drift again. The two test totals are not checked that way
+yet, which is why they have drifted before: read them as the figure at the last
+release rather than as an enforced guarantee.
+
+Two further checks run against the schema rather than the API:
+
+```bash
+docker compose exec api alembic check           # models and migrations agree
+docker compose exec api python upgrade_test.py  # 8 tests: an 0.1.0 database upgrades cleanly
+```
+
+### Checking the code against the specification
+
+These run from the **repository root**, not this directory, and need no Docker
+and no running stack. They compare the documents with the code, which is the
+half of the argument the smoke test cannot make.
+
+```bash
+python tools/check_invariant_drift.py    # every invariant in code has a catalogue row, same layer
+python tools/check_spec_references.py    # every spec_ref names a section that exists
+python tools/check_em_dashes.py          # the editorial rule, enforced
+```
+
+The first two are what make the
+[worked example in the repository root](../README.md#one-rule-end-to-end)
+checkable rather than aspirational: a rule cannot be enforced in code and absent
+from the specification without failing the build.
+
+One more check needs a frontend build first, because `dist/` is not committed:
+
+```bash
+cd platform/frontend && npm ci && npm run build
+python ../../tools/check_no_inline_script.py dist/index.html
+```
 
 ---
 

@@ -17,6 +17,11 @@ rebuild. To keep your configuration outside the checkout entirely, point
 
 ## What you can change
 
+Every row below is a `[CUSTOMISE]` block in the specification. The
+**Specification** column names the section of
+[`codified-rules.md`](../../specification/codified-rules.md) that defines what
+the setting means, so you can read the rule before you change the number.
+
 | Section | Governs | Specification |
 |---|---|---|
 | `organisation` | Name and tagline shown throughout the UI | None |
@@ -185,3 +190,12 @@ changes actually take effect.
 The dividing line is deliberate. Thresholds and taxonomy are one organisation's
 expression of the framework, so they are data. Which rule guards which gate is
 the framework itself, so it is code that can be reviewed, diffed and tested.
+
+That has a consequence worth stating plainly: the rows below the first two are
+not configuration changes but framework changes wearing different clothes. A new
+invariant needs a row in
+[`invariants-catalogue.md`](../../specification/invariants-catalogue.md) and a
+`spec_ref` pointing at a real section of
+[`codified-rules.md`](../../specification/codified-rules.md), or
+`tools/check_invariant_drift.py` and `tools/check_spec_references.py` fail the
+build. [CONTRIBUTING.md](../../CONTRIBUTING.md) sets out the route.

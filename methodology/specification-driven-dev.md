@@ -74,7 +74,7 @@ The artefact set is the build specification. The agent consumes it. The practiti
 | **Security invariants list** | Constraint set. If an invariant is absent, agent has no reason to enforce it. |
 | **Module breakdown** | Scopes each prompt. Without this, prompts are open-ended and outputs unpredictable. |
 | **Tech stack decision record** | Selects libraries and patterns. Without explicit decisions, agent defaults to training distribution. |
-| **Persistent agent briefing** | Re-grounding mechanism at session start. Prevents drift. See [Context Management §3](./context-management.md#3-the-re-grounding-mechanisms). |
+| **Persistent agent briefing** | Re-grounding mechanism at session start. Prevents drift. See [Context Management §4](./context-management.md#4-the-re-grounding-mechanisms). |
 
 ---
 

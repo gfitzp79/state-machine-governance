@@ -216,21 +216,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Every relative markdown link resolves
+      - name: Every markdown link resolves, anchors included
         run: |
-          python3 - <<'PY'
-          import pathlib, re, sys
-          bad = []
-          for md in pathlib.Path(".").rglob("*.md"):
-              if any(part in {"node_modules", ".venv", ".git"} for part in md.parts):
-                  continue
-              for m in re.finditer(r"\[[^\]]*\]\((\.{1,2}/[^)#]*)(#[^)]*)?\)", md.read_text(encoding="utf-8")):
-                  if not (md.parent / m.group(1)).resolve().exists():
-                      bad.append(f"{md} -> {m.group(1)}")
-          for b in bad:
-              print("broken link:", b)
-          sys.exit(1 if bad else 0)
-          PY
+          # Replaces an inline regex that captured the anchor and then threw it
+          # away, so a link to a real file and a section that does not exist
+          # passed. Two such links were in the repository and both passed.
+          python3 tools/check_links.py
 
       - name: No unfilled placeholders
         run: |
