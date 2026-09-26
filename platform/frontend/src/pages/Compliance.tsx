@@ -360,7 +360,7 @@ function AssessModal({
 
       <Field label="Position">
         <select
-          className="input"
+          className="field"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
         >
@@ -374,6 +374,7 @@ function AssessModal({
 
       {needsRationale && (
         <Field
+          className="mt-4"
           label="Justification"
           hint={
             target === 'Not_Applicable'
@@ -382,7 +383,7 @@ function AssessModal({
           }
         >
           <textarea
-            className="input min-h-24"
+            className="field min-h-24"
             value={rationale}
             onChange={(e) => setRationale(e.target.value)}
           />
