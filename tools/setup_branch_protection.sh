@@ -88,15 +88,19 @@ BODY="$(cat <<JSON
 JSON
 )"
 
-ID="$(gh api "/repos/${REPO}/rulesets" --jq ".[] | select(.name == \"${NAME}\") | .id")"
+# Endpoints carry no leading slash. Git Bash on Windows rewrites any argument
+# that starts with a slash into a filesystem path, so the endpoint reached gh
+# as "C:/Program Files/Git/repos/..." and the script failed before applying
+# anything. gh accepts both forms; only this one survives every shell.
+ID="$(gh api "repos/${REPO}/rulesets" --jq ".[] | select(.name == \"${NAME}\") | .id")"
 if [ -n "${ID}" ]; then
-  gh api --method PUT "/repos/${REPO}/rulesets/${ID}" --input - <<<"${BODY}" >/dev/null
+  gh api --method PUT "repos/${REPO}/rulesets/${ID}" --input - <<<"${BODY}" >/dev/null
   echo "Replaced ruleset '${NAME}' (${ID}) on ${REPO}"
 else
-  gh api --method POST "/repos/${REPO}/rulesets" --input - <<<"${BODY}" >/dev/null
+  gh api --method POST "repos/${REPO}/rulesets" --input - <<<"${BODY}" >/dev/null
   echo "Created ruleset '${NAME}' on ${REPO}"
 fi
 
 echo
 echo "Verify:"
-echo "  gh api /repos/${REPO}/rules/branches/main --jq '.[].type'"
+echo "  gh api repos/${REPO}/rules/branches/main --jq '.[].type'"
