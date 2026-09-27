@@ -241,7 +241,16 @@ def describe(
             or ra["residual_locked"] != rb["residual_locked"]
         )
         proposal = ra["proposed"]
-        if affected:
+        ce_moved = ra["effective_ce"] != rb["effective_ce"] or ra["ceiling"] != rb["ceiling"]
+        if affected and not ce_moved:
+            # Frozen without its CE moving: the failed control was not the
+            # weakest one this risk relies on, so the worst case is unchanged.
+            summary = (
+                "Residual frozen by the control failure; the worst case across the "
+                "remaining controls is still " + ra["effective_ce"]
+                + (", so the recorded residual still fits" if proposal and not proposal["changed"] else "")
+            )
+        elif affected:
             summary = (
                 "CE " + rb["effective_ce"] + " to " + ra["effective_ce"]
                 + ", likelihood reduction ceiling " + str(rb["ceiling"]) + " to "

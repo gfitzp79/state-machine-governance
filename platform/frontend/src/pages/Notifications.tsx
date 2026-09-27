@@ -8,6 +8,8 @@ import { cx, formatDateTime, label } from '../lib/format'
 
 const ROUTE: Record<string, string> = {
   risk: '/risks',
+  requirement_assessment: '/compliance',
+  compliance: '/compliance',
   control_objective: '/controls',
   control_deployment: '/controls',
   policy: '/policies',
@@ -62,14 +64,19 @@ export default function Notifications() {
                         {n.event_type}
                       </span>
                     </div>
-                    {n.body && <p className="mt-0.5 text-sm text-ink-muted">{n.body}</p>}
+                    {n.body && (
+                      <p className="mt-0.5 whitespace-pre-line text-sm text-ink-muted">{n.body}</p>
+                    )}
                     <p className="mt-1 text-xs text-ink-faint">
                       {label(n.entity_type)} · {formatDateTime(n.created_at)}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-start gap-2">
-                    {base && n.entity_id && (
-                      <Link to={`${base}/${n.entity_id}`} className="btn-ghost btn-sm">
+                    {base && (n.entity_id || base === '/compliance') && (
+                      <Link
+                        to={base === '/compliance' ? base : `${base}/${n.entity_id}`}
+                        className="btn-ghost btn-sm"
+                      >
                         Open
                       </Link>
                     )}

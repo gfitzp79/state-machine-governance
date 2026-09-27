@@ -16,6 +16,8 @@ import {
   useToast,
 } from '../components/ui'
 import { CEResolution, GatePanel, InvariantList } from '../components/governance'
+import { ImpactReport, ImpactSummary } from '../components/impact'
+import type { ImpactData } from '../components/impact'
 import { cx, formatDate, formatDateTime, label } from '../lib/format'
 
 export default function ControlDetail() {
@@ -28,6 +30,10 @@ export default function ControlDetail() {
   const [busy, setBusy] = useState<string | null>(null)
   const [modal, setModal] = useState<any>(null)
   const [deployment, setDeployment] = useState<any>(null)
+  const [impactView, setImpactView] = useState<{ title: string; impact: ImpactData } | null>(
+    null,
+  )
+  const [campaignOpen, setCampaignOpen] = useState(false)
   const { push } = useToast()
 
   const load = useCallback(() => api.get<any>(`/controls/${id}`).then(setCtl), [id])
@@ -154,6 +160,7 @@ export default function ControlDetail() {
             { id: 'lifecycle', label: 'Lifecycle' },
             { id: 'scoring', label: 'Scoring contribution' },
             { id: 'impact', label: 'Linked records', count: ctl.linked_risks.length + ctl.linked_policies.length },
+            { id: 'testing', label: 'Testing & impact', count: ctl.test_history.length },
             { id: 'invariants', label: 'Invariants', count: ctl.invariants.length },
           ]}
           active={tab}
@@ -327,6 +334,100 @@ export default function ControlDetail() {
         </Card>
       )}
 
+      {tab === 'testing' && (
+        <div className="space-y-4">
+          <Card
+            title="Test campaigns"
+            subtitle="A round of results across this control's deployments, read against each framework's scope. Owners get one digest per campaign, not one alert per cascade."
+            action={
+              <button
+                className="btn-primary btn-sm"
+                onClick={() => setCampaignOpen(true)}
+                disabled={deployments.length === 0}
+              >
+                <FlaskConical className="h-3.5 w-3.5" />
+                Run a test campaign
+              </button>
+            }
+            bodyClassName={ctl.campaigns.length ? 'p-0' : undefined}
+          >
+            {ctl.campaigns.length === 0 ? (
+              <Empty
+                title="No campaigns yet"
+                hint="A campaign shows which in-scope assets were tested, which failed, and which were never tested at all."
+              />
+            ) : (
+              <ul className="divide-y">
+                {ctl.campaigns.map((c: any) => (
+                  <li key={c.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                    <span className="mono text-ink-faint">{c.reference}</span>
+                    <span className="font-medium text-ink">{c.title}</span>
+                    <span className="text-xs text-ink-faint">{formatDateTime(c.tested_at)}</span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <ImpactSummary impact={c.impact} />
+                      <button
+                        className="btn-ghost btn-sm"
+                        onClick={() =>
+                          setImpactView({ title: `${c.reference}: ${c.title}`, impact: c.impact })
+                        }
+                      >
+                        View impact
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card
+            title="Test lineage"
+            subtitle="Every test on every deployment, with what it changed downstream. Computed when the test was recorded and kept with it, so this is the record as it stood at the time."
+            bodyClassName={ctl.test_history.length ? 'p-0' : undefined}
+          >
+            {ctl.test_history.length === 0 ? (
+              <Empty title="No tests recorded" hint="Open a deployment to record a test." />
+            ) : (
+              <ul className="divide-y">
+                {ctl.test_history.map((t: any) => (
+                  <li key={t.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                    <Badge value={t.result} />
+                    {t.failure_type && (
+                      <span className="chip border-line bg-surface-sunken text-ink-muted">
+                        {t.failure_type}
+                      </span>
+                    )}
+                    <span className="mono text-ink-faint">{t.deployment_reference}</span>
+                    <span className="text-sm text-ink">{t.asset_name}</span>
+                    <span className="text-xs text-ink-faint">{formatDateTime(t.tested_at)}</span>
+                    {t.impact ? (
+                      <div className="ml-auto flex items-center gap-2">
+                        <ImpactSummary impact={t.impact} />
+                        <button
+                          className="btn-ghost btn-sm"
+                          onClick={() =>
+                            setImpactView({
+                              title: `${t.deployment_reference} on ${t.asset_name}: ${t.result}`,
+                              impact: t.impact,
+                            })
+                          }
+                        >
+                          View impact
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="ml-auto text-xs text-ink-faint">
+                        recorded before impact tracking
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      )}
+
       {tab === 'impact' && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card
@@ -427,17 +528,46 @@ export default function ControlDetail() {
                 'Control effectiveness recorded',
               )
             }
-            onTest={(body) =>
-              run(
-                'test',
-                () => api.post(`/controls/deployments/${deployment.id}/tests`, body),
-                body.result === 'Fail'
-                  ? 'Failing test recorded'
-                  : 'Test result recorded',
-                body.result === 'Fail'
-                  ? 'The deployment moved to Failed. Check the parent control and every linked risk and threat model.'
-                  : undefined,
-              )
+            onTest={async (body) => {
+              setBusy('test')
+              try {
+                const res = await api.post<any>(
+                  `/controls/deployments/${deployment.id}/tests`,
+                  body,
+                )
+                await load()
+                const recorded = res.recorded
+                push({
+                  kind: body.result === 'Fail' ? 'info' : 'ok',
+                  title:
+                    body.result === 'Fail'
+                      ? `${recorded?.failure_type ?? 'Design'} failure recorded`
+                      : 'Test result recorded',
+                  body:
+                    body.result === 'Fail'
+                      ? recorded?.failure_type === 'Operating'
+                        ? 'The control stays Operating. Only the frameworks and risks whose scope includes this asset were re-judged.'
+                        : 'Design failure: the control entered Failure everywhere it runs.'
+                      : undefined,
+                })
+                setDeployment(null)
+                if (recorded?.impact) {
+                  setImpactView({
+                    title: `What the ${res.reference} test on ${res.asset_name} changed`,
+                    impact: recorded.impact,
+                  })
+                }
+              } catch (err) {
+                fail(err)
+              } finally {
+                setBusy(null)
+              }
+            }}
+            onShowImpact={(t) =>
+              setImpactView({
+                title: `${deployment.reference} on ${deployment.asset_name}: ${t.result}`,
+                impact: t.impact,
+              })
             }
             onTransition={async (target, reason) => {
               setBusy(target)
@@ -464,6 +594,48 @@ export default function ControlDetail() {
             }}
           />
         )}
+      </Modal>
+
+      {/* what a test changed */}
+      <Modal
+        open={!!impactView}
+        onClose={() => setImpactView(null)}
+        wide
+        title={impactView?.title ?? ''}
+        description="Computed in the transaction that recorded the test, and kept with it. Each framework is judged by its own scope and coverage rule; each risk by its own declared scope."
+      >
+        {impactView && <ImpactReport impact={impactView.impact} />}
+      </Modal>
+
+      {/* run a campaign */}
+      <Modal
+        open={campaignOpen}
+        onClose={() => setCampaignOpen(false)}
+        wide
+        title={`Test campaign: ${ctl.reference}`}
+        description="Record a result for each deployment tested this round. Leave a deployment as Not tested and the campaign will say so, framework by framework."
+      >
+        <CampaignForm
+          deployments={deployments}
+          busy={busy === 'campaign'}
+          onSubmit={async (title, results) => {
+            setBusy('campaign')
+            try {
+              const campaign = await api.post<any>(`/controls/${id}/campaigns`, { title, results })
+              await load()
+              setCampaignOpen(false)
+              push({ kind: 'ok', title: `${campaign.reference} recorded` })
+              setImpactView({
+                title: `${campaign.reference}: ${campaign.title}`,
+                impact: campaign.impact,
+              })
+            } catch (err) {
+              fail(err, 'Campaign refused')
+            } finally {
+              setBusy(null)
+            }
+          }}
+        />
       </Modal>
 
       {/* create activity */}
@@ -576,6 +748,7 @@ function DeploymentPanel({
   busy,
   onAssess,
   onTest,
+  onShowImpact,
   onTransition,
 }: {
   deployment: any
@@ -583,12 +756,14 @@ function DeploymentPanel({
   busy: string | null
   onAssess: (body: any) => void
   onTest: (body: any) => void
+  onShowImpact: (test: any) => void
   onTransition: (target: string, reason?: string) => void
 }) {
   const [ce, setCe] = useState(deployment.ce_rating)
   const [evidence, setEvidence] = useState(deployment.ce_evidence_ref ?? '')
   const [notes, setNotes] = useState(deployment.ce_notes ?? '')
   const [testResult, setTestResult] = useState('Pass')
+  const [failureType, setFailureType] = useState('Design')
   const [testEvidence, setTestEvidence] = useState('')
   const [testNotes, setTestNotes] = useState('')
 
@@ -668,8 +843,9 @@ function DeploymentPanel({
         <h3 className="mb-2 text-sm font-semibold text-ink">Record a control test</h3>
         <p className="mb-3 text-xs text-ink-muted">
           Test history is immutable: the database rejects UPDATE and DELETE (CINV-7). A failing
-          test moves the deployment through its state machine and propagates to the parent
-          objective (DL-1).
+          test moves the deployment through its state machine. How far it propagates depends on
+          what failed (DL-1, CINV-16). A pass with evidence renews the assessment date behind the
+          current rating (TST-4).
         </p>
         <div className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-3">
@@ -692,6 +868,41 @@ function DeploymentPanel({
               </button>
             ))}
           </div>
+          {testResult === 'Fail' && (
+            <fieldset>
+              <legend className="mb-1.5 text-xs font-medium text-ink-muted">What failed?</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  {
+                    id: 'Design',
+                    title: 'Design failure',
+                    body: 'The control does not work as designed. It fails everywhere it runs, and every framework and risk it carries is affected.',
+                  },
+                  {
+                    id: 'Operating',
+                    title: 'Operating failure',
+                    body: `The control is sound but did not run on ${deployment.asset_name}. Only frameworks and risks whose scope includes this asset are affected.`,
+                  },
+                ].map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setFailureType(o.id)}
+                    aria-pressed={failureType === o.id}
+                    className={cx(
+                      'rounded-lg border px-3 py-2.5 text-left',
+                      failureType === o.id
+                        ? 'border-rose-400 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40'
+                        : 'bg-surface-sunken hover:border-ink-faint',
+                    )}
+                  >
+                    <span className="block text-sm font-medium text-ink">{o.title}</span>
+                    <span className="mt-0.5 block text-xs text-ink-muted">{o.body}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <Field label="Evidence reference">
             <input
               className="field"
@@ -711,7 +922,12 @@ function DeploymentPanel({
             className={testResult === 'Fail' ? 'btn-danger' : 'btn-primary'}
             disabled={busy === 'test'}
             onClick={() => {
-              onTest({ result: testResult, evidence_ref: testEvidence, notes: testNotes })
+              onTest({
+                result: testResult,
+                evidence_ref: testEvidence,
+                notes: testNotes,
+                ...(testResult === 'Fail' ? { failure_type: failureType } : {}),
+              })
               setTestEvidence('')
               setTestNotes('')
             }}
@@ -740,20 +956,139 @@ function DeploymentPanel({
           <ul className="divide-y">
             {deployment.tests.map((t: any) => (
               <li key={t.id} className="flex gap-3 py-2.5">
-                <Badge value={t.result} />
+                <div className="flex shrink-0 flex-col items-start gap-1">
+                  <Badge value={t.result} />
+                  {t.failure_type && (
+                    <span className="chip border-line bg-surface-sunken text-ink-muted">
+                      {t.failure_type}
+                    </span>
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-ink">{t.evidence_ref ?? 'No evidence reference'}</p>
                   {t.notes && <p className="mt-0.5 text-xs text-ink-muted">{t.notes}</p>}
                 </div>
-                <span className="shrink-0 text-xs text-ink-faint">
-                  #{t.sequence} · {formatDateTime(t.tested_at)}
-                </span>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-xs text-ink-faint">
+                    #{t.sequence} · {formatDateTime(t.tested_at)}
+                  </span>
+                  {t.impact && (
+                    <button className="btn-ghost btn-sm" onClick={() => onShowImpact(t)}>
+                      View impact
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
         </section>
       )}
     </div>
+  )
+}
+
+function CampaignForm({
+  deployments,
+  busy,
+  onSubmit,
+}: {
+  deployments: any[]
+  busy: boolean
+  onSubmit: (title: string, results: any[]) => void
+}) {
+  const testable = deployments.filter((d) => d.deployment_status !== 'Decommissioned')
+  const [title, setTitle] = useState('')
+  const [rows, setRows] = useState<Record<string, { result: string; failure_type: string; evidence_ref: string }>>(
+    () =>
+      Object.fromEntries(
+        testable.map((d) => [d.id, { result: '', failure_type: 'Design', evidence_ref: '' }]),
+      ),
+  )
+  const chosen = Object.entries(rows).filter(([, r]) => r.result)
+  const set = (id: string, patch: Partial<{ result: string; failure_type: string; evidence_ref: string }>) =>
+    setRows((all) => ({ ...all, [id]: { ...all[id], ...patch } }))
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSubmit(
+          title,
+          chosen.map(([deployment_id, r]) => ({
+            deployment_id,
+            result: r.result,
+            evidence_ref: r.evidence_ref || undefined,
+            ...(r.result === 'Fail' ? { failure_type: r.failure_type } : {}),
+          })),
+        )
+      }}
+    >
+      <Field label="Campaign title">
+        <input
+          className="field"
+          required
+          minLength={3}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Q4 access control testing"
+        />
+      </Field>
+      <ul className="divide-y rounded-lg border">
+        {testable.map((d) => {
+          const r = rows[d.id]
+          return (
+            <li key={d.id} className="space-y-2 px-3 py-3" data-testid={`campaign-row-${d.reference}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="mono text-ink-faint">{d.reference}</span>
+                <span className="text-sm font-medium text-ink">{d.asset_name}</span>
+                <Badge value={d.deployment_status} />
+                <select
+                  className="field ml-auto w-36"
+                  aria-label={`Result for ${d.asset_name}`}
+                  value={r.result}
+                  onChange={(e) => set(d.id, { result: e.target.value })}
+                >
+                  <option value="">Not tested</option>
+                  <option value="Pass">Pass</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Fail">Fail</option>
+                </select>
+                {r.result === 'Fail' && (
+                  <select
+                    className="field w-36"
+                    aria-label={`Failure type for ${d.asset_name}`}
+                    value={r.failure_type}
+                    onChange={(e) => set(d.id, { failure_type: e.target.value })}
+                  >
+                    <option value="Design">Design</option>
+                    <option value="Operating">Operating</option>
+                  </select>
+                )}
+              </div>
+              {r.result && (
+                <input
+                  className="field"
+                  aria-label={`Evidence for ${d.asset_name}`}
+                  placeholder="Evidence reference"
+                  value={r.evidence_ref}
+                  onChange={(e) => set(d.id, { evidence_ref: e.target.value })}
+                />
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      <div className="flex items-center justify-between border-t pt-4">
+        <span className="text-xs text-ink-muted">
+          {chosen.length} of {testable.length} deployments tested
+        </span>
+        <button className="btn-primary" disabled={busy || chosen.length === 0 || title.length < 3}>
+          <FlaskConical className="h-4 w-4" />
+          Record campaign
+        </button>
+      </div>
+    </form>
   )
 }
 

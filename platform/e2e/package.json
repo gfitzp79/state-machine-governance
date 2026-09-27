@@ -1,0 +1,12 @@
+{
+  "name": "state-machine-governance-journeys",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Recorded user journeys: what a control test changes, and where it stops.",
+  "scripts": {
+    "journeys": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

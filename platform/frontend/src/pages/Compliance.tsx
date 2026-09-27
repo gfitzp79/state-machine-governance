@@ -53,6 +53,7 @@ type Posture = {
   coverage_pct: number | null
   scope_declared: boolean
   scoped_assets: { id: string; name: string }[]
+  coverage_rule: string
 }
 
 const STATE_TONE: Record<string, string> = {
@@ -238,6 +239,14 @@ export default function Compliance() {
                   In scope: {current.scoped_assets.map((a) => a.name).join(', ')}
                 </p>
               )}
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                <span className="chip border-line bg-surface-sunken text-ink">
+                  {label(current.coverage_rule)}
+                </span>
+                {current.coverage_rule === 'all_in_scope'
+                  ? 'A requirement is covered only while its control runs on every in-scope asset (AINV-11). One failing asset in scope un-covers it.'
+                  : 'A requirement is covered while its control runs on any in-scope asset (AINV-2). Assets it misses are reported, not blocking.'}
+              </p>
             </Card>
           )}
 

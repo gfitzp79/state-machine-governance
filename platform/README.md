@@ -285,6 +285,11 @@ runs, so neither can drift again. The totals used to be restated here as prose
 as well, and the two copies disagreed without anyone noticing, which is the
 argument for stating a figure once and letting the build hold it to the run.
 
+The UI is exercised by four recorded user journeys in [`e2e/`](./e2e), which
+drive the real application through what a control test changes and where it
+stops (codified-rules §25). Each is a Playwright test that asserts every step
+and produces a captioned video.
+
 Two further checks run against the schema rather than the API:
 
 ```bash
