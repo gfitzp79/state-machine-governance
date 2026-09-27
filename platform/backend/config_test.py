@@ -257,6 +257,26 @@ def main() -> int:
         lambda c: c.minimum_promotable_severity_rank == 0,
     )
 
+    def unknown_coverage_rule(raw):
+        raw["compliance"]["coverage_rules"]["frameworks"]["ISO-27001-2022"] = "most_in_scope"
+
+    rejects(
+        "AINV-11: an unknown coverage rule is refused",
+        unknown_coverage_rule,
+        "is not a coverage rule",
+    )
+
+    def no_coverage_rules(raw):
+        # A governance.yml written before scope-aware testing still boots, and
+        # reads every framework the way it always did.
+        del raw["compliance"]["coverage_rules"]
+
+    accepts(
+        "a config without coverage rules reads every framework any_in_scope",
+        no_coverage_rules,
+        lambda c: c.coverage_rule("PCI-DSS-4.0") == "any_in_scope",
+    )
+
     section("The scoring engine reflects the configuration")
     from app.engine.scoring import ScoringEngine
 

@@ -113,13 +113,14 @@ Every risk traverses a mandatory multi-phase lifecycle. Phase transitions are ga
 
 ## 4. Cascade Propagation Engine
 
-Real-time cascade behaviour across linked entities. Five cascade patterns enforced by FK relationships and API-layer triggers:
+Real-time cascade behaviour across linked entities. Six cascade patterns enforced by FK relationships and API-layer triggers:
 
 1. **Control failure → risk flag**: Manual in legacy tools. Automatic in this architecture.
 2. **CE degradation → re-evaluation trigger**: Not tracked in legacy tools. FK-enforced here.
 3. **SLA breach → escalation chain**: Calendar reminders in legacy tools. API-enforced here.
 4. **Acceptance expiry → governance flag**: Silent in legacy tools. Auto-escalated here (INV-10).
 5. **Cross-entity impact propagation**: Non-existent in legacy tools. Real-time here via FK triggers.
+6. **Scope-bounded test impact**: One failing asset fails the whole control in legacy tools, or nothing does. Here an operating failure reaches only the risks and frameworks whose scope includes that asset, each framework judged by its own coverage rule, and the test records what it changed as lineage ([codified-rules §25](../specification/codified-rules.md#25-scope-aware-test-impact)).
 
 ---
 

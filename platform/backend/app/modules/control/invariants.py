@@ -1,17 +1,18 @@
-"""Control management invariants (CINV-1 .. CINV-15)."""
+"""Control management invariants (CINV-1 .. CINV-16)."""
 
 from __future__ import annotations
 
 from app.core import ownership
-from app.core.governance import CE_RATING_NAMES, governance
+from app.core.governance import CE_RATING_NAMES, FAILURE_TYPES, governance
 from app.engine import BOTH, SCHEMA, SERVICE, Invariant, invariants
 from app.engine.scoring import ScoringEngine
-from app.modules.control.models import ControlDeployment, ControlObjective
+from app.modules.control.models import ControlDeployment, ControlObjective, ControlTest
 
 OBJECTIVE = "control_objective"
 DEPLOYMENT = "control_deployment"
 SURFACE = "attack_surface"
 ACTIVITY = "control_activity"
+TEST = "control_test"
 
 
 # CINV-1 ------------------------------------------------------------------
@@ -159,6 +160,20 @@ SURFACE_OWNER_ROLES = {
 ACTIVITY_OWNER_ROLES = {
     "control_operator_id": "Control_Operator",
 }
+
+# CINV-16 -----------------------------------------------------------------
+def _failure_classified(test: ControlTest, _ctx) -> bool:
+    """A failure says whether the design or the operation failed.
+
+    DL-1 propagates the two differently: a design failure takes the objective,
+    and every framework and risk it carries, into Failure; an operating failure
+    stays on the asset where it happened. An unclassified failure could only be
+    guessed at, so the record refuses to exist without the answer.
+    """
+    if test.result != "Fail":
+        return test.failure_type is None
+    return test.failure_type in FAILURE_TYPES
+
 
 invariants.register(
     Invariant(
@@ -311,5 +326,20 @@ invariants.register(
         violation="CE rating rejected; raise the automation level or lower the claim",
         spec_ref="codified-rules section 24.1",
         holds=_ce_within_automation_ceiling,
+    ),
+    Invariant(
+        id="CINV-16",
+        entity=TEST,
+        rule="A failing control test always records whether the design or the operation failed",
+        layer=BOTH,
+        mechanism=(
+            "CHECK constraints require failure_type on a Fail and restrict it to "
+            "Design or Operating. The service records an unclassified failure as "
+            "Design, the reading that propagates furthest, and says so in the audit "
+            "trail rather than guessing the narrower one."
+        ),
+        violation="Test rejected; classify the failure so DL-1 can scope it",
+        spec_ref="codified-rules section 25.1",
+        holds=_failure_classified,
     ),
 )

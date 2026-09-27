@@ -197,7 +197,7 @@ Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 
 ## What is implemented
 
-**9 state machines · 65 gated transitions · 65 invariants · 28 cascade events**
+**9 state machines · 65 gated transitions · 67 invariants · 29 cascade events**
 
 Nine state machines, one per row, each declared in
 `modules/<domain>/machine.py` and specified in the section named beside it.
@@ -263,8 +263,8 @@ The smoke test walks every claim above against a live API, including the full
 cascade and direct-SQL attempts to bypass the service layer.
 
 ```bash
-docker compose exec api python config_test.py     # 33 tests: the configuration layer
-docker compose exec api python smoke_test.py      # 177 tests: the enforcement layer
+docker compose exec api python config_test.py     # 35 tests: the configuration layer
+docker compose exec api python smoke_test.py      # 203 tests: the enforcement layer
 ```
 
 `config_test.py` proves both halves of configurability: that invalid governance
@@ -284,6 +284,11 @@ total in the comments above against what that suite actually reports when it
 runs, so neither can drift again. The totals used to be restated here as prose
 as well, and the two copies disagreed without anyone noticing, which is the
 argument for stating a figure once and letting the build hold it to the run.
+
+The UI is exercised by four recorded user journeys in [`e2e/`](./e2e), which
+drive the real application through what a control test changes and where it
+stops (codified-rules §25). Each is a Playwright test that asserts every step
+and produces a captioned video.
 
 Two further checks run against the schema rather than the API:
 

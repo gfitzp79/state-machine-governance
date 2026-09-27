@@ -1,6 +1,6 @@
 # State Transitions Reference
 
-**Version:** 2.2-template | **License:** CC BY 4.0
+**Version:** 2.3-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §4-§5 (Risk and Treatment), §9 (Controls), §13 (Policy), §19-§20 (Threat)
 **Purpose:** Complete definition of every lifecycle state machine in the platform, including valid transitions, gate preconditions, blocking rules, and cascade behaviours. Designed for implementation teams to build phase-gate enforcement at the API layer.
 
@@ -196,10 +196,10 @@ When a Control_Objective transitions to `Failure`:
 |---|---|---|---|
 | Planned | Active | Deployment confirmed on the asset | None |
 | Active | Degraded | Test result = Partial OR CE drops to CE-Low | None |
-| Active | Failed | Test result = Fail | DL-1: triggers Failure propagation check on parent Objective |
+| Active | Failed | Test result = Fail | DL-1: a Design failure propagates Failure to the parent Objective; an Operating failure stays on the deployment (codified-rules §25.2) |
 | Degraded | Active | Remediated AND CE re-assessed upward | None |
-| Degraded | Failed | Further degradation confirmed | DL-1: triggers Failure propagation check |
-| Failed | Active | Fully remediated AND evidence provided AND CE re-assessed | None |
+| Degraded | Failed | Further degradation confirmed | DL-1: as above, by failure type |
+| Failed | Active | Fully remediated AND evidence provided AND CE re-assessed. A passing retest with evidence attempts this gate (TST-4) | Requirements this deployment's failure un-covered become eligible to return to Covered |
 | Failed | Decommissioned | Control permanently removed from this asset | None |
 | Any | Decommissioned | Governance-approved | Record becomes READ-ONLY (DL-3) |
 
@@ -473,6 +473,7 @@ State changes in one lifecycle propagate to related entities. These cascades are
 | CE degradation | Control Deployment | Risk | Risk flagged "Control Changed: Re-evaluation Required". Risk Analyst notified. | Critical: 5bd, High: 10bd, Moderate: 20bd, Mod-Low: 30bd |
 | CE improvement | Control Deployment | Risk | Risk flagged "Control Improved: Residual Update Eligible". Full validation gate (§4.7) still required. | Analyst-triggered; no automatic score update |
 | Control → Failure | Control Objective | Risk | Warning banner on ALL linked risk records. `residual_score_locked = TRUE`. | Immediate. Escalation at 15bd if unresolved. |
+| Operating failure | Control Deployment | Risk | Only risks whose declared scope includes the failed asset, or that declare none (RINV-14). `residual_score_locked = TRUE`, banner names the asset and a **proposed** residual (§25.4). Risks scoped elsewhere are untouched. | Immediate |
 | Control → Deprecated | Control Objective | Risk | Risk Analyst notified. Risk re-assessment required if control was contributing to residual scoring. | 30bd for re-assessment |
 
 ### Policy → Control Cascades
@@ -510,6 +511,8 @@ State changes in one lifecycle propagate to related entities. These cascades are
 |---|---|---|---|
 | Control → Failure | Control Objective | Requirement Assessment | **AINV-5**. Every requirement covered by a satisfying link to that control returns to `Gap`, with `gap_reason` naming the control. Skipped where another Operating control still satisfies the requirement |
 | Control → Deprecated | Control Objective | Requirement Assessment | Same, with a re-mapping prompt: retiring a control that carries an audit position is a governance event, not a tidy-up |
+| Operating failure | Control Deployment | Requirement Assessment | Only frameworks whose scope includes the failed asset, each re-judged under its own coverage rule (**AINV-11**). Under `all_in_scope` the requirement returns to `Gap`; under `any_in_scope` it survives while another in-scope asset still carries the control. Requirement owner notified |
+| Test impact assessed | Control Test or Campaign | Owners | One digest per owner for a campaign; a posture alert to the configured roles when an adopted framework's coverage falls below the floor (§25.5) |
 
 > **Why the "another Operating control" clause matters.** Revoking coverage a
 > second control still provides would report a gap that does not exist. A

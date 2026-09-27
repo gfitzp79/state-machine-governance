@@ -40,6 +40,18 @@ def _risks_linked_to_objective(session, objective_id: str):
 
 
 def _risks_linked_to_deployment(session, deployment_id: str):
+    """Linked risks this deployment actually bears on (RINV-14).
+
+    A risk that names its assets is touched only when the deployment runs on
+    one of them. One that names none is touched by every deployment, because
+    its CE resolution counts every deployment. The two lookups must agree: a
+    cascade that flags a risk the scoring engine says the deployment cannot
+    reach is an alert about nothing, and a risk it fails to flag is a residual
+    nobody knows is wrong.
+
+    A failure of the whole control (DL-1, design) uses the objective lookup
+    instead, because then the control is broken everywhere at once.
+    """
     from app.modules.control.models import ControlDeployment
 
     deployment = session.get(ControlDeployment, deployment_id)
@@ -48,7 +60,47 @@ def _risks_linked_to_deployment(session, deployment_id: str):
     activity = deployment.activity
     if activity is None:
         return []
-    return _risks_linked_to_objective(session, activity.objective_id)
+    asset_id = deployment.attack_surface_id
+    return [
+        risk
+        for risk in _risks_linked_to_objective(session, activity.objective_id)
+        if not risk.scope_asset_ids or asset_id in risk.scope_asset_ids
+    ]
+
+
+def _proposed_residual(risk):
+    """The residual this risk would carry against the CE resolved now."""
+    objectives = [link.objective for link in risk.control_links if link.objective is not None]
+    resolution = ScoringEngine.resolve_ce(objectives, scope=risk.scope_asset_ids)
+    return ScoringEngine.proposed_residual(
+        risk.impact,
+        risk.likelihood,
+        risk.residual_impact,
+        risk.residual_likelihood,
+        resolution,
+    )
+
+
+def _proposal_sentence(proposal) -> str:
+    """One sentence for a risk banner: how far the number is likely to move."""
+    if proposal is None:
+        return ""
+    if not proposal["changed"]:
+        return (
+            " The recorded residual still fits the control effectiveness that "
+            "remains, so the proposal is to leave it at " + str(proposal["score"]) + "."
+        )
+    return (
+        " Proposed residual: " + str(proposal["score"]) + " (" + proposal["rating"]
+        + (", above appetite" if proposal["above_appetite"] else "")
+        + "). Proposed, not applied: the full validation gate still applies (RINV-1)."
+    )
+
+
+def _grouped(event: CascadeEvent) -> bool:
+    """Inside a test campaign, owners get one digest when it closes instead of
+    one alert per cascade (codified-rules section 25.5)."""
+    return bool(event.payload.get("campaign_id"))
 
 
 def _scenarios_mitigated_by_deployment(session, deployment_id: str):
@@ -67,6 +119,8 @@ def _scenarios_mitigated_by_deployment(session, deployment_id: str):
 
 
 def _notify_risk_stakeholders(event: CascadeEvent, risk, event_type: str, title: str, body: str):
+    if _grouped(event):
+        return
     for recipient in {risk.risk_analyst_id, risk.risk_owner_id}:
         AuditTrail.notify(
             event.session,
@@ -100,7 +154,7 @@ def control_failed(event: CascadeEvent) -> None:
         risk.control_change_detail = (
             "Control " + objective.reference + " (" + objective.title + ") entered Failure. "
             "Residual score is frozen until the control is remediated or the linkage is "
-            "re-assessed."
+            "re-assessed." + _proposal_sentence(_proposed_residual(risk))
         )
         risk.sla_status = "At_Risk"
         _notify_risk_stakeholders(
@@ -186,7 +240,9 @@ def control_deprecated(event: CascadeEvent) -> None:
 
 @cascades.on(
     "deployment.failed",
-    "Deployment failed: propagate to the parent objective (DL-1) and re-open threat scenarios",
+    "Deployment failed: a design failure propagates to the objective (DL-1); an "
+    "operating failure stays on its asset and reaches only the risks and "
+    "frameworks whose scope includes it",
 )
 def deployment_failed(event: CascadeEvent) -> None:
     from app.modules.control.models import ControlDeployment
@@ -195,23 +251,177 @@ def deployment_failed(event: CascadeEvent) -> None:
     if deployment is None:
         return
 
+    # CINV-16. A transition fired by hand, with no test behind it, carries no
+    # classification and is read as Design: the reading that propagates
+    # furthest, because under-reacting to a failure is the costlier mistake.
+    failure_type = event.payload.get("failure_type") or "Design"
     objective = deployment.activity.objective if deployment.activity else None
+
     if objective is not None and objective.lifecycle_state == "Operating":
-        # DL-1: a failed deployment takes the objective with it.
-        objective.lifecycle_state = "Failure"
-        event.record(
-            "control_objective",
-            objective.id,
-            "Objective " + objective.reference + " propagated to Failure (DL-1)",
-            invariant="DL-1",
+        if failure_type == "Design":
+            # DL-1: a design failure is the control not working as designed,
+            # so it is broken everywhere and the objective goes with it.
+            objective.lifecycle_state = "Failure"
+            event.record(
+                "control_objective",
+                objective.id,
+                "Design failure: objective " + objective.reference
+                + " propagated to Failure (DL-1)",
+                invariant="DL-1",
+            )
+            # chain, not emit: a bare emit would drop everything the downstream
+            # handlers record, so the audit trail would show the objective
+            # failing and say nothing about the risks frozen or the
+            # requirements uncovered. The payload travels with it so a campaign
+            # still groups the alerts this raises.
+            event.chain(
+                cascades, "control.failed", "control_objective", objective.id,
+                **event.payload,
+            )
+            return
+        _operating_failure(event, deployment, objective)
+
+    _reopen_scenarios_for_deployment(event, deployment.id, deployment.reference)
+
+
+def _operating_failure(event: CascadeEvent, deployment, objective) -> None:
+    """DL-1, operating branch. The control is sound and did not run HERE.
+
+    The objective stays Operating, because it still works on every other asset
+    it runs on. What changes is confined to the places this asset matters:
+    risks whose declared scope includes it (or who declare none, since their CE
+    resolution counts every deployment), and frameworks whose scope includes
+    it, each judged by its own coverage rule. A PCI requirement can be lost and
+    an ISO one untouched by the same test, which is the whole point.
+    """
+    asset = deployment.surface.name if deployment.surface else "an asset"
+    event.record(
+        "control_objective",
+        objective.id,
+        "Operating failure on " + asset + ": " + objective.reference
+        + " stays Operating; consequences confined to its scope (DL-1)",
+        invariant="DL-1",
+    )
+
+    for risk in _risks_linked_to_deployment(event.session, deployment.id):
+        proposal = _proposed_residual(risk)
+        where = (
+            asset + ", inside this risk's declared scope"
+            if risk.scope_asset_ids
+            else asset + ". This risk declares no assets, so every deployment counts toward it"
         )
-        # chain, not emit: a bare emit would drop everything the downstream
-        # handlers record, so the audit trail would show the objective failing
-        # and say nothing about the risks frozen or the requirements uncovered.
-        event.chain(cascades, "control.failed", "control_objective", objective.id)
-    else:
-        _reopen_scenarios_for_deployment(
-            event, deployment.id, deployment.reference
+        risk.residual_score_locked = True
+        risk.control_change_flag = "Control_Failure"
+        risk.control_change_detail = (
+            "Control " + objective.reference + " failed its test on " + where + ". "
+            "It is an operating failure: the control still runs elsewhere, but "
+            "here it is held at CE-Unvalidated (CE-7) and the residual score is "
+            "frozen until re-assessed." + _proposal_sentence(proposal)
+        )
+        risk.sla_status = "At_Risk"
+        above = bool(proposal and proposal["above_appetite"] and proposal["changed"])
+        _notify_risk_stakeholders(
+            event,
+            risk,
+            "control_failure",
+            "Residual frozen on " + risk.reference + ": " + objective.reference
+            + " failed on " + asset + (" (proposed above appetite)" if above else ""),
+            risk.control_change_detail,
+        )
+        event.record(
+            "risk",
+            risk.id,
+            "Residual locked on " + risk.reference + "; " + asset + " is inside its scope"
+            + (
+                "; proposed residual " + str(proposal["score"]) + " " + proposal["rating"]
+                if proposal and proposal["changed"]
+                else ""
+            ),
+            invariant="RINV-14",
+        )
+
+    _recheck_coverage_for_deployment(event, objective, deployment)
+
+
+def _notify_requirement_owner(event: CascadeEvent, assessment, requirement, reason: str) -> None:
+    """Codified-rules section 24.3: the requirement owner hears about it."""
+    if _grouped(event):
+        return
+    AuditTrail.notify(
+        event.session,
+        recipient_id=assessment.owner_id,
+        entity_type="requirement_assessment",
+        entity_id=assessment.id,
+        event_type="coverage_lost",
+        title=requirement.framework.framework_id + " " + requirement.ref + " lost coverage",
+        body=reason,
+    )
+
+
+def _recheck_coverage_for_deployment(event: CascadeEvent, objective, deployment) -> None:
+    """AINV-2 and AINV-11 after an operating failure, framework by framework.
+
+    A framework whose scope does not include the failed asset is untouched.
+    One whose scope does is re-judged by its own rule: under any_in_scope the
+    requirement survives while another in-scope asset still carries a live
+    satisfying control, under all_in_scope it does not. Both judgements read
+    the whole link set, so a second control still covering the asset counts.
+    """
+    from sqlalchemy import select
+
+    from app.modules.compliance.machine import coverage_meets_rule, live_reach
+    from app.modules.compliance.models import ControlRequirementLink
+
+    asset = deployment.surface.name if deployment.surface else "an asset"
+    links = event.session.execute(
+        select(ControlRequirementLink).where(ControlRequirementLink.objective_id == objective.id)
+    ).scalars()
+
+    for link in links:
+        requirement = link.requirement
+        if requirement is None or not link.satisfies:
+            continue
+        assessment = requirement.assessment
+        if assessment is None or assessment.lifecycle_state != "Covered":
+            continue
+        framework_id = requirement.framework.framework_id
+        scoped, reached = live_reach(requirement, event.session)
+        if scoped and deployment.attack_surface_id not in scoped:
+            continue
+
+        rule = governance.coverage_rule(framework_id)
+        live = bool(reached & scoped) if scoped else bool(reached)
+        meets = coverage_meets_rule(requirement, event.session)
+        label = framework_id + " " + requirement.ref
+        if live and meets:
+            event.record(
+                "requirement_assessment",
+                assessment.id,
+                label + " still covered under " + rule + ": "
+                + str(len(reached & scoped)) + " of " + str(len(scoped))
+                + " in-scope assets still carry the control",
+                invariant="AINV-11",
+            )
+            continue
+
+        reason = (
+            "Control " + objective.reference + " failed on " + asset + ", inside the "
+            + framework_id + " scope. "
+            + (
+                framework_id + " is configured all_in_scope, so every in-scope asset "
+                "must carry a live satisfying control (AINV-11)."
+                if live
+                else "No in-scope asset still carries a live satisfying control (AINV-2)."
+            )
+        )
+        assessment.lifecycle_state = "Gap"
+        assessment.gap_reason = reason
+        _notify_requirement_owner(event, assessment, requirement, reason)
+        event.record(
+            "requirement_assessment",
+            assessment.id,
+            label + " lost coverage: " + reason,
+            invariant="AINV-11" if live else "AINV-2",
         )
 
 
@@ -248,6 +458,11 @@ def deployment_degraded(event: CascadeEvent) -> None:
     "CE improvement: linked risks become eligible for a residual update, gate still applies",
 )
 def deployment_restored(event: CascadeEvent) -> None:
+    from sqlalchemy import select
+
+    from app.modules.compliance.models import ControlRequirementLink
+    from app.modules.control.models import ControlDeployment
+
     for risk in _risks_linked_to_deployment(event.session, event.entity_id):
         risk.control_change_flag = "Control_Improved"
         risk.control_change_detail = (
@@ -255,6 +470,44 @@ def deployment_restored(event: CascadeEvent) -> None:
             "update, but the full validation gate must still pass before it changes."
         )
         event.record("risk", risk.id, "Residual update eligibility flagged")
+
+    # The compliance half of the same argument. A requirement this deployment's
+    # failure un-covered becomes ELIGIBLE to return to Covered; the gate, not
+    # this handler, decides whether it does, exactly as RINV-1 does for risk.
+    deployment = event.session.get(ControlDeployment, event.entity_id)
+    if deployment is None or deployment.activity is None:
+        return
+    asset = deployment.surface.name if deployment.surface else None
+    links = event.session.execute(
+        select(ControlRequirementLink).where(
+            ControlRequirementLink.objective_id == deployment.activity.objective_id
+        )
+    ).scalars()
+    for link in links:
+        assessment = link.requirement.assessment if link.requirement else None
+        if assessment is None or assessment.lifecycle_state != "Gap":
+            continue
+        if not asset or asset not in (assessment.gap_reason or ""):
+            continue
+        requirement = link.requirement
+        if not _grouped(event):
+            AuditTrail.notify(
+                event.session,
+                recipient_id=assessment.owner_id,
+                entity_type="requirement_assessment",
+                entity_id=assessment.id,
+                event_type="coverage_restorable",
+                title=requirement.framework.framework_id + " " + requirement.ref
+                + " can be re-asserted as Covered",
+                body="The deployment on " + asset + " whose failure opened this gap is "
+                "live again. Re-assert Covered; the gate re-checks AINV-2 and AINV-11.",
+            )
+        event.record(
+            "requirement_assessment",
+            assessment.id,
+            requirement.framework.framework_id + " " + requirement.ref
+            + " eligible to return to Covered; the gate still decides",
+        )
 
 
 @cascades.on(
@@ -771,6 +1024,7 @@ def _revoke_coverage_for_objective(event: CascadeEvent, objective, reason: str) 
 
         assessment.lifecycle_state = "Gap"
         assessment.gap_reason = reason
+        _notify_requirement_owner(event, assessment, requirement, reason)
         event.record(
             "requirement_assessment",
             assessment.id,
@@ -878,4 +1132,102 @@ def requirement_excluded(event: CascadeEvent) -> None:
         assessment.id,
         assessment.requirement.ref + " excluded from scope",
         invariant="AINV-1",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test impact (codified-rules section 25.5)
+#
+# Alert on outcomes, not events. A single test notifies each owner as its
+# cascade runs, once. A campaign holds those back and sends each owner one
+# digest when it closes. Either way, the posture alert fires only when a test
+# pulls an adopted framework's coverage below the configured floor, because a
+# percentage that moved from 97 to 96 is information and one that crossed the
+# line the organisation drew is a decision somebody has to make.
+# ---------------------------------------------------------------------------
+
+
+def _users_with_roles(session, roles):
+    from app.modules.identity.models import User, UserRole
+
+    if not roles:
+        return []
+    return (
+        session.query(User)
+        .join(UserRole, UserRole.user_id == User.id)
+        .filter(UserRole.role.in_(list(roles)), User.deactivated_at.is_(None))
+        .distinct()
+        .all()
+    )
+
+
+@cascades.on(
+    "control_test.impact_assessed",
+    "Test impact assessed: one digest per owner for a campaign, and a posture "
+    "alert when coverage falls below the configured floor",
+)
+def control_test_impact_assessed(event: CascadeEvent) -> None:
+    impact = event.payload.get("impact") or {}
+    subject = event.payload.get("subject") or "A control test"
+
+    if _grouped(event):
+        per_recipient: dict[str, list[str]] = {}
+        for row in impact.get("risks", []):
+            if not row.get("affected"):
+                continue
+            line = row["reference"] + ": " + row["summary"]
+            for recipient in {row.get("risk_owner_id"), row.get("risk_analyst_id")} - {None}:
+                per_recipient.setdefault(recipient, []).append(line)
+        for framework in impact.get("frameworks", []):
+            for requirement in framework.get("requirements", []):
+                if requirement.get("lost") and requirement.get("owner_id"):
+                    per_recipient.setdefault(requirement["owner_id"], []).append(
+                        framework["framework_id"] + " " + requirement["ref"]
+                        + " lost coverage: " + (requirement.get("reason") or "")
+                    )
+        for recipient, lines in per_recipient.items():
+            AuditTrail.notify(
+                event.session,
+                recipient_id=recipient,
+                entity_type=event.entity_type,
+                entity_id=event.entity_id,
+                event_type="test_impact_digest",
+                title=subject + ": " + str(len(lines)) + " item"
+                + ("" if len(lines) == 1 else "s") + " for you",
+                body="\n".join(lines),
+            )
+            event.record(
+                "user", recipient, "One digest sent covering " + str(len(lines)) + " item(s)"
+            )
+
+    floor = governance.posture_alert_below_pct
+    fell = [
+        f
+        for f in impact.get("frameworks", [])
+        if f.get("coverage_pct_before") is not None
+        and f.get("coverage_pct_after") is not None
+        and f["coverage_pct_after"] < f["coverage_pct_before"]
+        and f["coverage_pct_after"] < floor
+    ]
+    if not fell:
+        return
+    body = "; ".join(
+        f["framework_id"] + " fell from " + str(f["coverage_pct_before"]) + "% to "
+        + str(f["coverage_pct_after"]) + "%"
+        for f in fell
+    )
+    for user in _users_with_roles(event.session, governance.posture_alert_roles):
+        AuditTrail.notify(
+            event.session,
+            recipient_id=user.id,
+            entity_type="compliance",
+            entity_id=None,
+            event_type="posture_below_floor",
+            title=subject + " pulled coverage below " + str(floor) + "%",
+            body=body,
+        )
+    event.record(
+        "compliance_framework",
+        ",".join(f["framework_id"] for f in fell),
+        "Posture alert: " + body,
     )

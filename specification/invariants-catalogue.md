@@ -1,7 +1,7 @@
 # System Invariants Catalogue
 
-**Version:** 2.2-template | **License:** CC BY 4.0
-**Source:** Derived from [Codified Rules Specification](./codified-rules.md) §16-24
+**Version:** 2.3-template | **License:** CC BY 4.0
+**Source:** Derived from [Codified Rules Specification](./codified-rules.md) §16-25
 **Purpose:** Complete catalogue of system invariants with enforcement layer, validation method, and implementation guidance. Invariants are hard rules that the system must never violate regardless of user role, workflow state, or API path.
 
 > **Design principle:** Schema constraints handle data integrity. Service-layer gates handle business logic. Neither layer operates without the other. Every invariant below identifies which layer enforces it, so implementation teams know where the constraint must live.
@@ -116,6 +116,15 @@ administrator rather than the role they stood in for.
 | CINV-13 | A person named as control owner holds the Control_Owner role | Service | `control_owner_id` checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
 | CINV-14 | A person named as system owner holds the System_Owner role | Service | `system_owner_id` on an attack surface checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
 | CINV-15 | A person named as control operator holds the Control_Operator role | Service | `control_operator_id` on a control activity checked against the named user's roles on every write | Save rejected; the named owner does not hold the required role | §2.4 |
+| CINV-16 | A failing control test always records whether the design or the operation failed | Both | `CHECK` constraints require `failure_type` on a Fail and restrict it to Design or Operating. The service records an unclassified failure as Design, the reading that propagates furthest, and says so in the audit trail | Test rejected; classify the failure so DL-1 can scope it | §25.1 |
+
+> **On CINV-16.** DL-1 used to send every failed deployment to its objective,
+which made one failing asset a failure of the whole control on every framework
+and every risk it carried. The two kinds of failure deserve different answers: a
+control that does not work as designed is broken everywhere, and one that did
+not run on one asset is broken there. CINV-16 is what lets DL-1 tell them apart,
+and defaulting an unclassified failure to Design keeps the old behaviour for
+anyone who does not classify.
 
 > **On CINV-11.** Without a ceiling, a spreadsheet reviewed quarterly can claim
 the same effectiveness as an enforced platform policy, and buy the same
@@ -181,12 +190,13 @@ That occasion is what the control exists for.
 | AINV-2 | A requirement is Covered only while a satisfying control is Operating and live where the requirement applies | Service | Gate and invariant share one predicate: a satisfying link, an Operating objective, and a live deployment inside the framework's scope. Re-checked on every write, so coverage cannot outlive the control that carried it | Covered rejected or revoked; the requirement returns to Gap | §23.1 |
 | AINV-3 | Partial coverage is a gap, never coverage | Service | Satisfying levels are read from configuration, and status is derived from the whole link set. Downgrading the last Full link to Partial re-opens the requirement | Covered rejected; a requirement half-satisfied is not satisfied | §23.2 |
 | AINV-4 | A compensating position is never permanent; it is always time-bound | Both | `CHECK` constraint requires an expiry; the gate caps the window and a scheduled job expires it | Rejected; set an expiry within the configured window | §23.3 |
-| **AINV-5** | A failing or retired control revokes the compliance coverage that rested on it | Cascade | Cascade on `control.failed` and `control.deprecated` walks the coverage links and returns each affected requirement to Gap, unless another Operating control still satisfies it | Automatic; the position changes without anyone revisiting the register | §24.3 |
+| **AINV-5** | A failing or retired control revokes the compliance coverage that rested on it | Cascade | Cascade on `control.failed` and `control.deprecated` walks the coverage links and returns each affected requirement to Gap, unless another Operating control still satisfies it. An operating failure on one deployment (§25.2) re-judges only requirements whose framework scope includes that asset, each under its own coverage rule, and notifies the requirement owner | Automatic; the position changes without anyone revisiting the register | §24.3 |
 | AINV-6 | A framework whose content may not be redistributed never carries requirement text in this repository | Service | The catalogue loader refuses at boot. Licensed content is imported into the database by the operator, never into the tree | Boot refused; the licence is enforced rather than documented | §21.2 |
 | AINV-7 | A framework version is immutable once its requirements are loaded | Service | Version changes rejected while requirements exist. A new version is a new record, because renumbering between versions would silently re-point existing coverage assertions | Version change rejected; create the new version as its own framework | §21.3 |
 | AINV-8 | Only an adopted framework carries an assessed position | Service | Gate blocks assessment on an unadopted framework | Assessment rejected; adopt the framework first | §21.4 |
 | AINV-9 | No requirement of an adopted framework is Covered while no asset declares itself in that framework's scope | Service | With no scope declared, AINV-2 accepts a live deployment anywhere. This refuses the undeclared case explicitly, so a percentage is never reported against an estate nobody assessed | Covered rejected; declare the assets the framework applies to | §23.1 |
 | AINV-10 | A coverage assertion always uses a configured coverage level | Service | Level validated against `compliance.coverage_levels` on write | Link rejected; an unconfigured level would silently fail to count | §23.2 |
+| AINV-11 | A requirement of a framework configured `all_in_scope` is Covered only while a satisfying control is live on every asset in that framework's scope | Service | The rule is read per framework from `compliance.coverage_rules`. Gate and invariant share one predicate over the in-scope assets the control reaches, so an operating failure on one in-scope asset un-covers the requirement under that framework and no other | Covered rejected or revoked; the requirement returns to Gap | §25.3 |
 
 > **AINV-5 is marked `Cascade` rather than `Service`.** It is a rule about what
 must *happen* when a control fails, not a condition an entity must satisfy.
@@ -199,6 +209,15 @@ without it.
 other way of handling third-party framework content amounts to telling
 contributors not to paste it in, which is a policy, not a control. Refusing to
 boot is the control.
+
+> **AINV-11 is the other half of AINV-2.** AINV-2 is the floor: covered while
+the control runs on at least one in-scope asset, because demanding every asset
+would make most registers unusable. Some frameworks are not satisfied by a
+floor. A prescriptive standard that applies to each system in its environment is
+not met while one of those systems lacks the control, and saying so has to be a
+per-framework choice rather than a global one, or the same failed test would be
+judged by the strictest framework in the building. Scope says where a failure
+lands; the coverage rule says what it costs there.
 
 > **AINV-9 exists because of an arithmetic trap.** A coverage percentage over an
 empty scope is not zero, it is undefined, and code that divides anyway reports
@@ -222,6 +241,7 @@ means they have no row above, and are easy to lose sight of for that reason.
 | Audit records cannot be revised | Append-only, enforced by database trigger, as for `control_tests` (CINV-7), `policy_versions` (PINV-9), and `threat_scenario_evidence` (TSE-1) | §7.3 |
 | Separation of duties survives assignment ordering | Every separation rule is checked from both sides. See the note under RINV-3 | §2.2 |
 | A compliance position never outlives the control beneath it | AINV-2 is re-evaluated on every write, and the §24.3 cascade revokes coverage the moment a control fails. Neither depends on anyone revisiting the register | §23.1, §24.3 |
+| A test's consequences stop where its scope does | An operating failure reaches only the risks and frameworks whose declared scope includes the failed asset (DL-1, RINV-14, AINV-11), and what it changed is written onto the append-only test row in the same transaction | §25.2, §25.4 |
 
 ---
 

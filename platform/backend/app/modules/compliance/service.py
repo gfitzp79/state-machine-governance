@@ -326,6 +326,7 @@ class ComplianceService(LifecycleService[RequirementAssessment]):
                     "coverage_pct": round(100 * satisfied / in_scope) if in_scope else None,
                     "scoped_assets": [{"id": a.id, "name": a.name} for a in scoped_assets],
                     "scope_declared": bool(scoped_assets),
+                    "coverage_rule": governance.coverage_rule(f.framework_id),
                 }
             )
         return {"frameworks": out}
@@ -342,30 +343,27 @@ class ComplianceService(LifecycleService[RequirementAssessment]):
         A requirement covered on one of four in-scope assets is genuinely
         covered and genuinely incomplete, and an assessor should see both.
         """
+        from app.modules.compliance.machine import live_reach
+
         framework_id = requirement.framework.framework_id
+        scoped_ids, reached = live_reach(requirement, self.session)
         scoped = [
             a
             for a in self.session.execute(select(AttackSurface)).scalars()
-            if framework_id in (a.compliance_scopes or [])
+            if a.id in scoped_ids
         ]
-        live = governance.live_deployment_statuses
-        reached: set[str] = set()
-        for link in requirement.satisfying_links:
-            objective = link.objective
-            if objective is None or objective.lifecycle_state != "Operating":
-                continue
-            for activity in objective.activities:
-                for deployment in activity.deployments:
-                    if deployment.deployment_status in live:
-                        reached.add(deployment.attack_surface_id)
-
         covered = [a for a in scoped if a.id in reached]
         uncovered = [a for a in scoped if a.id not in reached]
+        rule = governance.coverage_rule(framework_id)
         return {
             "in_scope": len(scoped),
             "covered": len(covered),
             "uncovered_assets": [{"id": a.id, "name": a.name} for a in uncovered],
             "complete": bool(scoped) and not uncovered,
+            # Under all_in_scope an incomplete row is not information but a
+            # blocked requirement (AINV-11), and the page should say which.
+            "coverage_rule": rule,
+            "blocking": rule == "all_in_scope" and bool(uncovered),
         }
 
     def gaps(self, framework_id: str | None = None) -> list[dict[str, Any]]:

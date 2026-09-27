@@ -1,8 +1,8 @@
 # Data Model
 
-**Version:** 1.4 | **License:** CC BY 4.0
+**Version:** 1.5 | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](../specification/codified-rules.md) and validated against the [reference implementation](../platform).
-**Purpose:** Complete relational schema for the governance platform. 49 tables across 8 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
+**Purpose:** Complete relational schema for the governance platform. 50 tables across 8 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
 
 > **Design principle:** The schema is the first line of enforcement. Every NOT NULL, CHECK, UNIQUE, and FK constraint exists because a codified rule requires it. If a constraint is absent, the rule is not enforced at the data layer and must be enforced at the service layer. See [Invariants Catalogue](../specification/invariants-catalogue.md) for the complete enforcement mapping.
 
@@ -46,13 +46,13 @@
 |---|---|---|
 | Platform and Identity | 7 | User profiles, roles, groups, audit logging, notifications, OIDC role mapping |
 | Risk Management | 8 | Risk register, 7-phase lifecycle, phase history, comments, attachments, reviews, control links, treatment links, policy links |
-| Control Management | 5 | Three-level control hierarchy (objective, activity, deployment), immutable test history, asset register |
+| Control Management | 6 | Three-level control hierarchy (objective, activity, deployment), immutable test history, test campaigns, asset register |
 | Treatment Management | 3 | Treatment plans, approval workflows, progress check-ins |
 | Policy and Standards | 7 | Policy register, standards, versions, exceptions, control links, AI assessments, AI recommendations |
 | Vendor and Third-Party Risk | 8 | Vendor register, engagements (assessment lifecycle), inherent risk assessments, due diligence artefacts, findings, approval decisions, offboarding, analyst tasks |
 | Compliance and Assurance | 4 | Framework register, requirement catalogue, Statement of Applicability positions, control-to-requirement coverage assertions |
 | Threat Management | 7 | Threat models, components (DFD items with classification and trust zone), STRIDE threat scenarios, mitigation links to deployed controls, scenario comments, append-only evidence, risk register links |
-| **Total** | **49** | |
+| **Total** | **50** | |
 
 > **Scope note.** This is the framework's reference data model. The [reference implementation](../platform) builds 34 of these tables: it covers identity, risk, control, treatment, policy and threat management, and does not yet implement the vendor and third-party risk domain, the policy AI assessment tables, or the group and OIDC role-mapping tables. Where the two differ, this document describes the target and the platform's own schema is the subset currently enforced.
 
@@ -544,10 +544,33 @@ Immutable test history. **Append-only, enforced by database trigger (CINV-7).**
 | tested_at | timestamptz | NO | now() | |
 | supersedes_id | uuid | YES | | A correction references the record it replaces rather than editing it |
 | sequence | integer | NO | 1 | Ordering within a deployment's history |
+| failure_type | text | YES | | Design or Operating, on a Fail only. Decides how far DL-1 propagates. See codified-rules §25.1 |
+| campaign_id | uuid | YES | | FK to control_test_campaigns, ON DELETE SET NULL |
+| impact | jsonb | NO | {} | What the test changed per framework and per risk, computed in the recording transaction (§25.4). Append-only with the row, so it is lineage as it was at the time |
+
+| Constraint | Purpose | Invariant |
+|---|---|---|
+| `ck_control_tests_result` | Valid test results | |
+| `ck_control_tests_failure_type` | `failure_type IS NULL OR failure_type IN ('Design', 'Operating')` | **CINV-16** |
+| `ck_control_tests_failure_classified` | `result <> 'Fail' OR failure_type IS NOT NULL` | **CINV-16** |
 
 **Immutability:** `trg_control_tests_append_only` is a `BEFORE UPDATE OR DELETE`
 trigger that raises `restrict_violation`. A service-layer rule cannot deliver this,
 because anyone holding a database connection bypasses the service layer.
+
+### control_test_campaigns
+
+A round of testing read against its population (codified-rules §25.5).
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| reference | text | NO | | UNIQUE. CMP-NNN |
+| objective_id | uuid | NO | | FK to control_objectives, ON DELETE CASCADE |
+| title | text | NO | | |
+| tested_by | uuid | YES | | |
+| tested_at | timestamptz | NO | now() | |
+| impact | jsonb | NO | {} | Results, population per framework (tested, failed, untested, not deployed) and the downstream effect, computed when the campaign closes |
 
 ### attack_surfaces
 
@@ -1306,6 +1329,8 @@ A person's assertion that a control objective addresses a requirement.
 | control_deployments | activity_id | control_activities | id |
 | control_deployments | attack_surface_id | attack_surfaces | id |
 | control_tests | deployment_id | control_deployments | id |
+| control_tests | campaign_id | control_test_campaigns | id |
+| control_test_campaigns | objective_id | control_objectives | id |
 | compliance_requirements | framework_id | compliance_frameworks | id |
 | requirement_assessments | requirement_id | compliance_requirements | id |
 | control_requirement_links | requirement_id | compliance_requirements | id |
@@ -1317,10 +1342,10 @@ A person's assertion that a control objective addresses a requirement.
 
 | Constraint Type | Count | Purpose |
 |---|---|---|
-| PRIMARY KEY | 49 | One per table |
-| UNIQUE | 23 | Human-readable IDs, junction table deduplication, role assignment uniqueness |
-| CHECK (named, non-NOT-NULL) | 37 | Enum validation on lifecycle states, ratings, scores, tiers, strategies; plus the conditional CHECKs carrying an invariant |
-| FOREIGN KEY | 55 | Cross-entity integrity |
+| PRIMARY KEY | 50 | One per table |
+| UNIQUE | 24 | Human-readable IDs, junction table deduplication, role assignment uniqueness |
+| CHECK (named, non-NOT-NULL) | 39 | Enum validation on lifecycle states, ratings, scores, tiers, strategies; plus the conditional CHECKs carrying an invariant |
+| FOREIGN KEY | 57 | Cross-entity integrity |
 | NOT NULL | ~210 | Field-level data integrity |
 | APPEND-ONLY TRIGGER | 6 | Immutability on audit_log, risk_phase_history, policy_versions, control_tests, treatment_checkins, threat_scenario_evidence |
 

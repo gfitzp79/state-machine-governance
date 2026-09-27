@@ -397,6 +397,11 @@ export function CEResolution({
                   <span className="text-xs text-ink-faint">on {String(c.asset)}</span>
                 ) : null}
                 <Badge value={String(c.ce_rating ?? '')} className="ml-auto" />
+                {c.note ? (
+                  <p className="w-full pl-6 text-xs text-rose-700 dark:text-rose-300">
+                    {String(c.note)}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>

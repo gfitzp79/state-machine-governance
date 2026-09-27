@@ -243,6 +243,23 @@ class ScoringEngine:
                         continue
 
                 status = getattr(dep, "deployment_status", None)
+                # CE-7: a deployment that FAILED where the risk lives is a known
+                # hole, not an absence. Excluding it would let the worst case be
+                # taken over the survivors and report the risk as well controlled
+                # as it was before the failure. It is held at the bottom instead.
+                # Only reachable on an Operating objective, which since the
+                # DL-1 change means an operating failure (CINV-16).
+                if status == "Failed":
+                    contributing.append(
+                        {
+                            **entry,
+                            "ce_rating": CE_UNVALIDATED,
+                            "note": "CE-7: failed on "
+                            + str(entry.get("asset") or "an asset")
+                            + " inside scope; held at CE-Unvalidated",
+                        }
+                    )
+                    continue
                 if status not in ("Active", "Degraded"):
                     excluded.append(
                         {**entry, "reason": "deployment status " + str(status) + " does not carry valid CE"}
@@ -305,6 +322,43 @@ class ScoringEngine:
                 + str(reduction)
             )
         return True, ""
+
+    @classmethod
+    def proposed_residual(
+        cls,
+        inherent_impact: int | None,
+        inherent_likelihood: int | None,
+        residual_impact: int | None,
+        residual_likelihood: int | None,
+        resolution: CEResolution,
+    ) -> dict[str, Any] | None:
+        """What the residual would be if it had to fit the CE resolved NOW.
+
+        Deliberately a proposal. RINV-1 keeps the residual locked until the full
+        validation gate passes, and nothing here writes to a risk; it answers the
+        question an owner asks when a control changes, which is how far the
+        number is likely to move, before anybody has re-scored it.
+
+        A residual already within the new ceiling is left where it is: the CE
+        change does not touch it. One claiming more reduction than the ceiling
+        now allows is pulled back to exactly what the ceiling permits.
+        """
+        if None in (inherent_likelihood, residual_likelihood):
+            return None
+        impact = residual_impact or inherent_impact
+        if impact is None:
+            return None
+        ceiling = resolution.max_likelihood_reduction
+        claimed = inherent_likelihood - residual_likelihood
+        likelihood = residual_likelihood if claimed <= ceiling else inherent_likelihood - ceiling
+        score = cls.compute(impact, likelihood)
+        return {
+            **score.as_dict(),
+            "changed": likelihood != residual_likelihood,
+            "ceiling": ceiling,
+            "effective_ce": resolution.effective_ce,
+            "above_appetite": cls.is_above_appetite(score.rating),
+        }
 
     # -- downstream derivations -------------------------------------------
 

@@ -31,7 +31,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
-from app.core.governance import CE_RATING_NAMES, DEPLOYMENT_STATE_NAMES, governance
+from app.core.governance import (
+    CE_RATING_NAMES,
+    DEPLOYMENT_STATE_NAMES,
+    FAILURE_TYPES,
+    governance,
+)
 from app.core.model_base import Timestamped, UUIDPrimaryKey
 
 OBJECTIVE_STATES = (
@@ -262,6 +267,32 @@ class ControlDeployment(Base, UUIDPrimaryKey, Timestamped):
         return self.deployment_status == "Decommissioned"
 
 
+class ControlTestCampaign(Base, UUIDPrimaryKey):
+    """One round of testing a control across the assets it runs on.
+
+    A campaign exists so a result can be read against its population. "All 8
+    passed" and "8 of 10 in-scope assets tested, all passed" are different
+    findings, and only the second tells an assessor that two assets carry no
+    assurance at all. The impact is computed once, when the campaign closes, and
+    kept: it is the lineage record of what this round of testing changed.
+    """
+
+    __tablename__ = "control_test_campaigns"
+
+    reference: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    objective_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("control_objectives.id", ondelete="CASCADE"), nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    tested_by: Mapped[str | None] = mapped_column(String(36))
+    tested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Population, results and downstream effect, as computed at close.
+    impact: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+
 class ControlTest(Base, UUIDPrimaryKey):
     """Immutable test history (CINV-7). Corrections create a superseding record
     referencing the original; UPDATE and DELETE are rejected by trigger."""
@@ -269,6 +300,16 @@ class ControlTest(Base, UUIDPrimaryKey):
     __tablename__ = "control_tests"
     __table_args__ = (
         CheckConstraint("result IN " + str(TEST_RESULTS), name="ck_control_tests_result"),
+        # CINV-16 at the schema layer: a failure always says what failed, because
+        # a design failure and an operating failure propagate differently (DL-1).
+        CheckConstraint(
+            "failure_type IS NULL OR failure_type IN " + str(FAILURE_TYPES),
+            name="ck_control_tests_failure_type",
+        ),
+        CheckConstraint(
+            "result <> 'Fail' OR failure_type IS NOT NULL",
+            name="ck_control_tests_failure_classified",
+        ),
     )
 
     deployment_id: Mapped[str] = mapped_column(
@@ -283,5 +324,16 @@ class ControlTest(Base, UUIDPrimaryKey):
     )
     supersedes_id: Mapped[str | None] = mapped_column(String(36))
     sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # Design or Operating, on a Fail. Null on any other result.
+    failure_type: Mapped[str | None] = mapped_column(String(16))
+    campaign_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("control_test_campaigns.id", ondelete="SET NULL"), index=True
+    )
+    # What this test changed downstream, computed in the same transaction as
+    # the cascade and written with the row. The row is append-only, so this is
+    # lineage as it was at the time rather than a report re-derived later from
+    # a register that has since moved on.
+    impact: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     deployment: Mapped[ControlDeployment] = relationship(back_populates="tests")

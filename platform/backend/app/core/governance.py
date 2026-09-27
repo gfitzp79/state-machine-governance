@@ -34,6 +34,15 @@ CE_RATING_NAMES = ("CE-Unvalidated", "CE-Low", "CE-Medium", "CE-High")
 # validator can read them without importing a model that imports this file.
 DEPLOYMENT_STATE_NAMES = ("Planned", "Active", "Degraded", "Failed", "Decommissioned")
 TREATMENT_STRATEGIES = ("Accept", "Mitigate", "Transfer", "Avoid")
+
+# Fixed for the same reason: the coverage predicates branch on these names.
+# Which framework uses which is configuration (compliance.coverage_rules).
+COVERAGE_RULES = ("any_in_scope", "all_in_scope")
+
+# What a failing test says failed. Design means the control does not work as
+# designed, anywhere; Operating means it is designed properly and did not run
+# on this asset. Fixed, because DL-1 and a CHECK constraint branch on them.
+FAILURE_TYPES = ("Design", "Operating")
 SEVERITY_NAMES = ("Low", "Medium", "High", "Critical")
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "governance.yml"
@@ -424,6 +433,34 @@ class GovernanceConfig:
     def live_deployment_statuses(self) -> tuple[str, ...]:
         return tuple(str(s) for s in _require(self.raw, "compliance.live_deployment_statuses"))
 
+    # Optional with defaults, unlike most of this file: an organisation's own
+    # governance.yml written before scope-aware testing existed should keep
+    # booting, and the defaults reproduce exactly the behaviour it had then.
+
+    @property
+    def coverage_rule_default(self) -> str:
+        rules = (self.raw.get("compliance") or {}).get("coverage_rules") or {}
+        return str(rules.get("default") or "any_in_scope")
+
+    @property
+    def coverage_rule_overrides(self) -> dict[str, str]:
+        rules = (self.raw.get("compliance") or {}).get("coverage_rules") or {}
+        return {str(k): str(v) for k, v in (rules.get("frameworks") or {}).items()}
+
+    def coverage_rule(self, framework_id: str) -> str:
+        """AINV-11: any_in_scope or all_in_scope for this framework."""
+        return self.coverage_rule_overrides.get(framework_id, self.coverage_rule_default)
+
+    @property
+    def posture_alert_below_pct(self) -> int:
+        value = (self.raw.get("compliance") or {}).get("posture_alert_below_pct")
+        return 100 if value is None else int(value)
+
+    @property
+    def posture_alert_roles(self) -> tuple[str, ...]:
+        roles = (self.raw.get("compliance") or {}).get("posture_alert_roles")
+        return tuple(str(r) for r in (roles or ("GRC_Engineer", "CISO")))
+
     @property
     def frameworks_dir(self) -> str:
         return str(_require(self.raw, "compliance.frameworks_dir"))
@@ -548,6 +585,29 @@ class GovernanceConfig:
                     "compliance.live_deployment_statuses contains " + status
                     + ", which is not a deployment status. Valid statuses are: "
                     + ", ".join(DEPLOYMENT_STATE_NAMES)
+                )
+
+        # AINV-11 reads these by name. An unknown rule would be neither the
+        # floor nor the full-estate reading, and would silently mean "any".
+        for where, rule in [("default", self.coverage_rule_default)] + sorted(
+            self.coverage_rule_overrides.items()
+        ):
+            if rule not in COVERAGE_RULES:
+                errors.append(
+                    "compliance.coverage_rules " + where + " is " + rule
+                    + ", which is not a coverage rule. Valid rules are: "
+                    + ", ".join(COVERAGE_RULES)
+                )
+        if not 0 <= self.posture_alert_below_pct <= 100:
+            errors.append(
+                "compliance.posture_alert_below_pct must be a percentage from 0 to 100"
+            )
+        for role in self.posture_alert_roles:
+            if role not in self.roles:
+                errors.append(
+                    "compliance.posture_alert_roles contains " + role
+                    + ", which is not a defined role. Nobody could ever receive "
+                    "the alert."
                 )
 
         # Every band needs an acceptance rule and a review cadence.
