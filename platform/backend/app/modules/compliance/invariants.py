@@ -56,6 +56,20 @@ def _coverage_backed_by_live_control(a: RequirementAssessment, ctx) -> bool:
     return _coverage_is_live(a, ctx)
 
 
+def _coverage_rule_met(a: RequirementAssessment, ctx) -> bool:
+    """AINV-11, checked on every write for the same reason as AINV-2.
+
+    Under all_in_scope, one in-scope asset losing the control un-covers the
+    requirement. The gate refuses Covered on the way in; this refuses to let a
+    Covered position outlive the asset that stopped carrying it.
+    """
+    if a.lifecycle_state != "Covered":
+        return True
+    from app.modules.compliance.machine import coverage_meets_rule
+
+    return coverage_meets_rule(a.requirement, ctx.session)
+
+
 def _partial_does_not_satisfy(a: RequirementAssessment, _ctx) -> bool:
     """AINV-3.
 
@@ -285,6 +299,25 @@ invariants.register(
         violation="Link rejected; an unconfigured level would silently fail to count",
         spec_ref="codified-rules section 23.2",
         holds=_link_level_is_configured,
+    ),
+    Invariant(
+        id="AINV-11",
+        entity=ASSESSMENT,
+        rule=(
+            "A requirement of a framework configured all_in_scope is Covered only "
+            "while a satisfying control is live on every asset in that framework's "
+            "scope"
+        ),
+        layer=SERVICE,
+        mechanism=(
+            "The rule is read per framework from compliance.coverage_rules. Gate "
+            "and invariant share one predicate over the in-scope assets the "
+            "control reaches, so an operating failure on one in-scope asset "
+            "un-covers the requirement under that framework and no other."
+        ),
+        violation="Covered rejected or revoked; the requirement returns to Gap",
+        spec_ref="codified-rules section 25.3",
+        holds=_coverage_rule_met,
     ),
     Invariant(
         id="CINV-12",

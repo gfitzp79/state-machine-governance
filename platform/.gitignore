@@ -18,8 +18,10 @@ config/governance.*.yml
 
 # Framework catalogues are added by dropping a YAML file in, so one found here
 # locally is either your own control set or licensed standard text. That is the
-# same concern AINV-6 refuses at boot, applied to the repository. The two
-# shipped catalogues stay tracked; to contribute a third, git add -f it.
+# same concern AINV-6 refuses at boot, applied to the repository. The shipped
+# catalogues stay tracked, each named here; the licensed ones are records with
+# no content. To contribute another, name it here too.
 config/frameworks/*
 !config/frameworks/iso-27001-2022.yml
 !config/frameworks/nist-csf-2.0.yml
+!config/frameworks/pci-dss-4.0.yml

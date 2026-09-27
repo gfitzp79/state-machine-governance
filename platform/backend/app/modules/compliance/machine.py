@@ -80,6 +80,64 @@ def _coverage_is_live(a: RequirementAssessment, ctx: TransitionContext) -> bool:
     return False
 
 
+def live_reach(requirement, session) -> tuple[set[str], set[str]]:
+    """The in-scope assets, and those a satisfying Operating control is live on.
+
+    One walk, shared by AINV-11, the asset coverage report and the test impact
+    report, so they can never disagree about what "reached" means. Returns
+    (scoped, reached). With no scope declared, `scoped` is empty and `reached`
+    holds every asset the control is live on.
+    """
+    from app.modules.control.models import AttackSurface
+
+    framework_id = requirement.framework.framework_id
+    scoped = {
+        asset.id
+        for asset in session.query(AttackSurface).all()
+        if framework_id in (asset.compliance_scopes or [])
+    }
+    live = governance.live_deployment_statuses
+    reached: set[str] = set()
+    for link in requirement.satisfying_links:
+        objective = link.objective
+        if objective is None or objective.lifecycle_state != "Operating":
+            continue
+        for activity in objective.activities:
+            for deployment in activity.deployments:
+                if deployment.deployment_status in live:
+                    reached.add(deployment.attack_surface_id)
+    return scoped, reached
+
+
+def coverage_meets_rule(requirement, session) -> bool:
+    """AINV-11: under all_in_scope, every in-scope asset must be reached.
+
+    Under any_in_scope this is always true and AINV-2 alone decides. The rule
+    is read per framework from compliance.coverage_rules, because the same
+    failed test on the same asset can be a nonconformity under one framework
+    and a requirement not met under another, and scope alone cannot say which.
+    """
+    rule = governance.coverage_rule(requirement.framework.framework_id)
+    if rule != "all_in_scope":
+        return True
+    scoped, reached = live_reach(requirement, session)
+    return bool(scoped) and scoped <= reached
+
+
+def _coverage_meets_rule(a: RequirementAssessment, ctx: TransitionContext) -> bool:
+    return coverage_meets_rule(a.requirement, ctx.session)
+
+
+AINV_11 = Precondition(
+    "AINV-11",
+    "The framework's coverage rule is met across its scope",
+    _coverage_meets_rule,
+    "This framework is configured all_in_scope: the control must be live on "
+    "every asset declared in its scope, not just one. The asset coverage "
+    "report lists the assets it does not reach.",
+)
+
+
 def _compensating_is_bounded(a: RequirementAssessment, ctx: TransitionContext) -> bool:
     """AINV-4: compensating coverage always expires, and within the window."""
     expiry = ctx.payload.get("compensating_expiry") or a.compensating_expiry
@@ -183,6 +241,7 @@ REQUIREMENT_ASSESSMENT_MACHINE = StateMachine(
                     "(AINV-3), and a control that runs everywhere except where "
                     "the requirement applies covers nothing.",
                 ),
+                AINV_11,
             ),
             cascades=("requirement.covered",),
         ),
@@ -261,6 +320,7 @@ REQUIREMENT_ASSESSMENT_MACHINE = StateMachine(
                     "The compensating control is not enough on its own. Link "
                     "the permanent control that replaced it.",
                 ),
+                AINV_11,
             ),
             cascades=("requirement.covered",),
         ),
@@ -278,6 +338,7 @@ REQUIREMENT_ASSESSMENT_MACHINE = StateMachine(
                     "Closing a gap means the control is running where the "
                     "requirement applies, not that it is planned.",
                 ),
+                AINV_11,
             ),
             cascades=("requirement.covered",),
         ),

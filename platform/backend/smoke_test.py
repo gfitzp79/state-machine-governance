@@ -490,6 +490,11 @@ def main() -> int:
         control_owner,
     )
     check("failing test recorded", status == 201, (status, body.get("message")))
+    check(
+        "CINV-16: an unclassified failure is recorded as Design, the widest reading",
+        body.get("recorded", {}).get("failure_type") == "Design",
+        body.get("recorded", {}).get("failure_type"),
+    )
 
     _, after_risk = call("GET", "/risks/" + risk1["id"], token=analyst)
     _, after_control = call("GET", "/controls/" + find(controls, "CTL-001")["id"], token=analyst)
@@ -1221,6 +1226,8 @@ def main() -> int:
         opened,
     )
 
+    scope_aware_testing(analyst, control_owner, grc, ciso)
+
     section("Every route answers")
     # /api/controls/reference-data raised a NameError for three commits. Nothing
     # caught it: the typecheck is frontend-only, no test called the route, and
@@ -1283,6 +1290,323 @@ def main() -> int:
             print("  - " + f)
     print("=" * 62)
     return 1 if FAILED else 0
+
+
+def import_requirements(framework_id, rows):
+    """What tools/import_framework.py does, in-process.
+
+    The importer lives at the repository root, outside the API image, and a
+    licensed framework ships with no requirements (AINV-6), so a test that
+    needs PCI DSS requirements writes identifiers the way the importer would.
+    The titles are this suite's own words, not the standard's.
+    """
+    # Every model, as upgrade_test.py does: relationships are declared by name,
+    # so the mapper needs all of them registered before it can configure any.
+    import app.modules.compliance.models  # noqa: F401
+    import app.modules.control.models  # noqa: F401
+    import app.modules.identity.models  # noqa: F401
+    import app.modules.policy.models  # noqa: F401
+    import app.modules.risk.models  # noqa: F401
+    import app.modules.threat.models  # noqa: F401
+    import app.modules.treatment.models  # noqa: F401
+    from sqlalchemy import select
+
+    from app.core.db import SessionLocal
+    from app.modules.compliance.models import ComplianceFramework, ComplianceRequirement
+
+    with SessionLocal() as session:
+        framework = session.execute(
+            select(ComplianceFramework).where(ComplianceFramework.framework_id == framework_id)
+        ).scalar_one()
+        for order, (ref, title) in enumerate(rows):
+            session.add(
+                ComplianceRequirement(
+                    framework_id=framework.id, ref=ref, title=title, sort_order=order
+                )
+            )
+        session.commit()
+
+
+def scope_aware_testing(analyst, control_owner, grc, ciso):
+    """Codified-rules section 25: a test's consequences stop where its scope does."""
+
+    section("Scope-aware testing: one control across three estates")
+    _, me = call("GET", "/auth/me", token=grc)
+    _, fws = call("GET", "/compliance/frameworks", token=analyst)
+    known = {f["framework_id"] for f in fws["frameworks"]}
+    check("PCI DSS ships as a record with no content", "PCI-DSS-4.0" in known, sorted(known))
+
+    import_requirements("PCI-DSS-4.0", [("8.4.2", "Scope probe: strong authentication")])
+    status, _ = call(
+        "POST", "/compliance/frameworks/PCI-DSS-4.0/adoption", {"adopted": True}, grc
+    )
+    check("PCI DSS adopted", status == 200, status)
+
+    assets = {}
+    for name, scopes in (
+        ("Scope probe card vault", ["PCI-DSS-4.0", "NIST-CSF-2.0"]),
+        ("Scope probe card gateway", ["PCI-DSS-4.0"]),
+        ("Scope probe wiki", ["NIST-CSF-2.0"]),
+    ):
+        _, asset = call("POST", "/assets", {"name": name, "tier": "Tier_2"}, control_owner)
+        call(
+            "POST",
+            "/compliance/assets/" + asset["id"] + "/scopes",
+            {"compliance_scopes": scopes},
+            grc,
+        )
+        assets[name] = asset["id"]
+    vault, gateway, wiki = (
+        assets["Scope probe card vault"],
+        assets["Scope probe card gateway"],
+        assets["Scope probe wiki"],
+    )
+
+    _, ctl = call(
+        "POST",
+        "/controls",
+        {
+            "title": "Scope probe multi-factor authentication",
+            "family": "Identity_Management",
+            "control_type": "Preventive",
+            "automation_level": "Automated",
+            "objective_statement": "Every interactive login presents a second factor.",
+        },
+        control_owner,
+    )
+    _, act = call(
+        "POST",
+        "/controls/activities",
+        {"objective_id": ctl["id"], "title": "Enforce a second factor at login"},
+        control_owner,
+    )
+    call("POST", "/controls/activities/" + act["id"] + "/transition", {"target": "Active"}, control_owner)
+    deps = {}
+    for asset_id in (vault, gateway, wiki):
+        _, dep = call(
+            "POST",
+            "/controls/deployments",
+            {"activity_id": act["id"], "attack_surface_id": asset_id},
+            control_owner,
+        )
+        call("POST", "/controls/deployments/" + dep["id"] + "/transition", {"target": "Active"}, control_owner)
+        call(
+            "POST",
+            "/controls/deployments/" + dep["id"] + "/ce",
+            {"ce_rating": "CE-High", "ce_evidence_ref": "Login policy export, scope probe."},
+            control_owner,
+        )
+        deps[asset_id] = dep["id"]
+    for target in ("Implementation", "Operating"):
+        call("POST", "/controls/" + ctl["id"] + "/transition", {"target": target}, control_owner)
+    _, ctl_now = call("GET", "/controls/" + ctl["id"], token=analyst)
+    check("probe control is Operating on three assets", ctl_now["lifecycle_state"] == "Operating"
+          and ctl_now["deployment_count"] == 3, (ctl_now["lifecycle_state"], ctl_now["deployment_count"]))
+
+    def requirement(framework_id, ref):
+        _, rows = call(
+            "GET", "/compliance/frameworks/" + framework_id + "/requirements", token=analyst
+        )
+        return next(r for r in rows["requirements"] if r["ref"] == ref)
+
+    for framework_id, ref in (("PCI-DSS-4.0", "8.4.2"), ("NIST-CSF-2.0", "PR.AA-01")):
+        req = requirement(framework_id, ref)
+        call(
+            "POST",
+            "/compliance/requirements/" + req["id"] + "/controls",
+            {"objective_id": ctl["id"], "coverage_level": "Full", "rationale": "Scope probe."},
+            grc,
+        )
+        call(
+            "POST",
+            "/compliance/requirements/" + req["id"] + "/assess",
+            {"target": "Applicable", "owner_id": me["id"]},
+            grc,
+        )
+        status, body = call(
+            "POST", "/compliance/requirements/" + req["id"] + "/assess", {"target": "Covered"}, grc
+        )
+        check(framework_id + " " + ref + " Covered", status == 200, (status, body.get("message")))
+
+    _, risks = call("GET", "/risks", token=analyst)
+    risk4, risk5 = find(risks, "RISK-004"), find(risks, "RISK-005")
+    for risk in (risk4, risk5):
+        call("POST", "/risks/" + risk["id"] + "/controls", {"id": ctl["id"]}, analyst)
+    call("POST", "/risks/" + risk5["id"] + "/assets", {"id": gateway}, analyst)
+
+    section("CINV-16: a failure says what failed")
+    status, body = call(
+        "POST",
+        "/controls/deployments/" + deps[wiki] + "/tests",
+        {"result": "Pass", "failure_type": "Operating"},
+        control_owner,
+    )
+    check("a failure type on a Pass is refused", status == 409, status)
+    status, body = call(
+        "POST",
+        "/controls/deployments/" + deps[wiki] + "/tests",
+        {"result": "Fail", "failure_type": "Sometimes"},
+        control_owner,
+    )
+    check("an unknown failure type is refused", status == 409, status)
+
+    section("DL-1: an operating failure stays on its asset")
+    _, notes_before = call("GET", "/notifications", token=grc)
+    status, body = call(
+        "POST",
+        "/controls/deployments/" + deps[gateway] + "/tests",
+        {
+            "result": "Fail",
+            "failure_type": "Operating",
+            "evidence_ref": "Gateway admin console accepted a password-only login.",
+        },
+        control_owner,
+    )
+    check("operating failure recorded", status == 201, (status, body.get("message")))
+    impact = body.get("recorded", {}).get("impact") or {}
+    _, ctl_after = call("GET", "/controls/" + ctl["id"], token=analyst)
+    check(
+        "the objective stays Operating (DL-1, operating branch)",
+        ctl_after["lifecycle_state"] == "Operating",
+        ctl_after["lifecycle_state"],
+    )
+    check(
+        "AINV-11: PCI, all_in_scope, loses the requirement",
+        requirement("PCI-DSS-4.0", "8.4.2")["state"] == "Gap",
+        requirement("PCI-DSS-4.0", "8.4.2")["state"],
+    )
+    check(
+        "the gap reason names the asset and the rule",
+        "Scope probe card gateway" in (requirement("PCI-DSS-4.0", "8.4.2")["gap_reason"] or "")
+        and "AINV-11" in (requirement("PCI-DSS-4.0", "8.4.2")["gap_reason"] or ""),
+        requirement("PCI-DSS-4.0", "8.4.2")["gap_reason"],
+    )
+    check(
+        "NIST is untouched: the gateway is outside its scope",
+        requirement("NIST-CSF-2.0", "PR.AA-01")["state"] == "Covered",
+        requirement("NIST-CSF-2.0", "PR.AA-01")["state"],
+    )
+    by_fw = {f["framework_id"]: f for f in impact.get("frameworks", [])}
+    check(
+        "the impact record says so, framework by framework",
+        by_fw.get("PCI-DSS-4.0", {}).get("verdict") == "requirements_lost"
+        and by_fw.get("NIST-CSF-2.0", {}).get("verdict") == "out_of_scope",
+        {k: v.get("verdict") for k, v in by_fw.items()},
+    )
+    by_risk = {r["reference"]: r for r in impact.get("risks", [])}
+    check(
+        "RINV-14: the risk scoped to the gateway is affected, CE held at the bottom (CE-7)",
+        by_risk.get("RISK-005", {}).get("affected") is True
+        and by_risk["RISK-005"]["ce_after"] == "CE-Unvalidated",
+        by_risk.get("RISK-005"),
+    )
+    check(
+        "RINV-14: the risk scoped elsewhere is not",
+        by_risk.get("RISK-004", {}).get("affected") is False
+        and by_risk["RISK-004"]["asset_in_scope"] is False,
+        by_risk.get("RISK-004"),
+    )
+    _, notes_after = call("GET", "/notifications", token=grc)
+    new = [n for n in notes_after if n["id"] not in {m["id"] for m in notes_before}]
+    kinds = sorted(n["event_type"] for n in new)
+    check(
+        "the requirement owner is told once, and the posture floor alert fires",
+        kinds.count("coverage_lost") == 1 and kinds.count("posture_below_floor") == 1,
+        kinds,
+    )
+
+    section("AINV-2: under any_in_scope a second asset keeps the requirement")
+    status, body = call(
+        "POST",
+        "/controls/deployments/" + deps[wiki] + "/tests",
+        {"result": "Fail", "failure_type": "Operating", "evidence_ref": "Wiki SSO bypass."},
+        control_owner,
+    )
+    by_fw = {f["framework_id"]: f for f in body.get("recorded", {}).get("impact", {}).get("frameworks", [])}
+    check(
+        "NIST stays Covered: the vault still carries the control",
+        requirement("NIST-CSF-2.0", "PR.AA-01")["state"] == "Covered"
+        and by_fw.get("NIST-CSF-2.0", {}).get("verdict") == "still_covered",
+        (requirement("NIST-CSF-2.0", "PR.AA-01")["state"], by_fw.get("NIST-CSF-2.0")),
+    )
+
+    section("TST-4: a passing retest remediates, and coverage is re-asserted, not assumed")
+    status, body = call(
+        "POST",
+        "/controls/deployments/" + deps[gateway] + "/tests",
+        {"result": "Pass", "evidence_ref": "Gateway retest: second factor enforced."},
+        control_owner,
+    )
+    check(
+        "the failed deployment returns to Active through DL-4",
+        body.get("deployment_status") == "Active",
+        body.get("deployment_status"),
+    )
+    check(
+        "the requirement stays a Gap until somebody re-asserts it",
+        requirement("PCI-DSS-4.0", "8.4.2")["state"] == "Gap",
+    )
+    status, _ = call(
+        "POST",
+        "/compliance/requirements/" + requirement("PCI-DSS-4.0", "8.4.2")["id"] + "/assess",
+        {"target": "Covered"},
+        grc,
+    )
+    check(
+        "PCI re-asserted as Covered: the failed wiki is outside PCI scope, so AINV-11 holds",
+        status == 200,
+        status,
+    )
+
+    section("A campaign reads results against their population")
+    _, notes_before = call("GET", "/notifications", token=grc)
+    status, campaign = call(
+        "POST",
+        "/controls/" + ctl["id"] + "/campaigns",
+        {
+            "title": "Q4 scope probe campaign",
+            "results": [
+                {"deployment_id": deps[vault], "result": "Pass", "evidence_ref": "Vault login audit."},
+                {
+                    "deployment_id": deps[gateway],
+                    "result": "Fail",
+                    "failure_type": "Operating",
+                    "evidence_ref": "Gateway regression.",
+                },
+            ],
+        },
+        control_owner,
+    )
+    check("campaign recorded", status == 201, (status, campaign.get("message")))
+    population = {p["framework_id"]: p for p in campaign.get("impact", {}).get("population", [])}
+    nist = population.get("NIST-CSF-2.0", {})
+    check(
+        "the untested in-scope asset is named, not hidden in a pass rate",
+        nist.get("tested") == ["Scope probe card vault"]
+        and nist.get("untested") == ["Scope probe wiki"],
+        nist,
+    )
+    check(
+        "in-scope assets the control never reached are reported separately",
+        len(nist.get("not_deployed", [])) >= 1 and "Scope probe wiki" not in nist["not_deployed"],
+        nist.get("not_deployed"),
+    )
+    check(
+        "PCI population: both in-scope assets tested, one failed",
+        sorted(population.get("PCI-DSS-4.0", {}).get("tested", [])) == [
+            "Scope probe card gateway", "Scope probe card vault"
+        ]
+        and population["PCI-DSS-4.0"]["failed"] == ["Scope probe card gateway"],
+        population.get("PCI-DSS-4.0"),
+    )
+    _, notes_after = call("GET", "/notifications", token=grc)
+    new = [n for n in notes_after if n["id"] not in {m["id"] for m in notes_before}]
+    kinds = sorted(n["event_type"] for n in new)
+    check(
+        "alerts are grouped: one digest for the owner, no per-cascade alert",
+        kinds.count("test_impact_digest") == 1 and "coverage_lost" not in kinds,
+        kinds,
+    )
 
 
 if __name__ == "__main__":

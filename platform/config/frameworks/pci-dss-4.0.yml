@@ -1,0 +1,34 @@
+# PCI DSS v4.0 — framework record only, no requirement content.
+#
+# This file deliberately ships ZERO requirements.
+#
+# The PCI Data Security Standard is copyright the PCI Security Standards
+# Council. Its requirement text is not redistributable by this repository, so
+# `redistributable: false` means AINV-6 refuses this catalogue at boot if
+# requirement text ever appears in it.
+#
+# To use PCI DSS here, load the requirements from your own copy:
+#
+#     python tools/import_framework.py PCI-DSS-4.0 my-pci-requirements.csv
+#
+# The importer writes to the database, never back into this repository.
+#
+# governance.yml configures this framework all_in_scope (AINV-11): a
+# requirement is covered only while the control runs on every asset declared
+# inside the cardholder data environment, because the standard applies to each
+# system in it rather than to the estate on average.
+#
+# Nothing in this file is legal advice. Confirm the current terms of your own
+# licence before importing.
+
+id: PCI-DSS-4.0
+name: PCI Data Security Standard
+version: "4.0.1"
+authority: PCI Security Standards Council
+redistributable: false
+source_url: https://www.pcisecuritystandards.org/document_library/
+licence_note: >
+  Copyright PCI Security Standards Council. Requirement text may not be
+  redistributed. Import identifiers and your own descriptions from your
+  licensed copy with tools/import_framework.py.
+requirements: []

@@ -176,13 +176,22 @@ class LifecycleService(Generic[T]):
         return self.machine.evaluate(entity, target, self.context(**payload)).as_dict()
 
     def transition(
-        self, entity: Any, target: str, system: bool = False, **payload: Any
+        self,
+        entity: Any,
+        target: str,
+        system: bool = False,
+        commit: bool = True,
+        **payload: Any,
     ) -> dict[str, Any]:
         """Fire a gated transition. Gate, invariants, cascades and audit all land
         in one transaction; any failure rolls the whole thing back.
 
         `system=True` is for transitions the specification makes automatic, not
-        discretionary. It waives the role check and nothing else."""
+        discretionary. It waives the role check and nothing else.
+
+        `commit=False` leaves the transaction open for a caller that has more to
+        write in it, such as a control test whose impact record must commit
+        with the cascade it describes or not at all."""
         ctx = self.context(**payload)
         result, transition = self.machine.fire(entity, target, ctx, system=system)
 
@@ -211,7 +220,8 @@ class LifecycleService(Generic[T]):
             gate_result=result,
             cascade_effects=effects,
         )
-        self.session.commit()
+        if commit:
+            self.session.commit()
         return {
             "entity_id": entity.id,
             "from": result.source,

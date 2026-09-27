@@ -517,6 +517,33 @@ compliance:
   # Days before a compensating assertion expires that the owner is notified.
   compensating_warning_days: 30
 
+  # [CUSTOMISE] What "covered" means across a framework's scope (AINV-11).
+  #
+  #   any_in_scope  covered while a satisfying control is live on at least one
+  #                 in-scope asset. The AINV-2 floor, and the right reading for a
+  #                 management-system standard, where a single failure is a
+  #                 nonconformity to correct rather than a lost requirement.
+  #   all_in_scope  covered only while the control is live on EVERY in-scope
+  #                 asset. The right reading for a prescriptive standard that
+  #                 applies to each system in its environment, where one failing
+  #                 system in scope is the requirement not being met.
+  #
+  # The same failed test can therefore cost one framework nothing and another a
+  # requirement, which is the point: scope says where, this says so what.
+  coverage_rules:
+    default: any_in_scope
+    frameworks:
+      PCI-DSS-4.0: all_in_scope
+
+  # Alert on outcomes, not events (codified-rules section 25.5). A control test
+  # alerts these roles only when it pulls an adopted framework's coverage below
+  # this figure. Every other consequence reaches the named owner of the thing
+  # that changed, once per test or once per campaign, never once per cascade.
+  posture_alert_below_pct: 90
+  posture_alert_roles:
+    - GRC_Engineer
+    - CISO
+
   # Directory holding framework catalogues, bind-mounted alongside this file.
   frameworks_dir: /srv/config/frameworks
 

@@ -13,6 +13,62 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed: a control test's consequences stop where its scope does (codified-rules §25)
+
+**A change of meaning to DL-1.** Until now every failed deployment took its
+control objective into Failure. One failing asset therefore froze the residual
+on every risk the control touched and turned every requirement it carried into
+a gap, in every framework, whatever each one's scope. A PCI-only asset failing
+cost ISO the same as PCI. That was the opposite of what scope exists for.
+
+A failing test now says what failed (`CINV-16`):
+
+- **Design**: the control does not work as designed. DL-1 behaves exactly as
+  before. A failure recorded without a classification is read as Design, so an
+  organisation that never classifies sees no change.
+- **Operating**: the control is designed properly and did not run on this asset.
+  The objective stays Operating. Only risks whose declared scope includes the
+  asset are flagged (the `RINV-14` scope, reused rather than reinvented), and
+  only frameworks whose scope includes it are re-judged.
+
+How a framework is re-judged is now **per framework configuration**
+(`compliance.coverage_rules`, `AINV-11`). `any_in_scope` is the existing `AINV-2`
+floor. `all_in_scope` needs the control live on every in-scope asset, and ships
+as the setting for PCI DSS. The same failed test can now cost PCI a requirement
+and ISO nothing, which is the scenario that prompted this.
+
+Also in this change:
+
+- **Scoring (`CE-7`).** A failed deployment inside a risk's scope counts as
+  CE-Unvalidated rather than being excluded. Excluding it would take the worst
+  case over the surviving deployments and report the risk as well controlled as
+  it was before the failure.
+- **Lineage.** Every test writes its impact onto its own append-only row, in the
+  same transaction: per framework, coverage before and after and each
+  requirement that moved; per risk, CE and likelihood ceiling before and after,
+  and a **proposed** residual. The proposal is never applied: `RINV-1` still
+  decides.
+- **Campaigns.** A round of results across a control's deployments, read
+  against each framework's population: tested, failed, untested, and in scope
+  but not deployed. Inside a campaign, owners get one digest instead of one
+  alert per cascade.
+- **Alerting on outcomes.** Requirement owners are now notified when coverage is
+  revoked, as §24.3 always said they would be. The configured roles are alerted
+  when a test pulls an adopted framework's coverage below
+  `compliance.posture_alert_below_pct`.
+- **A pass is evidence (`TST-4`).** A pass with an evidence reference renews the
+  assessment date behind the existing CE rating. On a Failed deployment it is a
+  remediation retest that attempts the DL-4 gate. Coverage it un-covered becomes
+  eligible to return, and a person re-asserts it through the gate.
+- **PCI DSS 4.0** ships as a framework record with no content, like ISO 27001.
+  Import its requirements from your own copy with `tools/import_framework.py`.
+
+The migration adds `control_tests.failure_type`, `control_tests.impact`,
+`control_tests.campaign_id` and `control_test_campaigns`. Existing Fail rows are
+backfilled as Design, which is a statement of what the platform did with them
+rather than a guess. It is the only UPDATE ever run against that append-only
+table, and the trigger is suspended for that one statement.
+
 ### Added: a risk declares the assets it concerns (RINV-14)
 
 Found by reading the scoring output rather than the code. A control deployed on

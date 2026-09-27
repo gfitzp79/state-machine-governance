@@ -156,10 +156,10 @@ Then <http://localhost:8080>, signing in as `analyst@example.com` /
 Both suites must pass before a pull request is reviewed.
 
 ```bash
-# config_test.py: 33 tests of the configuration layer. Fast, no database needed.
+# config_test.py: 35 tests of the configuration layer. Fast, no database needed.
 docker compose exec api python config_test.py
 
-# smoke_test.py: 177 tests of gates, invariants, cascades, and direct-SQL bypass
+# smoke_test.py: 203 tests of gates, invariants, cascades, and direct-SQL bypass
 # attempts. Mutates state deliberately, so it needs a freshly seeded database.
 docker compose down -v && docker compose up -d
 docker compose exec api python smoke_test.py

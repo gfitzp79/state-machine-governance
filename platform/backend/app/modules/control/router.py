@@ -25,11 +25,14 @@ from app.modules.control.models import (
 from app.modules.control.service import (
     ActivityService,
     AssetService,
+    CampaignService,
     DeploymentService,
     ObjectiveService,
     summarise_activity,
+    summarise_campaign,
     summarise_deployment,
     summarise_objective,
+    summarise_test,
 )
 
 router = APIRouter(prefix="/controls", tags=["controls"])
@@ -121,9 +124,25 @@ class CEAssessment(BaseModel):
 
 class TestResult(BaseModel):
     result: str
+    # CINV-16: Design or Operating, on a Fail. Omitted on a Fail, it is
+    # recorded as Design, the reading that propagates furthest.
+    failure_type: str | None = None
     evidence_ref: str | None = None
     notes: str | None = None
     supersedes_id: str | None = None
+
+
+class CampaignResult(TestResult):
+    model_config = ConfigDict(extra="forbid")
+
+    deployment_id: str
+
+
+class CampaignCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=3, max_length=300)
+    results: list[CampaignResult] = Field(min_length=1)
 
 
 class TransitionRequest(BaseModel):
@@ -216,6 +235,19 @@ def transition_objective(
     obj = svc.get(objective_id)
     result = svc.transition(obj, payload.target, reason=payload.reason)
     return {"transition": result, "objective": svc.detail(obj)}
+
+
+@router.post("/{objective_id}/campaigns", status_code=201)
+def run_campaign(
+    objective_id: str, payload: CampaignCreate, session: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """Record a round of results across the control's deployments at once."""
+    svc = CampaignService(session, user.id, user.role_names)
+    objective = ObjectiveService(session, user.id, user.role_names).get(objective_id)
+    campaign = svc.run(
+        objective, payload.title, [r.model_dump() for r in payload.results]
+    )
+    return summarise_campaign(campaign)
 
 
 @router.post("/{objective_id}/confirm-alignment/{policy_id}")
@@ -315,8 +347,8 @@ def record_test(
 ) -> dict[str, Any]:
     svc = DeploymentService(session, user.id, user.role_names)
     dep = svc.get(deployment_id)
-    svc.record_test(dep, payload.model_dump(exclude_none=True))
-    return svc.detail(dep)
+    test = svc.record_test(dep, payload.model_dump(exclude_none=True))
+    return {**svc.detail(dep), "recorded": summarise_test(test)}
 
 
 @router.post("/deployments/{deployment_id}/transition")

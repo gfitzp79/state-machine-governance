@@ -1,6 +1,6 @@
 # Risk Scoring Model
 
-**Version:** 2.0-template | **License:** CC BY 4.0
+**Version:** 2.1-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §4
 **Purpose:** Complete specification of the risk scoring model including the 5x5 matrix, impact and likelihood definitions, control effectiveness adjustment, residual scoring validation, and all FK dependencies that feed the calculation. Designed for implementation teams to build the scoring engine with full traceability from input to output.
 
@@ -187,6 +187,15 @@ RULE CE-5: only OPERATING controls contribute CE
   Controls in Design, Implementation, Redesign, or Deprecated state
   are excluded from scoring calculations. (CINV-2)
   Planned controls do not reduce residual risk. (RINV-9)
+
+RULE CE-7: a FAILED deployment inside a risk's scope counts as CE-Unvalidated
+  An operating failure (codified-rules §25.1) leaves the objective Operating,
+  so its other deployments still contribute. The failed one is not excluded:
+  excluding it would take the worst case over the survivors and report the risk
+  as well controlled as before the failure. It contributes CE-Unvalidated, so
+  the worst case falls to the bottom for every risk whose scope includes it.
+  Outside a risk's declared scope it is excluded like any other deployment
+  there (RINV-14).
 ```
 
 ### CE Expiry
@@ -400,6 +409,7 @@ Summary of all rules that the scoring engine must enforce, consolidated for impl
 | LKH-3 | Inherent likelihood scored WITHOUT CE adjustment | §3 |
 | CE-4 | Worst-case CE across deployments used (never average, never best-case) | §5 |
 | CE-5 | Only Operating controls with non-expired CE contribute | §5 |
+| CE-7 | A failed deployment inside the risk's scope contributes CE-Unvalidated rather than being excluded | §5 |
 
 ### Calculation Rules
 

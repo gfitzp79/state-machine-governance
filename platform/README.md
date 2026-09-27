@@ -197,7 +197,7 @@ Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 
 ## What is implemented
 
-**9 state machines · 65 gated transitions · 65 invariants · 28 cascade events**
+**9 state machines · 65 gated transitions · 67 invariants · 29 cascade events**
 
 Nine state machines, one per row, each declared in
 `modules/<domain>/machine.py` and specified in the section named beside it.
@@ -263,8 +263,8 @@ The smoke test walks every claim above against a live API, including the full
 cascade and direct-SQL attempts to bypass the service layer.
 
 ```bash
-docker compose exec api python config_test.py     # 33 tests: the configuration layer
-docker compose exec api python smoke_test.py      # 177 tests: the enforcement layer
+docker compose exec api python config_test.py     # 35 tests: the configuration layer
+docker compose exec api python smoke_test.py      # 203 tests: the enforcement layer
 ```
 
 `config_test.py` proves both halves of configurability: that invalid governance

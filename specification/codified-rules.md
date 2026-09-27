@@ -1,6 +1,6 @@
 # GRC Codified Rules Engine: Unified Specification Template
 
-**Version:** 2.1-template | **License:** CC BY 4.0
+**Version:** 2.2-template | **License:** CC BY 4.0
 **Purpose:** Machine-parseable rule set for governance, risk, and compliance platforms. Covers the risk management lifecycle, control management hierarchy, and policy governance layer as a single integrated specification. Designed for organisations to adapt to their own frameworks, appetite statements, and regulatory obligations.
 
 > **How to use this document:** Replace all `[ORGANISATION]` placeholders and review every `[CUSTOMISE]` block against your own governance framework, regulatory requirements, and risk appetite. Parameters marked `RECOMMENDED` reflect industry best practice from ISO 27005, NIST RMF, NIST CSF, and SOC 2/COSO. SLA defaults are aligned to regulated financial services expectations. Adjust thresholds to match your operating environment.
@@ -758,7 +758,10 @@ RULE AL-2: Draft activities CANNOT be linked to risk records
 ```
 DEPLOYMENT_STATES: Planned, Active, Degraded, Failed, Decommissioned
 
-RULE DL-1: Failed → trigger Failure propagation check on parent Objective
+RULE DL-1: Failed → a DESIGN failure propagates Failure to the parent Objective;
+            an OPERATING failure stays on the deployment and reaches only the
+            risks and frameworks whose scope includes its asset (§25.2).
+            A failure with no classification is read as DESIGN (CINV-16).
 RULE DL-2: CE ONLY editable when status = Active OR Degraded
 RULE DL-3: Decommissioned deployments are READ-ONLY
 ```
@@ -779,6 +782,10 @@ TEST_CADENCE:
 RULE TST-1: test results are IMMUTABLE; corrections create new records
 RULE TST-2: test failure triggers CE re-assessment
 RULE TST-3: overdue test (> cadence + 30 days) auto-downgrades CE to CE-Unvalidated
+RULE TST-4: a PASS with an evidence reference renews the assessment date behind
+            the deployment's existing CE rating; it does not change the rating.
+            On a Failed deployment the same pass is a remediation retest and
+            attempts the Failed → Active gate (DL-4), which still decides.
 ```
 
 ### §10.2 CE Expiry
@@ -1551,6 +1558,7 @@ configurable; that there is a floor is not.
 ```
 TRIGGER compliance_coverage_revoked:
   WHEN: a control objective enters Failure, or is Deprecated
+        (for an operating failure on one deployment, see §25.2)
   FOR EVERY requirement covered by a satisfying link to that objective:
     IF no OTHER Operating control satisfies it:
       assessment.state = Gap
@@ -1570,6 +1578,155 @@ untrue.
 Note the "no OTHER Operating control" clause. Revoking coverage a second control
 still provides would report a gap that does not exist, and a compliance figure
 loses trust faster from a false alarm than from a missed one.
+
+---
+
+## §25 SCOPE-AWARE TEST IMPACT
+
+A control test is evidence about one asset. What it changes depends on where
+that asset sits: inside a risk's declared scope or outside it, inside a
+framework's scope or outside it, and, for a framework, under which reading of
+"covered". This section makes the answer follow the scope, so the same failed
+test can cost one framework a requirement and another nothing.
+
+### §25.1 Failure Classification
+
+```
+FAILURE_TYPES: Design, Operating
+
+  Design     the control does not work as designed. It is broken everywhere
+             it runs, whichever asset the test happened to sample.
+  Operating  the control is designed properly and did not run on THIS asset.
+
+RULE FC-1: every Fail result records its failure type.
+RULE FC-2: a Fail recorded without one is recorded as Design, the reading
+           that propagates furthest, and the audit trail says it was defaulted.
+RULE FC-3: a result other than Fail carries no failure type.
+
+INVARIANT CINV-16: A failing control test always records whether the design or
+the operation failed.
+```
+
+**Why default to Design.** Under-reacting to a failure costs more than
+over-reacting to one. An organisation that never classifies keeps exactly the
+behaviour DL-1 had before this section existed.
+
+### §25.2 Scope-Bounded Propagation
+
+```
+ON deployment Failed WITH failure_type = Operating:
+  objective.state UNCHANGED (still Operating)
+
+  FOR EVERY risk linked to the objective, not Closed:
+    IF risk declares no assets, OR the failed asset is in its declared scope:
+      residual_score_locked = true
+      control_change_flag   = Control_Failure
+      control_change_detail = <control, asset, proposed residual (§25.4)>
+      notify(risk owner, risk analyst)
+    ELSE: unaffected (RINV-14: the control does not reduce it here)
+
+  FOR EVERY requirement covered by a satisfying link to the objective:
+    IF the failed asset is outside the framework's declared scope: unaffected
+    ELSE re-judge under the framework's coverage rule (§25.3):
+      IF no longer satisfied:
+        assessment.state      = Gap
+        assessment.gap_reason = <control, asset, rule>
+        notify(requirement owner)
+
+  Threat scenarios mitigated by the deployment re-open (TINV-4), as before.
+
+ON deployment Failed WITH failure_type = Design:
+  DL-1 as before: the objective enters Failure and §11 and §24.3 apply in full.
+
+ON deployment restored (Failed → Active):
+  linked risks in scope become eligible for residual re-evaluation
+  requirements this deployment's failure un-covered become ELIGIBLE to return
+  to Covered; the gate, not the cascade, decides (as RINV-1 does for risk)
+```
+
+The risk half reuses RINV-14 rather than inventing a second notion of scope:
+the risks a failure reaches are exactly the risks whose CE resolution includes
+the failed deployment. A cascade that flags a risk the scoring engine says the
+deployment cannot reach is an alert about nothing.
+
+### §25.3 Coverage Rules
+
+```
+# [CUSTOMISE] per framework, compliance.coverage_rules in configuration
+COVERAGE_RULES:
+  any_in_scope  Covered while a satisfying control is live on at least one
+                in-scope asset. The AINV-2 floor.
+  all_in_scope  Covered only while a satisfying control is live on EVERY
+                in-scope asset.
+
+DEFAULT: any_in_scope
+
+INVARIANT AINV-11: A requirement of a framework configured all_in_scope is
+Covered only while a satisfying control is live on every asset in that
+framework's scope.
+```
+
+**Why per framework.** Scope says where a failure lands; the rule says what it
+costs there. A management-system standard treats one failing system as a
+nonconformity to correct, so `any_in_scope` is the honest reading. A
+prescriptive standard that applies to each system in its environment is not met
+while one of those systems lacks the control, so `all_in_scope` is. A single
+global rule would judge every framework by the strictest one in the building.
+
+### §25.4 Test Impact Record
+
+```
+ON every control test:
+  BEFORE the result is applied: snapshot every risk and requirement the control
+    carries (effective CE, likelihood ceiling, residual, requirement state,
+    in-scope assets reached, framework coverage percentage)
+  AFTER the cascade has run: snapshot again
+  WRITE the difference onto the test record, in the same transaction:
+    per framework: whether the tested asset is in scope, the rule, coverage
+                   before and after, every requirement that changed and why
+    per risk:      whether the tested asset is in scope, CE and ceiling before
+                   and after, and a PROPOSED residual
+
+PROPOSED RESIDUAL:
+  IF (inherent likelihood - residual likelihood) <= the new ceiling:
+    unchanged; the CE change does not touch it
+  ELSE:
+    likelihood = inherent likelihood - new ceiling
+    score      = residual impact x likelihood, rated and set against appetite
+
+RULE TI-1: the proposed residual is never applied. RINV-1 still requires the
+           full validation gate before a residual changes.
+RULE TI-2: the test record is append-only (CINV-7), so the impact is lineage
+           as it was at the time, not a report re-derived from a register that
+           has since moved on.
+```
+
+### §25.5 Campaigns and Alerting
+
+```
+CAMPAIGN := { control objective, title, results[ deployment, result,
+              failure_type ], impact, population }
+
+POPULATION, per framework the control carries:
+  in_scope      assets declaring themselves in the framework's scope
+  tested        in-scope assets with a result in this campaign
+  failed        tested assets with a Fail
+  untested      in-scope assets the control runs on but this campaign skipped
+  not_deployed  in-scope assets the control does not run on at all
+
+RULE CA-1: a campaign is one transaction. Half a campaign is a finding about the
+           tool, not the control.
+RULE CA-2: inside a campaign, per-cascade notifications are held back. Each
+           owner receives ONE digest when the campaign closes.
+RULE CA-3: a test or campaign that pulls an adopted framework's coverage below
+           [CUSTOMISE: posture floor, default 90%] alerts the configured roles.
+           A percentage that moved is information; one that crossed the line
+           the organisation drew is a decision somebody has to make.
+```
+
+**Why population.** "All eight passed" and "eight of ten in-scope assets tested,
+all passed" are different findings, and only the second tells an assessor that
+two assets carry no assurance at all.
 
 ---
 
