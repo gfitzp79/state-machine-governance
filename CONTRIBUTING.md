@@ -46,6 +46,18 @@ saves an argument later.
 | Versioning | Per document, in its `**Version:**` line | Semantic, in `CHANGELOG.md` |
 | Review | Maintainer, always. See [CODEOWNERS](./.github/CODEOWNERS) | Normal pull request review |
 
+**What main enforces.** Every change arrives by pull request, all three CI jobs
+must pass on an up-to-date branch, and main cannot be force-pushed or deleted.
+That applies to the maintainer too; `tools/setup_branch_protection.sh` holds the
+exact rules.
+
+Review is not yet enforced by the repository, only by habit, and one decision is
+open before it can be. Requiring code-owner review when the maintainer is the
+only code owner would mean the maintainer could never merge a framework change,
+because GitHub does not count an author's own approval. Until that is settled,
+every framework change still goes to the maintainer, and every platform change
+gets a second pair of eyes before it merges.
+
 Static does not mean frozen. It means a change arrives as a proposal with a
 reason rather than as a side effect of somebody fixing something else. A
 specification that shifts under its readers is worth less than one that is
