@@ -10,13 +10,15 @@
 # on it is the point. It carries no owner line below, so the repository's normal
 # review rules apply.
 #
-# GitHub applies the LAST matching pattern, so the specific rules sit at the
-# bottom.
-
-# Default: the maintainer sees everything until the review habit settles.
-*                               @gfitzp79
+# There is deliberately no `*` default line. An earlier revision had one, which
+# quietly made the maintainer the owner of all of platform/ as well, so the
+# split below existed only in the comments. Combined with code-owner review
+# enforced for admins, it also meant the maintainer, as sole owner of every
+# path, could never merge anything: GitHub does not count an author's own
+# approval. A path with no line here is unowned and takes normal review.
 
 # -- the framework: stable, cited, changed on purpose ----------------------
+/README.md                      @gfitzp79
 /specification/                 @gfitzp79
 /architecture/                  @gfitzp79
 /methodology/                   @gfitzp79
@@ -42,4 +44,5 @@
 # -- the platform: the part a contributor should be able to move -----------
 #
 # Left unowned on purpose. Everything under platform/ other than the paths
-# above follows the repository's normal review settings.
+# above takes normal review from anyone with write access, not the maintainer
+# specifically. What main enforces today is in tools/setup_branch_protection.sh.
