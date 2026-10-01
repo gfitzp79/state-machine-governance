@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, Link2, Plus, X } from 'lucide-react'
-import { api, ApiError } from '../lib/api'
+import { api, getStoredUser, ApiError } from '../lib/api'
 import { PageHeader } from '../components/Layout'
 import { PersonSelect } from '../components/people'
 import {
@@ -23,6 +23,7 @@ export default function PolicyDetail() {
   const [policy, setPolicy] = useState<any>(null)
   const [controls, setControls] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
+  const me = getStoredUser()
   const [tab, setTab] = useState('lifecycle')
   const [busy, setBusy] = useState<string | null>(null)
   const [modal, setModal] = useState<string | null>(null)
@@ -77,6 +78,13 @@ export default function PolicyDetail() {
   if (!policy) return <PageLoader />
 
   const userName = (uid: string | null) => users.find((u) => u.id === uid)?.full_name ?? '—'
+  // An approval is recorded by the approver, so the button approves as the
+  // signed-in user. Picking someone else's name from a list is what PINV-5
+  // used to allow: an approval nobody gave.
+  const canApprove =
+    !!me &&
+    me.id !== policy.policy_owner_id &&
+    me.roles.some((r: string) => r === 'CISO' || r === 'Admin')
 
   return (
     <>
@@ -167,28 +175,20 @@ export default function PolicyDetail() {
                     <p className="text-xs text-ink-muted">
                       PINV-5: approval requires CISO or above, and never the policy owner.
                     </p>
-                    <div className="flex gap-2">
-                      <PersonSelect
-                        label=""
-                        role="CISO,Admin"
-                        name="approver"
-                        placeholder="Select approver"
-                        showSeniority
-                      />
+                    <div className="flex items-center gap-2">
                       <button
                         className="btn-primary shrink-0"
-                        disabled={busy === 'approve'}
-                        onClick={() => {
-                          const el = document.getElementById('approver') as HTMLSelectElement
-                          if (!el?.value) return
-                          run(
-                            'approve',
-                            () => api.post(`/policies/${id}/approve`, { approver_id: el.value }),
-                            'Policy approved',
-                          )
-                        }}
+                        disabled={busy === 'approve' || !canApprove}
+                        title={
+                          canApprove
+                            ? undefined
+                            : 'Approval requires CISO or above, and never the policy owner'
+                        }
+                        onClick={() =>
+                          run('approve', () => api.post(`/policies/${id}/approve`, {}), 'Policy approved')
+                        }
                       >
-                        Approve
+                        Approve as {me?.full_name ?? 'yourself'}
                       </button>
                     </div>
                   </div>

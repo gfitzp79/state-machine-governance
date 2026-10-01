@@ -108,8 +108,12 @@ def _no_open_control_failure(risk: Risk, _ctx: TransitionContext) -> bool:
     )
 
 
-def _closable(risk: Risk, _ctx: TransitionContext) -> bool:
-    return bool(risk.closure_rationale)
+def _closable(risk: Risk, ctx: TransitionContext) -> bool:
+    """The rationale can arrive with the closure itself. It used to be read only
+    from the record, while the transition wrote the request's reason to the
+    record after the gate had already refused it, so a risk could not be
+    closed by giving a reason, and the interface could not close one at all."""
+    return bool(risk.closure_rationale or str(ctx.payload.get("reason") or "").strip())
 
 
 def _treatment_resolved_for_closure(risk: Risk, _ctx: TransitionContext) -> bool:
@@ -349,6 +353,7 @@ RISK_MACHINE = StateMachine(
                         or c.payload.get("reason")
                     ),
                     "Record why the risk is being re-assessed.",
+                    requires_input="reason",
                 ),
             ),
             cascades=("risk.reassessment_started",),
@@ -365,6 +370,7 @@ RISK_MACHINE = StateMachine(
                     "Closure rationale documented",
                     _closable,
                     "Record why the risk is being closed.",
+                    requires_input="reason",
                 ),
                 Precondition(
                     "GATE_CLOSURE.2",
@@ -387,6 +393,7 @@ RISK_MACHINE = StateMachine(
                     "Reopen reason recorded",
                     lambda r, c: bool(c.payload.get("reason")),
                     "Record why the risk is being reopened.",
+                    requires_input="reason",
                 ),
             ),
             cascades=("risk.reassessment_started",),

@@ -253,8 +253,16 @@ class ControlDeployment(Base, UUIDPrimaryKey, Timestamped):
 
     @property
     def ce_editable(self) -> bool:
-        """DL-2 / CINV-4: CE is assessable only while the deployment is live."""
-        return self.deployment_status in ("Active", "Degraded")
+        """DL-2 / CINV-4: CE is assessable while the deployment is live, and
+        while it is Failed, because re-assessing it is how it recovers.
+
+        DL-4 requires a CE re-assessment before a Failed deployment returns to
+        Active. With Failed excluded here, that assessment could never be made,
+        and DL-4 only ever passed by accepting the evidence the failing test had
+        just contradicted. A rating on a Failed deployment does not count toward
+        any score: the scoring engine discards Failed deployments regardless.
+        """
+        return self.deployment_status in ("Active", "Degraded", "Failed")
 
     @property
     def is_read_only(self) -> bool:

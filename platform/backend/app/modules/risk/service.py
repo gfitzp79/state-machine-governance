@@ -213,6 +213,11 @@ class RiskService(LifecycleService[Risk]):
     # -- treatment decision -----------------------------------------------
 
     def set_treatment_decision(self, risk: Risk, data: dict[str, Any]) -> Risk:
+        # The treatment decision is the risk decision (codified-rules 2.1:
+        # the Risk_Owner owns it). Any signed-in user could set it, including
+        # the AppSec engineer and the treatment owner. Edits elsewhere are still
+        # unguarded by role; this is the one with the most at stake.
+        self.require_role("Risk_Analyst", "Risk_Owner", "GRC_Engineer", "CISO", "Admin")
         strategy = data.get("treatment_strategy")
         rating = risk.inherent_rating
 
@@ -245,7 +250,21 @@ class RiskService(LifecycleService[Risk]):
             # acceptance approved below the required seniority is not an
             # acceptance (codified-rules section 5.5, section 2.3).
             required = ScoringEngine.required_approver(rating)
-            approver_id = data.get("acceptance_approved_by") or risk.acceptance_approved_by
+            # The approver records the acceptance. Naming someone else used to
+            # be accepted, and the seniority check ran against the named person,
+            # so a risk could be accepted "by" a VP who had never seen it. Nor
+            # does a previous cycle's approver carry over: an acceptance is a
+            # decision made once, by someone, about this exposure.
+            named = data.get("acceptance_approved_by")
+            if named and named != self.actor_id:
+                raise Conflict(
+                    "An acceptance is recorded by the person approving it. Ask them "
+                    "to record this decision, or record it yourself if you hold "
+                    + str(required or "the required") + " seniority.",
+                    detail={"named_approver": named},
+                )
+            approver_id = self.actor_id
+            data["acceptance_approved_by"] = approver_id
             if required:
                 if not approver_id:
                     raise Conflict(
@@ -415,22 +434,94 @@ class RiskService(LifecycleService[Risk]):
         # The Phase 6 gate is the only thing that releases the residual lock.
         if result.gate == "GATE_RESIDUAL_VALIDATED":
             entity.residual_score_locked = False
-        if result.target in ("Preconditions", "Scoring") and result.source == "Monitoring":
-            entity.residual_score_locked = True
+        evaluation = result.as_dict()
+        if result.gate in ("GATE_REASSESSMENT", "GATE_REOPEN"):
+            evaluation["prior_cycle"] = self._open_new_cycle(entity)
         if result.gate == "GATE_CLOSURE":
             entity.closure_rationale = payload.get("reason") or entity.closure_rationale
 
-        self._record_history(entity, result.source, result.target, result.gate, result.as_dict())
+        self._record_history(entity, result.source, result.target, result.gate, evaluation)
+
+    def _open_new_cycle(self, risk: Risk) -> dict[str, Any]:
+        """Re-assessment and reopening start a fresh assessment cycle (OUT-5).
+
+        This has to happen here, before the invariants run. It used to live in
+        the reassessment cascade, which runs after them, so RINV-8 saw a scored
+        risk back in Phase 2 and rolled the transition back: no risk could be
+        re-assessed or reopened at all.
+
+        The previous cycle's scores stay on the record. A High risk under
+        re-assessment is still a High risk, and clearing them would drop it off
+        the heatmap and the appetite counts until it was re-scored. They are
+        frozen (scoring is refused before the Phase 2 gate) and the residual is
+        re-locked, so the reported figure falls back to inherent. Returns the
+        closing cycle's figures, which go into the append-only phase history.
+        """
+        prior = {
+            "cycle": risk.reassessment_count + 1,
+            "inherent": [risk.impact, risk.likelihood, risk.inherent_risk_score, risk.inherent_rating],
+            "residual": [risk.residual_impact, risk.residual_likelihood,
+                         risk.residual_risk_score, risk.residual_rating],
+            "treatment_strategy": risk.treatment_strategy,
+            "acceptance": {
+                "expiry": risk.acceptance_expiry_date.isoformat() if risk.acceptance_expiry_date else None,
+                "approved_by": risk.acceptance_approved_by,
+            },
+        }
+        risk.reassessment_count += 1
+        # The treatment decision belongs to the cycle that made it. Carrying an
+        # acceptance into a new cycle carried its expiry too: a closed risk with
+        # a lapsed acceptance could not be reopened, because RINV-11 found an
+        # expired acceptance with nobody escalating it. Phase 4 asks again.
+        risk.treatment_strategy = None
+        risk.acceptance_expiry_date = None
+        risk.acceptance_rationale = None
+        risk.acceptance_approved_by = None
+        risk.transfer_description = None
+        risk.avoidance_description = None
+        risk.partial_treatment_rationale = None
+        risk.control_framework_mapping = None
+        risk.inherent_locked = False
+        risk.residual_score_locked = True
+        risk.gate_mitigations_implemented = False
+        risk.gate_evidence_provided = False
+        risk.gate_effectiveness_confirmed = False
+        risk.gate_governance_approved = False
+        risk.gate_drift_tracked = False
+        risk.readout_confirmed = False
+        risk.readout_conducted_at = None
+        return prior
 
     def release_residual_lock(self, risk: Risk) -> Risk:
-        """Explicit unlock once all five conditions hold, without advancing phase.
-        Lets an analyst score residual and review it before committing the phase."""
-        conditions = risk.residual_gate_conditions
-        if not all(conditions.values()):
+        """Explicit unlock once the residual gate's conditions hold, without
+        advancing phase. Lets an analyst score residual and review it before
+        committing the phase.
+
+        It evaluates the gate's own preconditions, every one except "residual
+        score recorded", which is what unlocking is for. It used to read the five
+        stored booleans instead, so ticking five boxes unlocked the residual
+        while the treatment was still Proposed. The analyst could then record a
+        reduced score, and the risk reported it, although the Monitoring gate
+        would have refused the same risk because no treatment was complete.
+        Two doors to one score have to check the same things.
+        """
+        if risk.lifecycle_state != "Evidence_Residual":
+            raise Conflict("RINV-1: the residual is unlocked only in Evidence_Residual")
+        transition = RISK_MACHINE.lookup("Evidence_Residual", "Monitoring")
+        ctx = self.context()
+        checks = [
+            pre.evaluate(risk, ctx)
+            for pre in transition.preconditions
+            if pre.id != "RINV-1"
+        ]
+        failed = [c for c in checks if not c.passed]
+        if failed:
             raise Conflict(
-                "RINV-1: the residual validation gate has unmet conditions",
-                detail=conditions,
+                "RINV-1: the residual validation gate has unmet conditions: "
+                + "; ".join(c.id + " " + c.name for c in failed),
+                detail={"failed": [c.as_dict() for c in failed]},
             )
+        conditions = {c.id: c.passed for c in checks}
         risk.residual_score_locked = False
         self.session.flush()
         AuditTrail.record(
@@ -496,6 +587,9 @@ class RiskService(LifecycleService[Risk]):
             "residual_impact_rationale": risk.residual_impact_rationale,
             "residual_likelihood_rationale": risk.residual_likelihood_rationale,
             "acceptance_rationale": risk.acceptance_rationale,
+            # Who accepted the exposure. It was stored and never returned, so
+            # the interface could not show who had approved an acceptance.
+            "acceptance_approved_by": risk.acceptance_approved_by,
             "transfer_description": risk.transfer_description,
             "avoidance_description": risk.avoidance_description,
             "partial_treatment_rationale": risk.partial_treatment_rationale,

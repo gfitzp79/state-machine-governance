@@ -23,7 +23,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import validates, Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.core.governance import RATING_NAMES, TREATMENT_STRATEGIES, governance
@@ -240,6 +240,25 @@ class Risk(Base, UUIDPrimaryKey, Timestamped):
         if self.residual_score_locked or self.residual_rating is None:
             return self.inherent_rating
         return self.residual_rating
+
+    @validates("residual_score_locked")
+    def _clear_residual_on_lock(self, _key: str, locked: bool) -> bool:
+        """Locking the residual discards the residual score (RINV-1).
+
+        RINV-1 says a locked residual carries no score of its own. Every path
+        that locks it (a linked control failing, a re-assessment, an acceptance
+        lapsing) used to flip the flag and leave the old score in place, so the
+        record violated RINV-1 from that moment and every later write to the
+        risk was refused: it could not be closed, re-assessed or edited. The rule
+        lives here so no caller can lock without clearing. The score was audited
+        when it was recorded, and the reported figure while locked is inherent.
+        """
+        if locked and self.residual_score_locked is False:
+            self.residual_impact = None
+            self.residual_likelihood = None
+            self.residual_risk_score = None
+            self.residual_rating = None
+        return locked
 
     @property
     def residual_gate_conditions(self) -> dict[str, bool]:

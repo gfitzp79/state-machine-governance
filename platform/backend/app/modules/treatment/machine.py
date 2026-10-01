@@ -155,6 +155,7 @@ TREATMENT_MACHINE = StateMachine(
                     "Cancellation reason recorded",
                     lambda t, c: bool(c.payload.get("reason")),
                     "Record why the treatment is being cancelled.",
+                    requires_input="reason",
                 ),
                 Precondition(
                     "GATE_TREATMENT_CANCELLED.2",

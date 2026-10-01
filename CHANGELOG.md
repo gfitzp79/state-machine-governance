@@ -13,6 +13,72 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed: what a business found by using the platform end to end
+
+The enforcement suite tests each rule in isolation against seed data. This
+round drove a mid-sized company through the platform instead: a new customer
+portal registered, threat modelled, controlled, its risk promoted, treated,
+scored, accepted, closed and reopened, its policy drafted, revised and
+excepted, its control failed and repaired. Every object was created from
+nothing by the role whose job it is. 187 of 205 steps behaved; these did not.
+
+**Lifecycles that could not complete**
+
+- **No risk could be re-assessed or reopened.** The new assessment cycle was
+  opened by a cascade, which runs after the invariants, so RINV-8 saw a scored
+  risk back in Phase 2 and rolled the transition back. The cycle now opens
+  before the invariants run. The previous cycle's scores stay visible, frozen,
+  so a High risk under re-assessment does not drop off the heatmap, and they
+  are written into the phase history. The treatment decision belongs to the
+  cycle that made it and is asked for again.
+- **A risk whose control failed could never be written to again.** Locking the
+  residual left the old residual score in place, which RINV-1 forbids, so every
+  later write was refused: the risk could not be closed, re-assessed or edited.
+  Locking the residual now discards the residual score, at every call site.
+- **Seven transitions could not be fired from the interface.** Closing,
+  reopening and re-assessing a risk, deprecating and abandoning a threat model,
+  cancelling a treatment, revising a policy: each is satisfied by a reason given
+  when firing, and the gate panel only offered the reason box once the gate had
+  already passed. Gates now report `inputs_needed`, and the panel asks. Four
+  more gates read a rationale only from the record, with no field for it in the
+  interface (suspending an activity, decommissioning a deployment, redesigning
+  a failed control, rejecting an exception); they now take the reason given
+  and keep it.
+- **A failed control deployment could not honestly recover.** DL-4 requires a
+  CE re-assessment before Failed returns to Active, and DL-2 forbade assessing
+  CE on a Failed deployment. The gate passed anyway, on the evidence held
+  before the failure. DL-2 now includes Failed and DL-4 requires an assessment
+  recorded after the failing test (`codified-rules` 2.2, `state-transitions` 2.3).
+
+**Approvals that nobody gave** (new rule ROLE-4: an approval is recorded by the
+person giving it)
+
+- The policy owner could record the CISO's approval of their own policy; the
+  endpoint checked the named person's role, not the caller's.
+- An analyst could accept a risk "on behalf of" a VP who never saw it.
+- A treatment owner could approve their own treatment, and their own deadline
+  extension, if the request was assigned to someone else. A decision could be
+  overwritten with no trace, and decided through another treatment's URL.
+- Exception approvals recorded no approver, and the requester could write any
+  approver's id onto their own exception.
+- Any signed-in user could set a risk's treatment decision.
+
+**Records that did not say what happened**
+
+- The residual unlock read five ticked booleans while the Monitoring gate read
+  the treatments. Five ticks unlocked the residual and the risk reported the
+  reduced score while its only treatment was still Proposed. The unlock now
+  evaluates the gate's own preconditions.
+- An expired exception's audit record said the CISO had been notified. Nobody
+  was. The CISO, the policy owner and the requester now are. The expiry
+  reminder reaches the policy owner as well as the requester (PE-4).
+- A threat scenario could be filed against another model's component.
+- The API's own log was switched off at boot by Alembic's `fileConfig`, so
+  every warning after startup, constraint violations included, went nowhere.
+  Foreign key violations now name the constraint.
+
+205 enforcement tests (from 177); the 28 new ones are the regressions above.
+
 ### Added: a risk declares the assets it concerns (RINV-14)
 
 Found by reading the scoring output rather than the code. A control deployed on

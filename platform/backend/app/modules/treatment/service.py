@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from app.core.errors import Conflict
+from app.core.errors import Conflict, NotFound
 from app.core.model_base import utcnow
 from app.core.service import LifecycleService
+from app.engine import AuditTrail
 from app.modules.treatment.machine import TREATMENT_MACHINE
 from app.modules.treatment.models import Treatment, TreatmentApproval, TreatmentCheckin
 
@@ -97,25 +98,70 @@ class TreatmentService(LifecycleService[Treatment]):
         )
         self.session.add(approval)
         self.session.commit()
+        # Without this the response lists the treatment's approvals as they
+        # were before the request, so the caller cannot find the id it needs.
+        self.session.refresh(treatment)
         return approval
 
     def decide_approval(
-        self, approval_id: str, decision: str, notes: str | None
+        self, approval_id: str, decision: str, notes: str | None,
+        treatment: Treatment | None = None,
     ) -> TreatmentApproval:
+        """Who may decide, and only once.
+
+        The only check used to be that the decider was not the requester. The
+        treatment owner could therefore approve a request assigned to the risk
+        owner, which satisfies the approval gate on their own work and can
+        extend their own deadline. A decision could also be overwritten with no
+        trace, and an approval id from one treatment could be decided through
+        another treatment's URL.
+        """
         approval = self.session.get(TreatmentApproval, approval_id)
-        if approval is None:
-            raise Conflict("approval request not found")
+        if approval is None or (treatment is not None and approval.treatment_id != treatment.id):
+            raise NotFound("approval request not found on this treatment")
+        if decision not in ("Approved", "Rejected"):
+            raise Conflict("decision must be Approved or Rejected")
+        if approval.decision not in (None, "", "Pending"):
+            raise Conflict(
+                "This request was already decided (" + approval.decision + "). "
+                "Raise a new request rather than changing a recorded decision."
+            )
         if approval.requested_by == self.actor_id:
             raise Conflict("SEP-4: the requester cannot approve their own request")
+        owner = self.session.get(Treatment, approval.treatment_id)
+        if owner is not None and owner.treatment_owner_id == self.actor_id:
+            raise Conflict(
+                "SEP-2: the treatment owner cannot decide approvals on their own treatment"
+            )
+        senior = any(r in ("CISO", "Admin") for r in self.actor_roles)
+        if approval.assigned_to and approval.assigned_to != self.actor_id and not senior:
+            raise Conflict("This request is assigned to someone else to decide")
+        if not approval.assigned_to and not (senior or "Risk_Owner" in self.actor_roles):
+            raise Conflict("An unassigned request is decided by a Risk Owner, CISO or Admin")
         approval.decision = decision
         approval.decision_by = self.actor_id
         approval.decision_at = utcnow()
         approval.decision_notes = notes
 
         if decision == "Approved" and approval.proposed_new_date:
-            treatment = self.session.get(Treatment, approval.treatment_id)
-            if treatment is not None:
-                treatment.target_date = approval.proposed_new_date
+            target = self.session.get(Treatment, approval.treatment_id)
+            if target is not None:
+                target.target_date = approval.proposed_new_date
+        AuditTrail.record(
+            self.session,
+            actor_id=self.actor_id,
+            entity_type="treatment",
+            entity_id=approval.treatment_id,
+            action="APPROVAL_DECIDED",
+            changed_fields={
+                "approval_id": approval.id,
+                "approval_type": approval.approval_type,
+                "decision": decision,
+                "proposed_new_date": (
+                    approval.proposed_new_date.isoformat() if approval.proposed_new_date else None
+                ),
+            },
+        )
         self.session.commit()
         return approval
 

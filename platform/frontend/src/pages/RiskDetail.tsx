@@ -876,7 +876,7 @@ function TreatmentDecisionForm({
   const [strategy, setStrategy] = useState(risk.treatment_strategy ?? 'Mitigate')
   const [expiry, setExpiry] = useState(risk.acceptance_expiry_date ?? '')
   const [rationale, setRationale] = useState(risk.acceptance_rationale ?? '')
-  const [approver, setApprover] = useState(risk.acceptance_approved_by ?? '')
+  const me = getStoredUser()
   const [mapping, setMapping] = useState(risk.control_framework_mapping ?? '')
   const [transfer, setTransfer] = useState(risk.transfer_description ?? '')
   const [avoid, setAvoid] = useState(risk.avoidance_description ?? '')
@@ -952,15 +952,19 @@ function TreatmentDecisionForm({
               onChange={(e) => setRationale(e.target.value)}
             />
           </Field>
-          <Field label="Approved by">
-            <select className="field" value={approver} onChange={(e) => setApprover(e.target.value)}>
-              <option value="">Select approver</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name} — {u.seniority}
-                </option>
-              ))}
-            </select>
+          <Field
+            label="Approved by"
+            hint="An acceptance is recorded by the person approving it. The rating sets the seniority required."
+          >
+            <p className="field bg-surface-sunken text-ink-muted">
+              {risk.acceptance_approved_by
+                ? (users.find((u) => u.id === risk.acceptance_approved_by)?.full_name ??
+                    'Recorded approver') +
+                  ' (recorded). Recording again records you instead.'
+                : me
+                  ? me.full_name + ', ' + me.seniority
+                  : 'You'}
+            </p>
           </Field>
         </div>
       )}
@@ -997,7 +1001,6 @@ function TreatmentDecisionForm({
             treatment_strategy: strategy,
             acceptance_expiry_date: strategy === 'Accept' ? expiry || null : null,
             acceptance_rationale: rationale || null,
-            acceptance_approved_by: approver || null,
             control_framework_mapping: mapping || null,
             transfer_description: transfer || null,
             avoidance_description: avoid || null,

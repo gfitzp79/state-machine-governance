@@ -187,6 +187,7 @@ POLICY_MACHINE = StateMachine(
                     lambda p, c: bool(c.payload.get("reason") or p.change_summary),
                     "Record what triggered the revision: schedule, audit finding, "
                     "regulatory change, risk event, or exception volume.",
+                    requires_input="reason",
                 ),
             ),
             cascades=("policy.revision_opened",),
@@ -306,8 +307,9 @@ POLICY_EXCEPTION_MACHINE = StateMachine(
                 Precondition(
                     "PE-6",
                     "Rejection rationale documented",
-                    lambda e, c: bool(e.rejection_rationale),
+                    lambda e, c: bool(e.rejection_rationale or str(c.payload.get("reason") or "").strip()),
                     "Record why the exception was refused.",
+                    requires_input="reason",
                 ),
             ),
         ),

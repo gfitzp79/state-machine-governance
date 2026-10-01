@@ -44,8 +44,12 @@ def _first_ce_assessed(obj: ControlObjective, _ctx: TransitionContext) -> bool:
     )
 
 
-def _remediation_plan(obj: ControlObjective, _ctx: TransitionContext) -> bool:
-    return bool(obj.remediation_plan)
+def _reason(ctx: TransitionContext) -> bool:
+    return bool(str(ctx.payload.get("reason") or "").strip())
+
+
+def _remediation_plan(obj: ControlObjective, ctx: TransitionContext) -> bool:
+    return bool(obj.remediation_plan) or _reason(ctx)
 
 
 def _ce_reassessed_upward(obj: ControlObjective, ctx: TransitionContext) -> bool:
@@ -82,8 +86,8 @@ def _no_blocking_risks(obj: ControlObjective, ctx: TransitionContext) -> bool:
     return True
 
 
-def _deprecation_rationale(obj: ControlObjective, _ctx: TransitionContext) -> bool:
-    return bool(obj.deprecation_rationale)
+def _deprecation_rationale(obj: ControlObjective, ctx: TransitionContext) -> bool:
+    return bool(obj.deprecation_rationale) or _reason(ctx)
 
 
 CONTROL_OBJECTIVE_MACHINE = StateMachine(
@@ -160,6 +164,7 @@ CONTROL_OBJECTIVE_MACHINE = StateMachine(
                     "Remediation plan recorded",
                     _remediation_plan,
                     "Document what was remediated before returning the control to Operating.",
+                    requires_input="reason",
                 ),
                 Precondition(
                     "OL-2.2",
@@ -189,6 +194,7 @@ CONTROL_OBJECTIVE_MACHINE = StateMachine(
                     "Redesign rationale recorded",
                     _remediation_plan,
                     "Document why the control needs redesigning rather than repair.",
+                    requires_input="reason",
                 ),
             ),
         ),
@@ -227,6 +233,7 @@ CONTROL_OBJECTIVE_MACHINE = StateMachine(
                     "Retirement rationale documented",
                     _deprecation_rationale,
                     "Record why the control is being retired.",
+                    requires_input="reason",
                 ),
             ),
             cascades=("control.deprecated",),
@@ -281,8 +288,9 @@ CONTROL_ACTIVITY_MACHINE = StateMachine(
                 Precondition(
                     "AL-3",
                     "Suspension rationale documented",
-                    lambda a, c: bool(a.suspension_rationale),
+                    lambda a, c: bool(a.suspension_rationale) or _reason(c),
                     "Record why the activity is being suspended and what the impact is.",
+                    requires_input="reason",
                 ),
             ),
         ),
@@ -335,8 +343,33 @@ def _deployment_ce_assessed(dep: ControlDeployment, _ctx: TransitionContext) -> 
     return dep.ce_rating != "CE-Unvalidated" and bool(dep.ce_evidence_ref)
 
 
-def _remediation_evidence(dep: ControlDeployment, _ctx: TransitionContext) -> bool:
-    return bool(dep.ce_evidence_ref) and dep.ce_rating != "CE-Unvalidated"
+def _remediation_evidence(dep: ControlDeployment, ctx: TransitionContext) -> bool:
+    """DL-4: back to Active only on evidence gathered after the failure.
+
+    A failing test does not change the stored CE rating, so the deployment still
+    carried the CE-High and the evidence reference it had before it failed, and
+    this check used to pass on them: a control could fail its test and be put
+    straight back to Active on the evidence the test had just contradicted.
+    "Fresh" now means a CE assessment recorded after the most recent failing
+    test, read from the append-only audit trail.
+    """
+    if not dep.ce_evidence_ref or dep.ce_rating == "CE-Unvalidated":
+        return False
+    failed_at = max((t.tested_at for t in dep.tests if t.result == "Fail"), default=None)
+    if failed_at is None or ctx.session is None:
+        return True
+    from sqlalchemy import func, select
+
+    from app.modules.identity.models import AuditLog
+
+    assessed_at = ctx.session.execute(
+        select(func.max(AuditLog.created_at)).where(
+            AuditLog.entity_type == "control_deployment",
+            AuditLog.entity_id == dep.id,
+            AuditLog.action == "CE_ASSESSMENT",
+        )
+    ).scalar()
+    return assessed_at is not None and assessed_at > failed_at
 
 
 CONTROL_DEPLOYMENT_MACHINE = StateMachine(
@@ -408,8 +441,9 @@ CONTROL_DEPLOYMENT_MACHINE = StateMachine(
                     "DL-4",
                     "Remediation evidence and CE re-assessment recorded",
                     _remediation_evidence,
-                    "A failed deployment returns to Active only with fresh evidence and a "
-                    "CE rating above Unvalidated.",
+                    "Re-assess CE after the failing test, with an evidence reference and a "
+                    "rating above Unvalidated. The evidence held when the test failed does "
+                    "not count.",
                 ),
             ),
             cascades=("deployment.restored",),
@@ -424,9 +458,10 @@ CONTROL_DEPLOYMENT_MACHINE = StateMachine(
                 Precondition(
                     "DL-3",
                     "Decommission rationale documented",
-                    lambda d, c: bool(d.decommission_rationale),
+                    lambda d, c: bool(d.decommission_rationale) or _reason(c),
                     "Record why the control is being removed from this asset. "
                     "The deployment becomes read-only afterwards.",
+                    requires_input="reason",
                 ),
             ),
             cascades=("deployment.decommissioned",),

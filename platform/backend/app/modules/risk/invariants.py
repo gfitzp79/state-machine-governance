@@ -182,7 +182,14 @@ def _promotion_criteria_met(risk: Risk, _ctx) -> bool:
 
 # RINV-8 ------------------------------------------------------------------
 def _no_scoring_before_preconditions(risk: Risk, _ctx) -> bool:
-    if risk.phase_number >= 3:
+    """No score is written before the Phase 2 gate passes.
+
+    In a first cycle that means no score exists below Phase 3. In a
+    re-assessment the previous cycle's scores are still on the record, frozen,
+    and that is correct: the service refuses any new score until the
+    preconditions pass again, which is the rule this enforces.
+    """
+    if risk.phase_number >= 3 or risk.reassessment_count > 0:
         return True
     return risk.impact is None and risk.likelihood is None
 

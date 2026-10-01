@@ -55,7 +55,9 @@ class PolicyUpdate(BaseModel):
 
 
 class ApproveRequest(BaseModel):
-    approver_id: str
+    # Optional and, when given, must be the caller. Kept so existing clients
+    # that send their own id still work.
+    approver_id: str | None = None
 
 
 class LinkRequest(BaseModel):
@@ -83,8 +85,10 @@ class ExceptionUpdate(BaseModel):
     risk_statement: str | None = None
     compensating_controls: str | None = None
     expiry_date: date | None = None
-    approved_by: str | None = None
+    # approved_by is not here on purpose: it is set by the act of approving.
     rejection_rationale: str | None = None
+
+    model_config = {"extra": "forbid"}
 
 
 class StandardCreate(BaseModel):
@@ -162,7 +166,7 @@ def approve_policy(
 ) -> dict[str, Any]:
     svc = PolicyService(session, user.id, user.role_names)
     policy = svc.get(policy_id)
-    svc.approve(policy, payload.approver_id)
+    svc.approve(policy, payload.approver_id or user.id)
     return svc.detail(policy)
 
 

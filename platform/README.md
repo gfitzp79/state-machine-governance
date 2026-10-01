@@ -264,7 +264,7 @@ cascade and direct-SQL attempts to bypass the service layer.
 
 ```bash
 docker compose exec api python config_test.py     # 33 tests: the configuration layer
-docker compose exec api python smoke_test.py      # 177 tests: the enforcement layer
+docker compose exec api python smoke_test.py      # 205 tests: the enforcement layer
 ```
 
 `config_test.py` proves both halves of configurability: that invalid governance

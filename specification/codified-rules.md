@@ -1,6 +1,6 @@
 # GRC Codified Rules Engine: Unified Specification Template
 
-**Version:** 2.1-template | **License:** CC BY 4.0
+**Version:** 2.2-template | **License:** CC BY 4.0
 **Purpose:** Machine-parseable rule set for governance, risk, and compliance platforms. Covers the risk management lifecycle, control management hierarchy, and policy governance layer as a single integrated specification. Designed for organisations to adapt to their own frameworks, appetite statements, and regulatory obligations.
 
 > **How to use this document:** Replace all `[ORGANISATION]` placeholders and review every `[CUSTOMISE]` block against your own governance framework, regulatory requirements, and risk appetite. Parameters marked `RECOMMENDED` reflect industry best practice from ISO 27005, NIST RMF, NIST CSF, and SOC 2/COSO. SLA defaults are aligned to regulated financial services expectations. Adjust thresholds to match your operating environment.
@@ -147,7 +147,16 @@ RULE ROLE-2: an unassigned field is permitted. ROLE-1 governs who may be named,
 RULE ROLE-3: [CUSTOMISE] the platform administration role is accepted in any
              owner field, so a record whose owner has left can be reassigned.
              The audit trail records the administrator, not the role they stood in for
+RULE ROLE-4: an approval is recorded by the person giving it. A request that
+             names someone else as the approver is refused, not attributed
 ```
+
+**ROLE-4 is ROLE-1's other half.** ROLE-1 checks that the person named in an
+owner field holds the role. An approval field is different: it names the person
+who made a decision, and the only evidence that they made it is that they were
+the one who recorded it. A policy approval or a risk acceptance that any user
+can attribute to a CISO or a VP is an attestation about somebody else, which is
+the shape this specification exists to remove.
 
 **Why this is stated separately from §2.3.** Separation rules say who may *not*
 hold two roles at once. Ownership by severity says how senior an owner must be.
@@ -759,8 +768,10 @@ RULE AL-2: Draft activities CANNOT be linked to risk records
 DEPLOYMENT_STATES: Planned, Active, Degraded, Failed, Decommissioned
 
 RULE DL-1: Failed → trigger Failure propagation check on parent Objective
-RULE DL-2: CE ONLY editable when status = Active OR Degraded
+RULE DL-2: CE ONLY editable when status = Active, Degraded OR Failed
 RULE DL-3: Decommissioned deployments are READ-ONLY
+RULE DL-4: Failed -> Active REQUIRES a CE re-assessment recorded AFTER the
+           failing test. The evidence held when the test failed does not count
 ```
 
 ---
