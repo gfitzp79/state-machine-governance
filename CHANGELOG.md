@@ -20,7 +20,7 @@ round drove a mid-sized company through the platform instead: a new customer
 portal registered, threat modelled, controlled, its risk promoted, treated,
 scored, accepted, closed and reopened, its policy drafted, revised and
 excepted, its control failed and repaired. Every object was created from
-nothing by the role whose job it is. 187 of 205 steps behaved; these did not.
+nothing by the role whose job it is. 187 of 206 checked steps behaved; these did not.
 
 **Lifecycles that could not complete**
 
