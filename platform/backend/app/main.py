@@ -84,9 +84,12 @@ async def integrity_error_handler(_request: Request, exc: IntegrityError) -> JSO
     detail = str(getattr(exc, "orig", exc))
     constraint = None
     for token in detail.split('"'):
-        if token.startswith("ck_") or token.startswith("uq_"):
+        if token.startswith(("ck_", "uq_")) or token.endswith("_fkey"):
             constraint = token
             break
+    # A foreign key failure means the request named a record that does not
+    # exist. It used to come back with no constraint and a generic message.
+    missing_reference = bool(constraint and constraint.endswith("_fkey"))
 
     # The constraint name maps a database rejection back to a specification rule,
     # which is the useful half. The raw driver message is not returned: for a
@@ -97,7 +100,11 @@ async def integrity_error_handler(_request: Request, exc: IntegrityError) -> JSO
         status_code=409,
         content={
             "code": "constraint_violation",
-            "message": "A database constraint rejected this write.",
+            "message": (
+                "This write references a record that does not exist."
+                if missing_reference
+                else "A database constraint rejected this write."
+            ),
             "constraint": constraint,
         },
     )

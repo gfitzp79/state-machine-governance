@@ -147,15 +147,20 @@ def expire_policy_exceptions(session: Session, actor_id: str | None = None) -> d
             )
             expired.append(exc.reference)
         elif days <= governance.exception_expiry_warning_days:
-            AuditTrail.notify(
-                session,
-                recipient_id=exc.requested_by,
-                entity_type="policy_exception",
-                entity_id=exc.id,
-                event_type="exception_expiring",
-                title=exc.reference + " expires in " + str(days) + " days",
-                body="Renew or allow it to lapse. An unrenewed expiry is a governance gap.",
-            )
+            # PE-4 names the Policy_Owner and the requestor. Only the requestor
+            # was told, so the person accountable for the policy learned of an
+            # expiring deviation from it only once it had lapsed.
+            owner = exc.policy.policy_owner_id if exc.policy else None
+            for recipient in dict.fromkeys(r for r in (exc.requested_by, owner) if r):
+                AuditTrail.notify(
+                    session,
+                    recipient_id=recipient,
+                    entity_type="policy_exception",
+                    entity_id=exc.id,
+                    event_type="exception_expiring",
+                    title=exc.reference + " expires in " + str(days) + " days",
+                    body="Renew or allow it to lapse. An unrenewed expiry is a governance gap.",
+                )
             notified.append(exc.reference)
     return {"expired": expired, "notified": notified}
 

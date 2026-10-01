@@ -50,6 +50,21 @@ class ThreatModelService(LifecycleService[ThreatModel]):
         "exposure": "exposure_levels",
     }
 
+    def _own_component(self, tm: ThreatModel, component_id: str | None, field: str) -> None:
+        """A component referenced from this model must belong to this model.
+
+        Scenarios were accepted against another model's component. That broke
+        TINV-11, which counts scenarios per component to decide whether a
+        sensitive component was analysed, and it put one model's threats in
+        another model's context view. A missing id surfaced as an unnamed
+        database constraint rather than as a missing component.
+        """
+        if component_id is None:
+            return
+        component = self.session.get(ThreatComponent, component_id)
+        if component is None or component.threat_model_id != tm.id:
+            raise NotFound(field + " " + str(component_id) + " is not a component of this threat model")
+
     def _validate_component(self, data: dict[str, Any]) -> None:
         """Component attributes are configured taxonomy, so a value outside the
         organisation's model is refused with the file to change."""
@@ -74,6 +89,8 @@ class ThreatModelService(LifecycleService[ThreatModel]):
 
     def add_component(self, tm: ThreatModel, data: dict[str, Any]) -> ThreatComponent:
         self._validate_component(data)
+        self._own_component(tm, data.get("source_component_id"), "source_component_id")
+        self._own_component(tm, data.get("target_component_id"), "target_component_id")
         component = ThreatComponent(threat_model_id=tm.id, **data)
         self.session.add(component)
         self.session.flush()
@@ -103,6 +120,8 @@ class ThreatModelService(LifecycleService[ThreatModel]):
         if component is None or component.threat_model_id != tm.id:
             raise NotFound("component not found on this model")
         self._validate_component(data)
+        self._own_component(tm, data.get("source_component_id"), "source_component_id")
+        self._own_component(tm, data.get("target_component_id"), "target_component_id")
         before = {k: getattr(component, k, None) for k in data}
         for field, value in data.items():
             if hasattr(component, field):
@@ -148,6 +167,7 @@ class ThreatModelService(LifecycleService[ThreatModel]):
     # -- scenarios --------------------------------------------------------
 
     def add_scenario(self, tm: ThreatModel, data: dict[str, Any]) -> ThreatScenario:
+        self._own_component(tm, data.get("component_id"), "component_id")
         count = self.session.query(ThreatScenario).count()
         scenario = ThreatScenario(
             reference="THR-" + str(count + 1).zfill(3),
@@ -401,6 +421,8 @@ class ThreatModelService(LifecycleService[ThreatModel]):
             "status_rationale",
             "component_id",
         )
+        if data.get("component_id"):
+            self._own_component(scenario.model, data["component_id"], "component_id")
         before = {k: getattr(scenario, k, None) for k in data if k in editable}
         for field, value in data.items():
             if field in editable:

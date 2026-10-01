@@ -1,6 +1,6 @@
 # State Transitions Reference
 
-**Version:** 2.2-template | **License:** CC BY 4.0
+**Version:** 2.3-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §4-§5 (Risk and Treatment), §9 (Controls), §13 (Policy), §19-§20 (Threat)
 **Purpose:** Complete definition of every lifecycle state machine in the platform, including valid transitions, gate preconditions, blocking rules, and cascade behaviours. Designed for implementation teams to build phase-gate enforcement at the API layer.
 
@@ -205,7 +205,7 @@ When a Control_Objective transitions to `Failure`:
 
 ### CE Editability
 
-- CE fields (rating, evidence, assessed_by) are ONLY editable when `deployment_status = Active OR Degraded` (DL-2)
+- CE fields (rating, evidence, assessed_by) are ONLY editable when `deployment_status = Active, Degraded OR Failed` (DL-2)
 - Decommissioned deployments are fully READ-ONLY (DL-3)
 - CE on Planned deployments is not assessable (control is not yet operational)
 
@@ -215,6 +215,14 @@ When a Control_Objective transitions to `Failure`:
 > required one level up, at the objective's Implementation → Operating gate
 > (OL-4 and CINV-1): which is the right place for it, because that is where the
 > claim "this control is operating" is actually made.
+
+> **Failed is assessable, for the same reason in reverse.** Failed → Active
+> requires a CE re-assessment, and DL-2 used to exclude Failed, so the
+> re-assessment could never be made. The gate passed anyway, on the evidence the
+> deployment carried before it failed, which is the evidence the failing test had
+> just contradicted. DL-4 now requires an assessment recorded after the failing
+> test. A rating on a Failed deployment counts toward no score: the scoring engine
+> discards Failed deployments whatever their rating.
 
 ---
 

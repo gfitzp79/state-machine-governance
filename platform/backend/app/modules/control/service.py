@@ -39,6 +39,16 @@ class ObjectiveService(LifecycleService[ControlObjective]):
         "assurance_method": "assurance_methods",
     }
 
+    def on_transition(self, entity, result, transition, payload: dict) -> None:
+        """A reason given when firing fills the rationale the gate asked for."""
+        reason = str(payload.get("reason") or "").strip()
+        if not reason:
+            return
+        if result.gate in ("GATE_CONTROL_RECOVERED", "GATE_CONTROL_REDESIGN") and not entity.remediation_plan:
+            entity.remediation_plan = reason
+        if result.target == "Deprecated" and not entity.deprecation_rationale:
+            entity.deprecation_rationale = reason
+
     def create_objective(self, data: dict[str, Any]) -> ControlObjective:
         obj = ControlObjective(reference=self.next_reference(), **data)
         self.create(obj)
@@ -162,6 +172,11 @@ class ActivityService(LifecycleService[ControlActivity]):
     }
     reference_prefix = "ACT"
 
+    def on_transition(self, entity, result, transition, payload: dict) -> None:
+        reason = str(payload.get("reason") or "").strip()
+        if reason and result.target == "Suspended" and not entity.suspension_rationale:
+            entity.suspension_rationale = reason
+
     def create_activity(self, data: dict[str, Any]) -> ControlActivity:
         act = ControlActivity(reference=self.next_reference(), **data)
         self.create(act)
@@ -175,6 +190,11 @@ class DeploymentService(LifecycleService[ControlDeployment]):
     entity_name = "control_deployment"
     reference_prefix = "DEP"
     taxonomy = {"test_frequency": "test_frequencies"}
+
+    def on_transition(self, entity, result, transition, payload: dict) -> None:
+        reason = str(payload.get("reason") or "").strip()
+        if reason and result.target == "Decommissioned" and not entity.decommission_rationale:
+            entity.decommission_rationale = reason
 
     def create_deployment(self, data: dict[str, Any]) -> ControlDeployment:
         dep = ControlDeployment(reference=self.next_reference(), **data)
@@ -192,7 +212,7 @@ class DeploymentService(LifecycleService[ControlDeployment]):
         if not dep.ce_editable:
             raise Conflict(
                 "DL-2: control effectiveness is assessable only while the deployment is "
-                "Active or Degraded. This one is " + dep.deployment_status + "."
+                "Active, Degraded or Failed. This one is " + dep.deployment_status + "."
             )
         rating = data.get("ce_rating", dep.ce_rating)
         evidence = data.get("ce_evidence_ref", dep.ce_evidence_ref)

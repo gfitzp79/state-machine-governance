@@ -35,7 +35,11 @@ from app.modules.treatment import models as _treatment  # noqa: F401
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False: migrations run inside the API at boot,
+    # and the default disables every logger created before this line,
+    # including the application's own. Every warning the API logged after
+    # startup, constraint violations included, silently went nowhere.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 config.set_main_option("sqlalchemy.url", settings.database_url)
 

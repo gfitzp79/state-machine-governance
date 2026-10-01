@@ -42,9 +42,17 @@ class CheckResult:
     name: str
     passed: bool
     detail: str = ""
+    # Set on a failed check that the request itself can satisfy, such as a
+    # reason typed when the transition is fired. A gate report is evaluated
+    # with no request, so without this the check reads as a hard block and the
+    # interface never offers the field that would clear it.
+    satisfiable_by: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "passed": self.passed, "detail": self.detail}
+        out = {"id": self.id, "name": self.name, "passed": self.passed, "detail": self.detail}
+        if self.satisfiable_by:
+            out["satisfiable_by"] = self.satisfiable_by
+        return out
 
 
 @dataclass(frozen=True)
@@ -62,12 +70,21 @@ class GateResult:
     def failures(self) -> tuple[CheckResult, ...]:
         return tuple(c for c in self.checks if not c.passed)
 
+    @property
+    def inputs_needed(self) -> tuple[str, ...]:
+        """What the request must carry for this gate to pass, when that is the
+        only thing missing. Empty when any failure is a real block."""
+        if any(not c.passed and not c.satisfiable_by for c in self.checks):
+            return ()
+        return tuple(sorted({c.satisfiable_by for c in self.checks if not c.passed and c.satisfiable_by}))
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "gate": self.gate,
             "source": self.source,
             "target": self.target,
             "passed": self.passed,
+            "inputs_needed": list(self.inputs_needed),
             "checks": [c.as_dict() for c in self.checks],
         }
 
@@ -87,13 +104,22 @@ class Precondition:
     name: str
     predicate: Predicate
     detail: str = ""
+    # "reason" when the condition is met by a reason supplied with the
+    # transition request. Reported so the interface asks for it.
+    requires_input: str | None = None
 
     def evaluate(self, entity: Any, ctx: TransitionContext) -> CheckResult:
         try:
             passed = bool(self.predicate(entity, ctx))
         except Exception as exc:  # a precondition must never 500 the request
             return CheckResult(self.id, self.name, False, "evaluation error: " + str(exc))
-        return CheckResult(self.id, self.name, passed, "" if passed else self.detail)
+        return CheckResult(
+            self.id,
+            self.name,
+            passed,
+            "" if passed else self.detail,
+            None if passed else self.requires_input,
+        )
 
 
 @dataclass(frozen=True)

@@ -66,8 +66,19 @@ class PolicyService(LifecycleService[Policy]):
         return policy
 
     def approve(self, policy: Policy, approver_id: str) -> Policy:
-        """PINV-5 checked here so the failure message names the rule."""
+        """PINV-5 checked here so the failure message names the rule.
+
+        The approver records their own approval. This endpoint used to take
+        anyone's id and check that person's role, so the policy owner could put
+        the CISO's name on an approval the CISO never gave.
+        """
         from app.modules.identity.models import ROLE_LEVELS, User
+
+        if approver_id != self.actor_id:
+            raise Conflict(
+                "PINV-5: an approval is recorded by the approver. Ask a CISO to "
+                "approve this policy themselves."
+            )
 
         if approver_id == policy.policy_owner_id:
             raise Conflict(
@@ -204,6 +215,18 @@ class ExceptionService(LifecycleService[PolicyException]):
         self.create(exc)
         self.session.commit()
         return exc
+
+    def on_transition(self, entity: PolicyException, result, transition, payload: dict) -> None:
+        """Record who approved an exception, from the act of approving it.
+
+        approved_by was only ever set by a PATCH, so every exception approved
+        through the lifecycle was anonymous on the record, and the requester
+        could write any approver's id onto their own exception.
+        """
+        if result.target == "Approved":
+            entity.approved_by = self.actor_id
+        if result.target == "Rejected" and payload.get("reason") and not entity.rejection_rationale:
+            entity.rejection_rationale = payload["reason"]
 
     def detail(self, exc: PolicyException) -> dict[str, Any]:
         return {

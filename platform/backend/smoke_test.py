@@ -67,6 +67,21 @@ def find(rows, reference):
     return next(r for r in rows if r["reference"] == reference)
 
 
+
+_USERS_CACHE: dict = {}
+
+
+def find_user(owner_id: bool = False, ciso_id: bool = False) -> str:
+    """Ids of seed users the regression checks need, looked up once."""
+    if not _USERS_CACHE:
+        token = login("ciso@example.com")
+        _, users = call("GET", "/users", token=token)
+        for u in users:
+            _USERS_CACHE[u["email"]] = u["id"]
+    if owner_id:
+        return _USERS_CACHE["owner@example.com"]
+    return _USERS_CACHE["ciso@example.com"]
+
 def main() -> int:
     analyst = login("analyst@example.com")
     ciso = login("ciso@example.com")
@@ -143,6 +158,7 @@ def main() -> int:
     manager = next(u for u in all_users if u["seniority"] == "Manager")
 
     # RISK-002 is Moderate, which the shipped config requires a VP or above to accept.
+    # The approver records the acceptance themselves: the analyst is a Manager.
     status, body = call(
         "POST",
         "/risks/" + risk2["id"] + "/treatment-decision",
@@ -153,32 +169,21 @@ def main() -> int:
         },
         analyst,
     )
-    check("acceptance with no named approver is refused", status == 409, status)
+    check("an analyst below VP cannot record the acceptance", status == 409, status)
     check(
         "the refusal names the required seniority",
         "VP" in str(body.get("message", "")),
         body.get("message"),
     )
-
-    status, body = call(
-        "POST",
-        "/risks/" + risk2["id"] + "/treatment-decision",
-        {
-            "treatment_strategy": "Accept",
-            "acceptance_expiry_date": "2026-11-01",
-            "acceptance_rationale": "compensating detection in place pending TRT-002",
-            "acceptance_approved_by": manager["id"],
-        },
-        analyst,
-    )
-    check("approval below the required seniority is refused", status == 409, status)
     check(
         "the refusal names the actual seniority",
         "Manager" in str(body.get("message", "")),
         body.get("message"),
     )
 
-    section("A time-bound acceptance commits and is audited")
+    # The approver used to be a field in the analyst's request, and the seniority
+    # check ran against the named person, so a risk could be accepted "by" a VP
+    # who never saw it.
     status, body = call(
         "POST",
         "/risks/" + risk2["id"] + "/treatment-decision",
@@ -190,7 +195,28 @@ def main() -> int:
         },
         analyst,
     )
-    check("a Moderate risk can be accepted at VP", status == 200, (status, body.get("message")))
+    check("naming a VP as approver does not make the VP approve", status == 409, status)
+    check(
+        "the refusal says the approver records it",
+        "recorded by the person approving" in str(body.get("message", "")),
+        body.get("message"),
+    )
+
+    section("A time-bound acceptance commits and is audited")
+    vp_token = login(vp["email"])
+    status, body = call(
+        "POST",
+        "/risks/" + risk2["id"] + "/treatment-decision",
+        {
+            "treatment_strategy": "Accept",
+            "acceptance_expiry_date": "2026-11-01",
+            "acceptance_rationale": "compensating detection in place pending TRT-002",
+        },
+        vp_token,
+    )
+    check("a Moderate risk can be accepted by a VP, in person", status == 200, (status, body.get("message")))
+    check("the approver on the record is the VP who acted",
+          body.get("acceptance_approved_by") == vp["id"], body.get("acceptance_approved_by"))
     check(
         "the expiry is recorded",
         body.get("acceptance_expiry_date") == "2026-11-01",
@@ -1220,6 +1246,170 @@ def main() -> int:
         opened is not None and opened["passed"],
         opened,
     )
+
+    # -----------------------------------------------------------------
+    # Regressions from the end-to-end business scenarios (October 2026).
+    # Each of these passed the per-invariant checks above and failed only
+    # when the objects were driven through their lifecycles together.
+    # -----------------------------------------------------------------
+    owner = login("owner@example.com")
+    delivery = login("delivery@example.com")
+    policy_owner = login("policy@example.com")
+    _, risks_now = call("GET", "/risks", token=analyst)
+    r1 = find(risks_now, "RISK-001")
+    r2 = find(risks_now, "RISK-002")
+
+    section("A reason-gated transition says a reason will clear it")
+    _, gates = call("GET", "/risks/" + r1["id"] + "/gates", token=owner)
+    closing = next((g for g in gates if g["target"] == "Closed"), {})
+    check("the closure gate reports a reason as the missing input",
+          closing.get("inputs_needed") == ["reason"], closing.get("inputs_needed"))
+
+    section("A risk closes with the reason given, and reopens into a new cycle")
+    status, body = call("POST", "/risks/" + r1["id"] + "/transition",
+                        {"target": "Closed", "reason": "Phishing-resistant MFA now universal."}, owner)
+    check("the owner closes with a reason in the request", status == 200, (status, body.get("message")))
+    _, closed = call("GET", "/risks/" + r1["id"], token=analyst)
+    check("the reason is kept as the closure rationale",
+          closed.get("closure_rationale") == "Phishing-resistant MFA now universal.",
+          closed.get("closure_rationale"))
+    before_score = closed.get("inherent_risk_score")
+    status, body = call("POST", "/risks/" + r1["id"] + "/transition",
+                        {"target": "Preconditions", "reason": "Service accounts found still on TOTP."}, ciso)
+    check("the CISO reopens it (RINV-8 no longer refuses a scored risk)", status == 200,
+          (status, body.get("message")))
+    _, reopened = call("GET", "/risks/" + r1["id"], token=analyst)
+    check("a new cycle is open: inherent unlocked, residual locked",
+          reopened.get("inherent_locked") is False and reopened.get("residual_score_locked") is True,
+          {k: reopened.get(k) for k in ("inherent_locked", "residual_score_locked")})
+    check("the last cycle's score stays visible while it is re-assessed",
+          reopened.get("inherent_risk_score") == before_score, reopened.get("inherent_risk_score"))
+    status, body = call("POST", "/risks/" + r1["id"] + "/score/inherent", {
+        "impact": 5, "likelihood": 3, "impact_justification": "x", "likelihood_justification": "x"}, analyst)
+    check("scoring is still refused before the Phase 2 gate", status == 409, status)
+    # CTL-001 failed earlier in this run, so the new cycle must not reach
+    # scoring on it: re-assessment re-runs the preconditions, not just the score.
+    status, body = call("POST", "/risks/" + r1["id"] + "/transition", {"target": "Scoring"}, analyst)
+    check("the new cycle re-runs its preconditions (CTL-001 is in Failure)",
+          status == 409 and "RINV-8.4" in str(body.get("message")), (status, body.get("message")))
+    _, hist = call("GET", "/risks/" + r1["id"], token=analyst)
+    prior = [h for h in hist.get("history", []) if (h.get("evaluation") or {}).get("prior_cycle")]
+    check("the closing cycle's scores are kept in the phase history", bool(prior),
+          [h.get("gate") for h in hist.get("history", [])][-3:])
+
+    section("Only risk roles set the risk decision")
+    r3 = find(risks_now, "RISK-003")
+    status, body = call("POST", "/risks/" + r3["id"] + "/treatment-decision",
+                        {"treatment_strategy": "Avoid", "avoidance_description": "x"}, appsec)
+    check("an AppSec engineer cannot set a risk's treatment decision", status == 409, status)
+
+    section("The residual unlock reads the same records as the residual gate")
+    call("PATCH", "/risks/" + r2["id"], {
+        "gate_mitigations_implemented": True, "gate_evidence_provided": True,
+        "gate_effectiveness_confirmed": True, "gate_governance_approved": True,
+        "gate_drift_tracked": True, "evidence_ref": "EV-1"}, analyst)
+    status, body = call("POST", "/risks/" + r2["id"] + "/residual/unlock", None, analyst)
+    check("five ticks do not unlock the residual while a treatment is In_Progress",
+          status == 409 and "RESIDUAL.1" in str(body.get("message")), (status, body.get("message")))
+
+    section("A treatment approval is decided once, by someone entitled to")
+    _, trts = call("GET", "/treatments", token=analyst)
+    t2 = find(trts, "TRT-002")
+    _, det = call("POST", "/treatments/" + t2["id"] + "/approvals",
+                  {"approval_type": "date_extension", "assigned_to": find_user(owner_id=True),
+                   "proposed_new_date": "2027-01-15"}, analyst)
+    aid = (det.get("approvals") or [{}])[-1].get("id")
+    check("the new request is in the response", bool(aid), det.get("approvals"))
+    status, body = call("POST", "/treatments/" + t2["id"] + "/approvals/" + str(aid) + "/decide",
+                        {"decision": "Approved"}, delivery)
+    check("the treatment owner cannot approve their own extension", status == 409, (status, body.get("message")))
+    t3 = find(trts, "TRT-003")
+    status, body = call("POST", "/treatments/" + t3["id"] + "/approvals/" + str(aid) + "/decide",
+                        {"decision": "Approved"}, owner)
+    check("an approval cannot be decided through another treatment", status == 404, status)
+    status, body = call("POST", "/treatments/" + t2["id"] + "/approvals/" + str(aid) + "/decide",
+                        {"decision": "Approved", "notes": "One month."}, owner)
+    check("the assigned approver decides it", status == 200, (status, body.get("message")))
+    status, body = call("POST", "/treatments/" + t2["id"] + "/approvals/" + str(aid) + "/decide",
+                        {"decision": "Rejected"}, ciso)
+    check("a recorded decision cannot be overwritten", status == 409, status)
+
+    section("An approval is recorded by the approver")
+    _, pols = call("GET", "/policies", token=analyst)
+    draft = next((x for x in pols if x["lifecycle_state"] in ("Draft", "Under_Review")), None)
+    if draft:
+        status, body = call("POST", "/policies/" + draft["id"] + "/approve",
+                            {"approver_id": find_user(ciso_id=True)}, policy_owner)
+        check("the policy owner cannot put the CISO's name on an approval", status == 409, status)
+
+    status, exc = call("POST", "/exceptions", {
+        "policy_id": pols[0]["id"], "title": "Regression: approver recorded",
+        "business_justification": "Test.", "risk_statement": "Regression exception.",
+        "compensating_controls": "None needed.",
+        "expiry_date": "2026-12-31"}, analyst)
+    eid = exc.get("id")
+    status, body = call("PATCH", "/exceptions/" + eid, {"approved_by": find_user(ciso_id=True)}, analyst)
+    check("approved_by cannot be written by PATCH", status == 422, status)
+    status, body = call("POST", "/exceptions/" + eid + "/transition", {"target": "Approved"}, ciso)
+    check("the exception is approved", status == 200, (status, body.get("message")))
+    _, exc = call("GET", "/exceptions/" + eid, token=ciso)
+    check("the approver on the record is the CISO who approved it",
+          exc.get("approved_by") == find_user(ciso_id=True), exc.get("approved_by"))
+
+    section("An expired exception notifies the people PE-5 names")
+    from app.core.db import SessionLocal
+    from sqlalchemy import text
+
+    session = SessionLocal()
+    try:
+        session.execute(text("UPDATE policy_exceptions SET expiry_date = CURRENT_DATE - 1 WHERE id = :i"),
+                        {"i": eid})
+        session.commit()
+    finally:
+        session.close()
+    call("POST", "/engine/jobs/run", None, ciso)
+    _, notes = call("GET", "/notifications", token=ciso)
+    check("the CISO is notified of the expiry",
+          any(exc["reference"] in (n.get("title") or "") and "expired" in (n.get("title") or "")
+              for n in notes), [n.get("title") for n in notes][:5])
+
+    section("DL-4: a failed deployment returns only on evidence gathered after the failure")
+    _, ctls = call("GET", "/controls", token=analyst)
+    ctl1 = find(ctls, "CTL-001")
+    _, cdet = call("GET", "/controls/" + ctl1["id"], token=control_owner)
+    dep1 = next(d for a in cdet.get("activities", []) for d in a.get("deployments", [])
+                if d.get("reference") == "DEP-001")
+    call("POST", "/controls/deployments/" + dep1["id"] + "/tests",
+         {"result": "Fail", "evidence_ref": "T-FAIL", "notes": "regression"}, control_owner)
+    status, body = call("POST", "/controls/deployments/" + dep1["id"] + "/transition",
+                        {"target": "Active"}, control_owner)
+    check("the evidence held when it failed does not bring it back", status == 409 and "DL-4" in str(body),
+          (status, body.get("message")))
+    call("POST", "/controls/deployments/" + dep1["id"] + "/ce",
+         {"ce_rating": "CE-Medium", "ce_evidence_ref": "EV-AFTER-FIX"}, control_owner)
+    status, body = call("POST", "/controls/deployments/" + dep1["id"] + "/transition",
+                        {"target": "Active"}, control_owner)
+    check("a CE assessment after the failure does", status == 200, (status, body.get("message")))
+
+    section("Threat components belong to their own model")
+    _, tms = call("GET", "/threat-models", token=appsec)
+    status, other = call("POST", "/threat-models", {
+        "title": "Regression model", "attack_surface_id": tms[0]["attack_surface_id"],
+        "system_owner_id": tms[0]["system_owner_id"], "methodology": "STRIDE"}, appsec)
+    _, first = call("GET", "/threat-models/" + tms[0]["id"], token=appsec)
+    foreign = first["components"][0]["id"]
+    call("POST", "/threat-models/" + other["id"] + "/transition", {"target": "Decomposition"}, appsec)
+    status, body = call("POST", "/threat-models/" + other["id"] + "/scenarios", {
+        "component_id": foreign, "category": "Tampering", "description": "cross-model",
+        "inherent_severity": "Low"}, appsec)
+    check("a scenario cannot use another model's component", status == 404, status)
+    _, gates = call("GET", "/threat-models/" + other["id"], token=appsec)
+    abandon = next((g for g in gates.get("gates", []) if g["target"] == "Abandoned"), {})
+    check("abandonment reports a reason as the missing input",
+          abandon.get("inputs_needed") == ["reason"], abandon.get("inputs_needed"))
+    status, body = call("POST", "/threat-models/" + other["id"] + "/transition",
+                        {"target": "Abandoned", "reason": "Regression model."}, appsec)
+    check("and is abandoned with the reason given", status == 200, (status, body.get("message")))
 
     section("Every route answers")
     # /api/controls/reference-data raised a NameError for three commits. Nothing

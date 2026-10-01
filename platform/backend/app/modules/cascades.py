@@ -557,13 +557,43 @@ def exception_expired(event: CascadeEvent) -> None:
     exception = event.session.get(PolicyException, event.entity_id)
     if exception is None:
         return
+    from sqlalchemy import select
+
+    from app.modules.identity.models import User, UserRole
+
     policy = event.session.get(Policy, exception.policy_id)
     if policy is not None:
         policy.exception_count = policy.active_exception_count
+
+    # This record used to say the CISO had been notified, and nothing notified
+    # anyone: the audit trail asserted an action that never happened. The
+    # recipients are now the people PE-5 names, and the record lists them.
+    cisos = event.session.execute(
+        select(User.id).join(UserRole, UserRole.user_id == User.id).where(UserRole.role == "CISO")
+    ).scalars().all()
+    recipients = list(dict.fromkeys(
+        [*cisos, getattr(policy, "policy_owner_id", None), exception.requested_by]
+    ))
+    recipients = [r for r in recipients if r]
+    for recipient in recipients:
+        AuditTrail.notify(
+            event.session,
+            recipient_id=recipient,
+            entity_type="policy_exception",
+            entity_id=exception.id,
+            event_type="exception_expired",
+            title=exception.reference + " expired without renewal",
+            body=(
+                "An exception to " + (policy.reference if policy else "a policy")
+                + " lapsed on " + exception.expiry_date.isoformat()
+                + ". The deviation it covered is now a governance gap (PE-5)."
+            ),
+        )
     event.record(
         "policy_exception",
         exception.id,
-        "Exception expired; governance gap flagged and CISO notified",
+        "Exception expired; governance gap raised with "
+        + str(len(cisos)) + " CISO(s), the policy owner and the requester",
         invariant="PE-5",
     )
 
@@ -696,16 +726,9 @@ def risk_reassessment_started(event: CascadeEvent) -> None:
     risk = event.session.get(Risk, event.entity_id)
     if risk is None:
         return
-    risk.reassessment_count += 1
-    risk.inherent_locked = False
-    risk.residual_score_locked = True
-    # A new cycle re-opens the residual gate from scratch.
-    risk.gate_mitigations_implemented = False
-    risk.gate_evidence_provided = False
-    risk.gate_effectiveness_confirmed = False
-    risk.gate_governance_approved = False
-    risk.gate_drift_tracked = False
-    risk.readout_confirmed = False
+    # The cycle itself is opened by RiskService._open_new_cycle, before the
+    # invariants run. Opening it here, after them, is what made re-assessment
+    # impossible: RINV-8 refused the transition before this handler ran.
     event.record(
         "risk",
         risk.id,

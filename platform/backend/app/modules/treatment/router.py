@@ -180,7 +180,7 @@ def decide_approval(
 ) -> dict[str, Any]:
     svc = _svc(session, user)
     treatment = svc.get(treatment_id)
-    svc.decide_approval(approval_id, payload.decision, payload.notes)
+    svc.decide_approval(approval_id, payload.decision, payload.notes, treatment)
     return svc.detail(treatment)
 
 

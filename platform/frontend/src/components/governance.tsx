@@ -18,6 +18,8 @@ export interface CheckResult {
   name: string
   passed: boolean
   detail: string
+  /** Set on a failed check the request itself can satisfy, such as a reason. */
+  satisfiable_by?: string
 }
 
 export interface GateOption {
@@ -25,6 +27,10 @@ export interface GateOption {
   source: string
   target: string
   passed: boolean
+  /** What the request must carry for the gate to pass, when that is all that
+   *  is missing. A reason-gated transition is evaluated with no request, so it
+   *  reads as blocked until the panel asks for the reason. */
+  inputs_needed?: string[]
   checks: CheckResult[]
   roles: string[]
   role_permitted: boolean
@@ -60,10 +66,18 @@ export function GatePanel({
       {gates.map((gate) => {
         const expanded = open === gate.target
         const blockedByRole = !gate.role_permitted
-        const failures = gate.checks.filter((c) => !c.passed)
-        const canFire = gate.passed && gate.role_permitted
-        const needsReason = reasonPrompt?.(gate.target) ?? false
+        const reasonClears = (gate.inputs_needed ?? []).includes('reason')
+        const needsReason = reasonClears || (reasonPrompt?.(gate.target) ?? false)
         const reasonMissing = needsReason && !reason.trim()
+        // A check the reason will satisfy is not a block once the reason is
+        // typed. Before this, every transition gated only on a reason (closing
+        // or reopening a risk, deprecating a threat model, cancelling a
+        // treatment) was permanently disabled: the box that would clear it was
+        // only shown once the gate had already passed.
+        const failures = gate.checks.filter(
+          (c) => !c.passed && !(c.satisfiable_by === 'reason' && reason.trim()),
+        )
+        const canFire = gate.role_permitted && (gate.passed || (reasonClears && !reasonMissing))
 
         // Why the button is disabled, in the order the engine would refuse.
         // A greyed-out control that does not say why is the same failure as a
@@ -171,7 +185,7 @@ export function GatePanel({
                   </ul>
                 )}
 
-                {canFire && needsReason && (
+                {gate.role_permitted && needsReason && (gate.passed || reasonClears) && (
                   <input
                     className="field"
                     placeholder="Reason (required for this transition)"
