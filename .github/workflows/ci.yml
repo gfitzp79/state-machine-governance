@@ -156,13 +156,16 @@ jobs:
           # Distinct EVENTS, not decorators: an event may carry more than one
           # handler, and "28 cascade events" has to mean 28 things that can
           # happen rather than 30 functions that listen.
+          # Every cascades module, not only the shared one: a domain may
+          # register its own handlers beside its code (modules/review does).
           cascades = len(
-              set(
-                  re.findall(
-                      r'@cascades\.on\(\s*"([a-z_.]+)"',
-                      (modules / "cascades.py").read_text(encoding="utf-8"),
+              {
+                  event
+                  for path in [modules / "cascades.py", *modules.glob("*/cascades.py")]
+                  for event in re.findall(
+                      r'@cascades\.on\(\s*"([a-z_.]+)"', path.read_text(encoding="utf-8")
                   )
-              )
+              }
           )
 
           actual = {
