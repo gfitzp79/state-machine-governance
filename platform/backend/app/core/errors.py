@@ -61,6 +61,16 @@ class Forbidden(DomainError):
     code = "forbidden"
 
 
+class NotAuthenticated(Forbidden):
+    """The caller is not signed in, or their session no longer stands: no token,
+    an expired one, or an account deactivated since it was issued. Still a 403,
+    but with its own code, so the interface signs out on this and only this. A
+    refusal of something the signed-in user may not do is a plain Forbidden, and
+    signing them out for it would lose their work for no reason."""
+
+    code = "not_authenticated"
+
+
 class Conflict(DomainError):
     status_code = 409
     code = "conflict"

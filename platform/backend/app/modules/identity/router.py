@@ -5,12 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy import func, select
 
 from app.core.errors import Conflict, Forbidden, NotFound
 from app.core.governance import governance
-from app.core.security import CurrentUser, DbSession, create_token, hash_password, verify_password
+from app.core.security import CurrentUser, DbSession, create_token, verify_password
+from app.modules.identity.admin import MANAGERS, UserAdmin, accountabilities, traces
 from app.modules.identity.models import (
     APP_ROLES,
     ROLE_LEVELS,
@@ -39,10 +40,20 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    full_name: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str | None = Field(default=None, min_length=2, max_length=200)
     job_title: str | None = None
     seniority: str | None = None
     roles: list[str] | None = None
+
+
+class DeactivateRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class PasswordReset(BaseModel):
+    password: str = Field(min_length=8)
 
 
 def _user_dict(user: User) -> dict[str, Any]:
@@ -55,12 +66,15 @@ def _user_dict(user: User) -> dict[str, Any]:
         "roles": list(user.role_names),
         "role_level": user.max_role_level,
         "is_active": user.is_active,
+        "deactivated_at": user.deactivated_at,
     }
 
 
 @router.post("/auth/login")
 def login(payload: LoginRequest, session: DbSession) -> dict[str, Any]:
-    user = session.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
+    user = session.execute(
+        select(User).where(func.lower(User.email) == payload.email.strip().lower())
+    ).scalar_one_or_none()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise Forbidden("invalid email or password")
     if not user.is_active:
@@ -109,57 +123,64 @@ def list_users(
 
 @router.post("/users", status_code=201)
 def create_user(payload: UserCreate, session: DbSession, user: CurrentUser) -> dict[str, Any]:
-    if not user.has_role("Admin", "CISO"):
-        raise Forbidden("creating users requires Admin or CISO")
-    if session.execute(select(User).where(User.email == payload.email)).first():
-        raise Conflict("a user with that email already exists")
-    invalid = [r for r in payload.roles if r not in APP_ROLES]
-    if invalid:
-        raise Conflict("unknown roles: " + ", ".join(invalid))
-
-    created = User(
-        email=payload.email,
-        full_name=payload.full_name,
-        password_hash=hash_password(payload.password),
-        job_title=payload.job_title,
-        seniority=payload.seniority,
-    )
-    session.add(created)
-    session.flush()
-    for role in payload.roles:
-        session.add(UserRole(user_id=created.id, role=role))
+    created = UserAdmin(session, user).create(**payload.model_dump())
     session.commit()
-    session.refresh(created)
     return _user_dict(created)
+
+
+@router.get("/users/{user_id}")
+def get_user(user_id: str, session: DbSession, user: CurrentUser) -> dict[str, Any]:
+    """One account, with what it is accountable for. The accountability list is
+    what a deactivation or a role removal would be refused over (USR-3)."""
+    target = session.get(User, user_id)
+    if target is None:
+        raise NotFound("user not found")
+    body = _user_dict(target)
+    if user.has_role(*MANAGERS):
+        body["accountable_for"] = accountabilities(session, target.id)
+        body["deletable"] = not traces(session, target.id) and target.id != user.id
+    return body
 
 
 @router.patch("/users/{user_id}")
 def update_user(
     user_id: str, payload: UserUpdate, session: DbSession, user: CurrentUser
 ) -> dict[str, Any]:
-    if not user.has_role("Admin", "CISO"):
-        raise Forbidden("updating users requires Admin or CISO")
-    target = session.get(User, user_id)
-    if target is None:
-        raise NotFound("user not found")
-    if payload.full_name is not None:
-        target.full_name = payload.full_name
-    if payload.job_title is not None:
-        target.job_title = payload.job_title
-    if payload.seniority is not None:
-        target.seniority = payload.seniority
-    if payload.roles is not None:
-        invalid = [r for r in payload.roles if r not in APP_ROLES]
-        if invalid:
-            raise Conflict("unknown roles: " + ", ".join(invalid))
-        for existing in list(target.roles):
-            session.delete(existing)
-        session.flush()
-        for role in payload.roles:
-            session.add(UserRole(user_id=target.id, role=role))
+    target = UserAdmin(session, user).update(user_id, **payload.model_dump())
     session.commit()
-    session.refresh(target)
     return _user_dict(target)
+
+
+@router.post("/users/{user_id}/deactivate")
+def deactivate_user(
+    user_id: str, payload: DeactivateRequest, session: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    target = UserAdmin(session, user).deactivate(user_id, payload.reason)
+    session.commit()
+    return _user_dict(target)
+
+
+@router.post("/users/{user_id}/reactivate")
+def reactivate_user(user_id: str, session: DbSession, user: CurrentUser) -> dict[str, Any]:
+    target = UserAdmin(session, user).reactivate(user_id)
+    session.commit()
+    return _user_dict(target)
+
+
+@router.post("/users/{user_id}/password")
+def reset_password(
+    user_id: str, payload: PasswordReset, session: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    UserAdmin(session, user).reset_password(user_id, payload.password)
+    session.commit()
+    return {"ok": True}
+
+
+@router.delete("/users/{user_id}")
+def delete_user(user_id: str, session: DbSession, user: CurrentUser) -> dict[str, Any]:
+    summary = UserAdmin(session, user).delete(user_id)
+    session.commit()
+    return {"deleted": summary}
 
 
 @router.get("/roles")

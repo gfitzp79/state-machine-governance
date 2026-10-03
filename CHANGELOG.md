@@ -13,6 +13,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added: users and roles (USR-1 to USR-7)
+
+Users could be created and changed through the API, but there was no screen,
+no way to deactivate or remove anyone, and nothing to stop a change breaking the
+records that named them. Taking the Risk_Owner role from someone who owned open
+risks did not fail at the time. It failed later, on the next write to each of
+those risks, when RINV-15 found an owner without the role.
+
+**Users and roles** is a new page for Admin and CISO. It lets them:
+
+- create people and set their roles and seniority
+- edit people, reset passwords, deactivate (with a reason) and reactivate
+
+A role removal or deactivation is refused while the person is named on an open
+record that needs it. The refusal lists the records to reassign, and each
+account shows what it is accountable for.
+
+Deletion is only for an account that has left no trace. Anyone who acted, or
+whom a record or audit entry names, is deactivated instead, so their name stays
+on the history. Other safeguards:
+
+- Nobody changes their own roles or removes their own account.
+- Only an Admin grants or removes Admin.
+- The last active Admin cannot be removed.
+- Every change is audited, and passwords never reach the audit trail.
+- Emails are matched without regard to case.
+- Everyone else sees a read-only directory.
+
+The rules are `codified-rules` 2.5, §2.6. There are 40 new smoke tests, and the
+total is now 268.
+
+### Added: Settings, read-only
+
+A Settings page shows the operating model exactly as the running API loaded it
+from `governance.yml`: appetite bands, acceptance rules, control effectiveness,
+taxonomies, roles, edit permissions and escalation windows. It is read-only on
+purpose. These values change how the rules behave for every record, so changing
+one is a reviewed edit to the file and a restart. Editing them in the app would
+need its own approval step, and that is separate work.
+
+### Fixed: any refusal signed you out
+
+The interface cleared the session on every 403. That included refusals of
+something the signed-in user may not do, such as an edit PERM-1 denies, and
+the user lost their work. A missing, expired or revoked session now carries its
+own code, `not_authenticated`, and only that signs you out.
+
 ---
 
 ## [0.3.0] - Tested the way a business uses it

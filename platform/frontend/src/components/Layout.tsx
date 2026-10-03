@@ -12,8 +12,10 @@ import {
   Moon,
   ScrollText,
   ShieldAlert,
+  SlidersHorizontal,
   Sun,
   Target,
+  Users,
   Wrench,
   X,
 } from 'lucide-react'
@@ -32,7 +34,13 @@ const NAV = [
   { to: '/compliance', label: 'Compliance', icon: BookLock },
   { to: '/engine', label: 'Engine', icon: Cpu },
   { to: '/audit', label: 'Audit trail', icon: ScrollText },
+  { to: '/users', label: 'Users and roles', icon: Users, managers: true },
+  { to: '/settings', label: 'Settings', icon: SlidersHorizontal },
 ]
+
+// USR-1: user management is for these roles. Everyone else can still open the
+// directory by address; the page itself is read-only for them.
+const MANAGER_ROLES = ['Admin', 'CISO']
 
 function useTheme() {
   const [dark, setDark] = useState(() =>
@@ -112,7 +120,9 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-          {NAV.map(({ to, label: text, icon: Icon, end }) => (
+          {NAV.filter(
+            (item) => !item.managers || (user?.roles ?? []).some((r) => MANAGER_ROLES.includes(r)),
+          ).map(({ to, label: text, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
