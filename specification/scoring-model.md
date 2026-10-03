@@ -1,6 +1,6 @@
 # Risk Scoring Model
 
-**Version:** 2.0-template | **License:** CC BY 4.0
+**Version:** 2.1-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §4
 **Purpose:** Complete specification of the risk scoring model including the 5x5 matrix, impact and likelihood definitions, control effectiveness adjustment, residual scoring validation, and all FK dependencies that feed the calculation. Designed for implementation teams to build the scoring engine with full traceability from input to output.
 
@@ -20,6 +20,7 @@
 8. [Scoring Preconditions](#8-scoring-preconditions)
 9. [FK Dependencies](#9-fk-dependencies)
 10. [Scoring Engine Rules](#10-scoring-engine-rules)
+11. [What an Organisation Tunes](#11-what-an-organisation-tunes)
 
 ---
 
@@ -41,6 +42,8 @@ RESIDUAL_RISK_SCORE  = RESIDUAL_IMPACT × RESIDUAL_LIKELIHOOD   # Range: 1-25
 | 10-14 | **Moderate** | Above Appetite | Mitigate or accept. Acceptance requires VP+ approval, max 180 days. |
 | 5-9 | **Moderate-Low** | At Appetite | Monitor and review. Acceptance requires Director+ approval, max 360 days. |
 | 1-4 | **Low** | Within Appetite | Monitor only. Acceptance at Risk_Owner discretion, annual review. |
+
+Appetite status is enforced, not only reported. A risk whose reported rating is Above Appetite cannot be closed unless it is avoided ([codified-rules §1.2](./codified-rules.md#12-risk-appetite), APT-2).
 
 ### 5x5 Scoring Matrix
 
@@ -256,6 +259,16 @@ RULE RES-5: CE snapshot is recorded at assessment time
   The risk_controls join table stores ce_at_assessment. Subsequent CE
   changes flag the risk for re-evaluation but do NOT auto-update the
   residual score. Re-evaluation requires a deliberate scoring cycle.
+
+RULE RES-6: locking the residual CLEARS it
+  Whenever the residual is locked (a linked control fails, or a new cycle
+  opens), residual impact, likelihood, score and rating are emptied in the
+  same write. A locked record carrying the old residual is the state RINV-1
+  forbids, and a record in that state refuses every later write.
+
+RULE RES-7: re-assessment opens a new cycle (codified-rules §7.5)
+  The inherent score unlocks for re-scoring once the Phase 2 preconditions
+  pass again. The previous cycle's figures are kept in phase history.
 ```
 
 ---
@@ -418,7 +431,33 @@ Summary of all rules that the scoring engine must enforce, consolidated for impl
 | OUT-2 | Risks under treatment remain at inherent score (RES-2) | §6 |
 | OUT-3 | Planned/unvalidated controls excluded from calculation (RINV-9) | §5 |
 | OUT-4 | Critical risks cannot have treatment_decision = Accept (RINV-5) | §1 |
-| OUT-5 | Inherent scores immutable once risk advances past Phase 3 | §4 |
+| OUT-5 | Inherent scores immutable once risk advances past Phase 3, until a re-assessment opens a new cycle (RES-7) | §4 |
+| OUT-6 | Closure blocked while the reported rating is Above Appetite, unless avoided (APT-2) | §1 |
+
+---
+
+## 11. What an Organisation Tunes
+
+The scoring engine is deterministic, but it is not universal. These are the
+parameters this model expects an organisation to set, each marked `[CUSTOMISE]`
+in [codified-rules](./codified-rules.md). Changing one changes what the engine
+computes; it never changes whether a rule is enforced.
+
+| Parameter | Default in this model | Where it is defined |
+|---|---|---|
+| Rating band boundaries, and each band's appetite position | Five bands; Moderate and above are Above Appetite | §1, codified-rules §1.2 |
+| Re-evaluation cadence per rating | Critical 14 days to Low 180 days | codified-rules §5.4 |
+| Acceptance per rating: permitted, maximum days, approver seniority, renewals | Critical never; High 90 days at C-level | codified-rules §5.5 |
+| Likelihood reduction per CE rating | CE-High 2, CE-Medium 1, CE-Low 0 | §5 |
+| CE evidence expiry per test frequency | Continuous 2 months to Annual 24 months | §5 |
+| CE ceiling per automation level | Manual controls capped at CE-Medium | §5 |
+| Minimum owner seniority per rating | Critical owned at C-level | codified-rules §2.3 |
+
+What this model holds fixed, because changing it changes the model rather than
+tuning it: the 5x5 matrix, the multiplicative formula (CALC-1), the five rating
+names, and the four treatment strategies. An organisation that scores on a
+4x4 or 6x6 matrix, weights impact, or quantifies exposure in currency (FAIR) is
+adopting a different scoring model, and should write it down as one.
 
 ---
 

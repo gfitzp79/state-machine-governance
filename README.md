@@ -134,11 +134,11 @@ The reference implementation demonstrates state machine governance applied to a 
 
 ### Risk Lifecycle
 
-Multi-phase lifecycle with hard-coded gate enforcement. Critical risks cannot be accepted. Mitigate requires linked controls via FK. Residual gate requires all five conditions confirmed. GRC Engineer validation required before treatments advance. Full detail: [State Transitions](./specification/state-transitions.md).
+Multi-phase lifecycle with hard-coded gate enforcement. Critical risks cannot be accepted. Mitigate requires linked controls via FK. Residual gate requires all five conditions confirmed. GRC Engineer validation required before treatments advance. A risk above appetite cannot be closed by explaining it. Re-assessment and reopening start a new cycle and keep the old one in history. Full detail: [State Transitions](./specification/state-transitions.md).
 
 ### Cross-Entity Propagation
 
-Control failure freezes linked risk scores. Policy update flags mapped controls for re-assessment. Open issues above threshold prevent risk closure. Full cascade rules: [State Transitions §10](./specification/state-transitions.md#10-cross-lifecycle-cascade-rules).
+Control failure freezes linked risk scores. A repaired control opens an effectiveness review, and only a passing retest prompts the risks, threat scenarios and requirements that depend on it to re-assess. Policy update flags mapped controls for re-assessment. Open issues above threshold prevent risk closure. Full cascade rules: [State Transitions §10](./specification/state-transitions.md#10-cross-lifecycle-cascade-rules).
 
 ### Threat Management and Engineering Integration
 
@@ -147,6 +147,10 @@ Engineering state (STRIDE threat models) governed through an 8-state lifecycle b
 ### Compliance and Assurance
 
 Every requirement of an adopted framework carries exactly one position, which makes the register a Statement of Applicability rather than a list of intentions. Coverage is derived from the control layer rather than asserted: a requirement is Covered only while a satisfying objective is Operating with a live deployment inside the framework's scope (AINV-2), and partial coverage is a gap, never coverage (AINV-3). When the control beneath a position fails, the cascade returns the requirement to Gap without anyone revisiting the register (AINV-5). Full detail: [State Transitions §9](./specification/state-transitions.md#9-requirement-assessment-lifecycle-6-states).
+
+### Who May Change What
+
+Three separate checks. Each gate names who may fire it. Each kind of record names who may edit it: risks by the Risk Analyst, controls by the Control Analyst, assets by the Control Analyst or the asset's own system owner. And an approval is recorded by the person giving it, never attributed to someone else. Full detail: [Codified Rules §2.4-2.5](./specification/codified-rules.md#25-edit-permissions-mandatory).
 
 ### Agent Identity
 
@@ -172,7 +176,7 @@ Full specification: [architecture/ai-tool-lifecycle.md](./architecture/ai-tool-l
 
 Four phases: **Codify** (governance rules to machine-readable) → **Specify** (artefact set per module) → **Build** (strict prompt cycle) → **Validate and Pin** (pass: advance, fail: fix spec, rebuild).
 
-Core principle: fix the specification, not the code. Full detail: [/methodology](./methodology/).
+Core principle: fix the specification, not the code. Validate by running the business, not only the rules: the [business-scenario harness](./platform/e2e/scenarios) drives every object through its lifecycle as the person who owns it. Full detail: [/methodology](./methodology/).
 
 ---
 

@@ -1,6 +1,6 @@
 # GRC Platform Reference Architecture
 
-**Version:** 1.0-template | **License:** CC BY 4.0
+**Version:** 1.1-template | **License:** CC BY 4.0
 **Purpose:** Production-grade reference architecture for a state-machine governance platform. Covers the entity relationship model, risk lifecycle state machine, cascade propagation engine, RBAC model, deployment architecture, and integration roadmap. Designed for architecture teams to adapt to their own frameworks and infrastructure.
 
 > **How to use this document:** This architecture implements the rules defined in the [Codified Rules Specification](../specification/codified-rules.md). All schema constraints, lifecycle gates, and invariants referenced here trace back to that specification. Replace `[CUSTOMISE]` blocks with your organisation's specifics.
@@ -36,7 +36,7 @@ Core characteristics:
 - **Multi-phase risk lifecycle** with hard-coded gate enforcement at the API layer
 - **Real-time cascade engine** that propagates state changes from controls to risks automatically
 - **Framework invariants** enforced in code: no role can bypass them
-- **9-role RBAC model** with API-layer permission enforcement
+- **Role model on three axes**, enforced at the API layer: who may move a record, who may change it, and who may attest to it
 - **Cloud-portable** deployment: containerised services backed by managed PostgreSQL
 
 ### Framework Invariants: Enforced in Code, Not Policy
@@ -130,25 +130,40 @@ Real-time cascade behaviour across linked entities. Five cascade patterns enforc
 | Role | Permissions | Restrictions |
 |---|---|---|
 | **System_Admin** | Full platform configuration; user management; role assignment | Cannot override governance invariants |
-| **Risk_Analyst** | Create/edit risks; perform scoring; validate evidence; trigger escalations | Cannot approve acceptance or treatment decisions |
-| **Risk_Owner** | Approve treatments; approve acceptance; confirm readout | Cannot edit risk scores directly |
+| **Risk_Analyst** | The role that edits risk content: statement, scope, owners, scores, links (PERM-1). Performs scoring; validates evidence; triggers escalations | Cannot approve acceptance or treatment decisions |
+| **Risk_Owner** | Approve treatments; approve acceptance as themselves (ROLE-4); confirm readout as the named owner (RINV-6); close risks | Cannot edit risk content or scores (PERM-1) |
 | **GRC_Engineer** | Validate treatment feasibility; manage control mappings; configure automation; manage platform integrations | Cannot unilaterally approve risk acceptance (SEP-5) |
 | **Security_SME** | Provide threat context; review control design; advise on treatment architecture | Advisory only; cannot approve treatments or modify risk scores |
 | **Treatment_Owner** | Update treatment status; report blockers; request date extensions | Cannot modify risk records |
-| **Control_Owner** | Manage control objectives and activities; approve CE assessments | Cannot be Risk_Owner for linked risks (SEP-3) |
-| **Control_Operator** | Execute tests; record results; update deployment status | Cannot modify objective-level fields |
+| **Control_Owner** | Run the control and move it through its lifecycle; provide effectiveness evidence; confirm alignment | Cannot edit control records or rate CE (PERM-1); cannot be Risk_Owner for linked risks (SEP-3) |
+| **Control_Analyst** | The role that edits control records: objectives, activities, deployments, CE ratings; and assets, alongside each asset's own System_Owner (PERM-1). Completes effectiveness reviews after a repair (REV-2) | Cannot fire approval gates |
+| **Control_Operator** | Execute tests; record results (PERM-5); update deployment status | Cannot edit control records |
 | **Auditor** | Read-only access to all records, audit logs, and version history | No write access to any record |
+
+The table shows the roles with separation-of-duties consequences. A full deployment also defines System_Owner, Policy_Owner, AppSec_Lead, AppSec_Engineer, Risk_Stakeholder and CISO, each named in [codified-rules §2](../specification/codified-rules.md#2-roles-and-separation-of-duties).
 
 ### 5.2 Enforcement
 
-RBAC is enforced at the API layer, not the UI layer. Every API endpoint checks the caller's role against the required permission before processing the request. UI elements are hidden for convenience but security does not depend on UI enforcement.
+RBAC is enforced at the API layer, not the UI layer. UI elements are disabled for convenience but security does not depend on UI enforcement. Every write is checked on one of three axes, and they are deliberately separate:
 
 ```
-# Pseudocode: API-layer RBAC check
-@require_role(["Risk_Analyst", "Risk_Owner"])
-def update_risk_score(risk_id, payload):
+# Pseudocode: the three axes
+
+# 1. Transitions. Each gate names the roles that may fire it.
+TRANSITION Monitoring -> Closed  gate=GATE_CLOSURE  roles=[Risk_Owner, CISO, Admin]
+
+# 2. Edits. Content changes are checked against the edit permissions (PERM-1).
+@require_edit("risk")                  # Risk_Analyst, by default
+def update_risk(risk_id, payload):
     ...
+
+# 3. Attestations. An approval is recorded by the person giving it (ROLE-4).
+@require_role(approver_band_for(risk.rating))
+def accept_risk(risk_id, payload):
+    risk.acceptance_approved_by = caller.id   # never taken from the payload
 ```
+
+**Why the axes are separate.** A model that checks roles only on transitions leaves every gate exposed to whoever can write the fields the gate reads: if anyone signed in can link a control or set a score, the gate faithfully evaluates whatever they wrote. A model that checks only who holds a role, and not who is acting, lets one person record another's approval. Each axis closes a gap the other two leave open. See [codified-rules §2.4 and §2.5](../specification/codified-rules.md#25-edit-permissions-mandatory).
 
 ### 5.3 Authentication
 

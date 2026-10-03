@@ -1,6 +1,6 @@
 # State Transitions Reference
 
-**Version:** 2.4-template | **License:** CC BY 4.0
+**Version:** 2.5-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §4-§5 (Risk and Treatment), §9 (Controls), §13 (Policy), §19-§20 (Threat)
 **Purpose:** Complete definition of every lifecycle state machine in the platform, including valid transitions, gate preconditions, blocking rules, and cascade behaviours. Designed for implementation teams to build phase-gate enforcement at the API layer.
 
@@ -103,8 +103,9 @@
 |---|---|
 | **Active SLAs** | Re-evaluation cadence: Critical 14d, High 30d, Moderate 60d, Moderate-Low 90d. Acceptance expiry tracking. Treatment execution SLA tracking. |
 | **Re-assessment triggers** | Control CE degradation on linked control. Acceptance expiry reached. Treatment SLA breach. External trigger (incident, regulatory change, threat intelligence). |
-| **On re-assessment** | Risk returns to Phase 2 (Preconditions) or Phase 3 (Scoring) depending on the nature of the change. Full lifecycle re-traversal with updated data. |
-| **Closure (`GATE_CLOSURE`)** | Risk Owner, CISO or Admin. Closure rationale recorded (a reason given with the transition counts); treatment decision recorded; and the reported rating at or within appetite, **or** the activity avoided. A risk above appetite is reduced, accepted formally, or avoided: it is not closed by explaining it. |
+| **Re-assessment (`GATE_REASSESSMENT`)** | Risk_Analyst, GRC_Engineer, CISO or Admin. A reason is recorded, or supplied by a control-change or escalation flag. The risk returns to Phase 2 (Preconditions) and starts a new assessment cycle: the closing cycle is written to phase history, the treatment decision and acceptance are cleared, the residual re-locks, and the previous inherent score stays frozen until the preconditions pass again. See [codified-rules §7.5](./codified-rules.md#75-re-assessment-and-reopening-mandatory). |
+| **Closure (`GATE_CLOSURE`)** | Risk Owner, CISO or Admin. Closure rationale recorded (a reason given with the transition counts); treatment decision recorded; and the reported rating at or within appetite, **or** the activity avoided. A risk above appetite is reduced, accepted formally, or avoided: it is not closed by explaining it (codified-rules §1.2, APT-2). |
+| **Reopen (`GATE_REOPEN`)** | CISO or Admin, with a reason. Closed returns to Phase 2 and starts a new assessment cycle on the same terms as re-assessment (codified-rules §7.5). |
 
 ---
 
