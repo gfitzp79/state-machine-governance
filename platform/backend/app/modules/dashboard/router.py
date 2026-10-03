@@ -17,6 +17,7 @@ from app.core.governance import governance
 from app.core.security import CurrentUser, DbSession
 from app.engine import cascades, invariants
 from app.engine.scoring import RATING_BANDS, ScoringEngine
+from app.modules.compliance.machine import REQUIREMENT_ASSESSMENT_MACHINE
 from app.modules.control.machine import (
     CONTROL_ACTIVITY_MACHINE,
     CONTROL_DEPLOYMENT_MACHINE,
@@ -204,6 +205,7 @@ def machines(user: CurrentUser) -> dict[str, Any]:
         "treatment": TREATMENT_MACHINE.describe(),
         "threat_model": THREAT_MODEL_MACHINE.describe(),
         "control_review": CONTROL_REVIEW_MACHINE.describe(),
+        "requirement_assessment": REQUIREMENT_ASSESSMENT_MACHINE.describe(),
     }
 
 

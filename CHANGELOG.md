@@ -41,6 +41,15 @@ that the specification stands on its own without the platform beside it.
 - `invariants-catalogue` 2.3 explains why RINV-8 governs new scoring only;
   `data-model` adds `reassessment_count` and the `prior_cycle` snapshot.
 
+### Fixed: the Engine page left out the compliance lifecycle
+
+`/api/engine/machines` served nine machines and 55 transitions. The
+requirement assessment machine (12 transitions) was defined and enforced but
+never listed, so the page that says "if a rule is enforced, it is listed here"
+disagreed with the published 10 and 67. The smoke test had pinned the wrong
+figure; it now compares the endpoint with every machine and transition in the
+code.
+
 ### Added: edit permissions (PERM-1)
 
 Roles gated transitions and nothing else, so anyone signed in could rewrite a
