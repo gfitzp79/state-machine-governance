@@ -197,7 +197,7 @@ Adding a module means writing `models.py`, `machine.py`, `invariants.py`,
 
 ## What is implemented
 
-**9 state machines · 65 gated transitions · 65 invariants · 28 cascade events**
+**10 state machines · 67 gated transitions · 65 invariants · 30 cascade events**
 
 Nine state machines, one per row, each declared in
 `modules/<domain>/machine.py` and specified in the section named beside it.
@@ -264,7 +264,7 @@ cascade and direct-SQL attempts to bypass the service layer.
 
 ```bash
 docker compose exec api python config_test.py     # 33 tests: the configuration layer
-docker compose exec api python smoke_test.py      # 205 tests: the enforcement layer
+docker compose exec api python smoke_test.py      # 228 tests: the enforcement layer
 ```
 
 `config_test.py` proves both halves of configurability: that invalid governance
@@ -320,15 +320,18 @@ python ../../tools/check_no_inline_script.py dist/index.html
 
 ## Demo accounts
 
-Password for all: `changeme123`. Roles determine which transitions you can fire,
-so sign in as different people to see the gates behave differently.
+Password for all: `changeme123`. Roles determine which transitions you can fire
+and which records you can edit: only Priya edits risks and only Nadia edits
+controls (`permissions.edit` in `config/governance.yml`), so sign in as
+different people to see the gates and the edit rules behave differently.
 
 | Email | Who | Roles |
 |---|---|---|
 | `analyst@example.com` | Priya Raman | Risk_Analyst |
 | `grc@example.com` | Tomas Lindqvist | GRC_Engineer |
 | `ciso@example.com` | Marcus Bell | CISO, Risk_Stakeholder |
-| `control@example.com` | Jonah Weiss | Control_Owner, Control_Operator |
+| `control@example.com` | Jonah Weiss | Control_Owner, Control_Operator, System_Owner |
+| `controlanalyst@example.com` | Nadia Haddad | Control_Analyst |
 | `appsec@example.com` | Ines Ferreira | AppSec_Lead, Security_SME |
 | `sysowner@example.com` | Dmitri Sokolov | System_Owner, Risk_Owner |
 | `owner@example.com` | Elena Vasquez | Risk_Owner |

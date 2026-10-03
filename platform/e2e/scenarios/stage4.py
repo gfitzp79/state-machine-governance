@@ -186,15 +186,23 @@ def s7_failure_cascade(r, ctx):
     # Remediation
     r.refused("control", "POST", f"/controls/deployments/{ctx['waf_dep']}/transition", {"target": "Active"},
               "Failed -> Active refused without fresh evidence (DL-4)", "DL-4")
-    r.do("control", "POST", f"/controls/deployments/{ctx['waf_dep']}/ce", {
+    r.do("controlanalyst", "POST", f"/controls/deployments/{ctx['waf_dep']}/ce", {
         "ce_rating": "CE-High", "ce_evidence_ref": "EVID-WAF-remediated", "ce_notes": "Blocking mode restored."},
         step="CE re-assessed after the fix")
     r.transition("control", f"/controls/deployments/{ctx['waf_dep']}", "Active", step="Deployment Failed -> Active")
-    r.do("control", "PATCH", f"/controls/{ctx['waf']}", {"remediation_plan": "Pinned rule set; change alert on mode."},
+    r.do("controlanalyst", "PATCH", f"/controls/{ctx['waf']}", {"remediation_plan": "Pinned rule set; change alert on mode."},
          step="Remediation plan recorded")
     r.transition("control", f"/controls/{ctx['waf']}", "Operating", step="Objective Failure -> Operating")
+    reviews = r.get("controlanalyst", f"/control-reviews?objective_id={ctx['waf']}")
+    review = next((x for x in reviews if x["lifecycle_state"] == "Open"), None)
+    r.check("The repair opened an effectiveness review (REV-1)", review is not None, str(reviews)[:200])
+    review = review or {"id": "missing", "reference": "?"}
+    r.refused("controlanalyst", "POST", f"/control-reviews/{review['id']}/transition", {"target": "Completed"},
+              "The review cannot close before a retest (REV-2)", "REV-2")
     r.do("control", "POST", f"/controls/deployments/{ctx['waf_dep']}/tests", {
         "result": "Pass", "evidence_ref": "TEST-WAF-RETEST"}, step="Retest Pass")
+    r.transition("controlanalyst", f"/control-reviews/{review['id']}", "Completed",
+                 step="Control Analyst completes the review on the retest")
 
     tmd = r.get("appsec", f"/threat-models/{ctx['tm']}")
     sqli = next(s for s in tmd["scenarios"] if s["id"] == ctx["scen"]["sqli"])
@@ -207,7 +215,10 @@ def s7_failure_cascade(r, ctx):
     r.note("Requirement after the repair", str(state))
     risk = r.get("analyst", f"/risks/{ctx['risk_stuffing']}")
     r.note("Risk after the repair", str({k: risk.get(k) for k in ("lifecycle_state", "residual_score_locked", "reported_score", "reported_rating")}))
-    if risk.get("residual_score_locked"):
-        r.gap("After the control is repaired, the risk stays at its inherent score until someone re-traverses it",
-              "The failure froze the residual (correct). Nothing tells the analyst the control is back, and "
-              "the only route to re-score is Monitoring -> Preconditions, four gates from the residual.")
+    r.check("The frozen risk is flagged to re-assess (REV-3)",
+            risk.get("control_change_flag") == "Control_Recovered", str(risk.get("control_change_flag")))
+    for who, what in (("analyst", "risk analyst"), ("appsec", "AppSec partner")):
+        notes = r.get(who, "/notifications")
+        r.check(f"The {what} is told the control works again",
+                any("works again" in (n.get("title") or "") for n in notes),
+                "; ".join((n.get("title") or "")[:50] for n in notes[:4]))

@@ -1,6 +1,6 @@
 # Data Model
 
-**Version:** 1.4 | **License:** CC BY 4.0
+**Version:** 1.5 | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](../specification/codified-rules.md) and validated against the [reference implementation](../platform).
 **Purpose:** Complete relational schema for the governance platform. 49 tables across 8 domains. All FK relationships, named constraints, and schema-level invariant enforcement documented. Designed for implementation teams to reproduce the data layer with full traceability to the specification.
 
@@ -352,6 +352,33 @@ Periodic review records. Tracks who reviewed and when next review is due.
 | review_notes | text | NO | | |
 | next_review_date | date | YES | | |
 | created_at | timestamptz | NO | now() | |
+
+### control_reviews
+
+An effectiveness review, opened by the engine when a deployment is repaired back
+to Active and closed only by a passing retest (codified-rules 10.3, REV-1 to
+REV-5). Completion is what prompts the risks, threat scenarios and requirements
+that depend on the control to re-assess.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | uuid | NO | gen_random_uuid() | PK |
+| reference | text | NO | | CRV-NNN, unique |
+| deployment_id | uuid | NO | | FK to control_deployments |
+| objective_id | uuid | NO | | FK to control_objectives |
+| trigger | text | NO | | What opened it |
+| lifecycle_state | text | NO | 'Open' | Open, Completed, Cancelled |
+| opened_at | timestamptz | NO | now() | REV-2 counts tests after this |
+| due_date | date | NO | | escalation.control_recovery_review_days after opening |
+| completed_by | uuid | YES | | |
+| completed_at | timestamptz | YES | | |
+| completion_test_id | uuid | YES | | FK to control_tests: the passing retest |
+| cancellation_reason | text | YES | | REV-5 |
+| escalated_at | timestamptz | YES | | REV-4, set once |
+
+**Constraints:** CHECK on lifecycle_state; CHECK that a Completed review names
+who completed it and the test that earned it; a partial unique index allowing
+one Open review per deployment (REV-1).
 
 ### risk_assets
 
@@ -1260,6 +1287,9 @@ A person's assertion that a control objective addresses a requirement.
 | risk_attachments | risk_id | risks | id |
 | risk_phase_history | risk_id | risks | id |
 | risk_reviews | risk_id | risks | id |
+| control_reviews | deployment_id | control_deployments | id |
+| control_reviews | objective_id | control_objectives | id |
+| control_reviews | completion_test_id | control_tests | id |
 | risk_assets | risk_id | risks | id |
 | risk_assets | attack_surface_id | attack_surfaces | id |
 | risk_controls | risk_id | risks | id |

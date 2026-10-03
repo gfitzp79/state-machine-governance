@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, Link2, Lock, Plus, Send, Unlock, X } from 'lucide-react'
 import { api, ApiError, getStoredUser } from '../lib/api'
+import { editRolesHint } from '../lib/permissions'
 import { PageHeader } from '../components/Layout'
 import { PersonSelect } from '../components/people'
 import {
@@ -215,6 +216,14 @@ export default function RiskDetail() {
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
       </div>
 
+      {!risk.can_edit && (
+        <p className="mb-4 rounded-md border bg-surface-sunken px-3 py-2 text-xs text-ink-muted">
+          {editRolesHint('risk')} You can comment, fire the transitions your role allows,
+          record an acceptance you are senior enough to approve, and confirm a readout on a
+          risk you own.
+        </p>
+      )}
+
       {tab === 'lifecycle' && (
         <div className="grid gap-4 lg:grid-cols-5">
           <div className="lg:col-span-3">
@@ -233,7 +242,7 @@ export default function RiskDetail() {
             </Card>
           </div>
 
-          <div className="space-y-4 lg:col-span-2">
+          <fieldset disabled={!risk.can_edit} className="min-w-0 space-y-4 lg:col-span-2">
             <Card
               title="Phase 2 preconditions"
               subtitle="All four must hold before scoring fields open (RINV-8)."
@@ -304,12 +313,12 @@ export default function RiskDetail() {
                 ))}
               </div>
             </Card>
-          </div>
+          </fieldset>
         </div>
       )}
 
       {tab === 'scoring' && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <fieldset disabled={!risk.can_edit} className="grid min-w-0 gap-4 lg:grid-cols-2">
           <Card
             title="Inherent score"
             subtitle="Exposure with no controls in place. Likelihood is scored without CE adjustment (LKH-3)."
@@ -439,7 +448,7 @@ export default function RiskDetail() {
           >
             <CEResolution data={risk.ce_resolution} scope={risk.scope_assets ?? []} />
           </Card>
-        </div>
+        </fieldset>
       )}
 
       {tab === 'treatment' && (
@@ -508,7 +517,7 @@ export default function RiskDetail() {
       )}
 
       {tab === 'links' && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <fieldset disabled={!risk.can_edit} className="grid min-w-0 gap-4 lg:grid-cols-2">
           <Card
             title="Linked controls"
             subtitle="CE is snapshotted at link time (RES-5). Later drift flags the risk rather than silently rescoring it."
@@ -620,7 +629,7 @@ export default function RiskDetail() {
               </ul>
             )}
           </Card>
-        </div>
+        </fieldset>
       )}
 
       {tab === 'invariants' && (

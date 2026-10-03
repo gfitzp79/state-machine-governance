@@ -313,6 +313,20 @@ class GovernanceConfig:
     def control_retirement_reassessment_days(self) -> int:
         return int(_require(self.raw, "escalation.control_retirement_reassessment_days"))
 
+    @property
+    def control_recovery_review_days(self) -> int:
+        return int(_require(self.raw, "escalation.control_recovery_review_days"))
+
+    # -- edit permissions --------------------------------------------------
+
+    EDITABLE_RECORDS = ("risk", "control", "asset")
+
+    @property
+    def edit_permissions(self) -> dict[str, tuple[str, ...]]:
+        """Roles that may change each kind of record (codified-rules 2.5)."""
+        raw = _require(self.raw, "permissions.edit")
+        return {k: tuple(str(r) for r in (raw.get(k) or ())) for k in self.EDITABLE_RECORDS}
+
     # -- roles ------------------------------------------------------------
 
     @property
@@ -655,6 +669,21 @@ class GovernanceConfig:
                     + ", which is not in roles.seniority_ladder"
                 )
 
+        # Edit permissions name real roles, and every record kind has a list.
+        # An empty list is allowed (nobody may edit) but a missing one is not:
+        # silence here would read as "anyone".
+        raw_edit = (self.raw.get("permissions") or {}).get("edit") or {}
+        for kind in self.EDITABLE_RECORDS:
+            if kind not in raw_edit:
+                errors.append("permissions.edit." + kind + " is missing")
+        for kind, roles in self.edit_permissions.items():
+            for role in roles:
+                if role not in self.roles:
+                    errors.append(
+                        "permissions.edit." + kind + " names " + role
+                        + ", which is not in roles.definitions"
+                    )
+
         # Roles the platform itself depends on.
         for essential in ("Admin", "CISO"):
             if essential not in self.roles:
@@ -854,6 +883,10 @@ class GovernanceConfig:
                 "control_retirement_reassessment_days": (
                     self.control_retirement_reassessment_days
                 ),
+                "control_recovery_review_days": self.control_recovery_review_days,
+            },
+            "permissions": {
+                "edit": {k: list(v) for k, v in self.edit_permissions.items()},
             },
         }
 

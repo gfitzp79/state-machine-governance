@@ -95,6 +95,15 @@ def s9_closure(r, ctx):
               "An analyst cannot close a risk", None)
     s, b = call("POST", rp + "/transition", {"target": "Closed",
                 "reason": "Contractor programme wound down early."}, r.tokens["owner"])
+    r.check("A risk above appetite does not close on a sentence (GATE_CLOSURE.3)",
+            s == 409 and "GATE_CLOSURE.3" in msg(b), f"{s} {msg(b)}")
+    r.do("analyst", "POST", rp + "/treatment-decision", {
+        "treatment_strategy": "Avoid",
+        "avoidance_description": "Contractor programme wound down; console route removed."},
+        step="Analyst records that the activity was avoided")
+    risk = r.get("analyst", rp)
+    s, b = call("POST", rp + "/transition", {"target": "Closed",
+                "reason": "Contractor programme wound down early."}, r.tokens["owner"])
     if s != 200 and "GATE_CLOSURE.1" in msg(b):
         r.record("FAIL", "Closing with a reason in the request is refused for want of a closure rationale",
                  "_closable reads risk.closure_rationale; on_transition writes the request's reason there only "
@@ -102,7 +111,7 @@ def s9_closure(r, ctx):
         r.do("owner", "PATCH", rp, {"closure_rationale": "Contractor programme wound down early."},
              step="Workaround: closure rationale PATCHed first")
         s, b = call("POST", rp + "/transition", {"target": "Closed", "reason": "x"}, r.tokens["owner"])
-    if s == 200 and risk.get("appetite") == "Above Appetite":
+    if s == 200 and risk.get("appetite") == "Above Appetite" and risk.get("treatment_strategy") != "Avoid":
         r.gap("A risk above appetite can be closed with one sentence",
               f"Closed at {risk.get('reported_score')} ({risk.get('reported_rating')}, {risk.get('appetite')}) "
               "with an expired acceptance. GATE_CLOSURE checks only that a rationale and a treatment decision exist.")
@@ -133,25 +142,25 @@ def s10_control_retirement(r, ctx):
     r.refused("control", "POST", wp + "/transition", {"target": "Deprecated", "reason": "Replacing vendor."},
               "WAF cannot retire while it holds up an above-appetite Mitigate risk (CINV-8)", "CINV-8")
 
-    s, obj = r.do("control", "POST", "/controls", {
+    s, obj = r.do("controlanalyst", "POST", "/controls", {
         "title": "Quarterly manual review of WAF exclusions", "family": "Application_Security",
         "control_type": "Detective", "control_owner_id": r.uid("control"), "automation_level": "Manual",
         "implementation_type": "Administrative", "operating_frequency": "Quarterly",
         "assurance_method": "Inspection", "is_key_control": False}, step="A small detective control created")
     cid = idof(obj)
-    s, act = r.do("control", "POST", "/controls/activities", {"objective_id": cid, "title": "Review exclusions"},
+    s, act = r.do("controlanalyst", "POST", "/controls/activities", {"objective_id": cid, "title": "Review exclusions"},
                   step="Its activity")
     aid = idof(act)
     r.transition("control", f"/controls/activities/{aid}", "Active", step="Activity active")
-    s, dep = r.do("control", "POST", "/controls/deployments", {"activity_id": aid, "attack_surface_id": ctx["portal"],
+    s, dep = r.do("controlanalyst", "POST", "/controls/deployments", {"activity_id": aid, "attack_surface_id": ctx["portal"],
                                                                 "test_frequency": "Annual"}, step="Deployed on the portal")
     did = idof(dep)
     r.transition("control", f"/controls/{cid}", "Implementation", step="-> Implementation")
     r.transition("control", f"/controls/deployments/{did}", "Active", step="Deployment active")
     s, b = call("POST", f"/controls/deployments/{did}/ce", {"ce_rating": "CE-High", "ce_evidence_ref": "x"},
-                r.tokens["control"])
+                r.tokens["controlanalyst"])
     r.check("A Manual control cannot claim CE-High (CINV-11)", s in (409, 422), f"{s} {msg(b)}")
-    r.do("control", "POST", f"/controls/deployments/{did}/ce", {"ce_rating": "CE-Medium", "ce_evidence_ref": "REV-Q4"},
+    r.do("controlanalyst", "POST", f"/controls/deployments/{did}/ce", {"ce_rating": "CE-Medium", "ce_evidence_ref": "REV-Q4"},
          step="CE-Medium with evidence")
     r.transition("control", f"/controls/{cid}", "Operating", step="-> Operating")
 
@@ -159,14 +168,14 @@ def s10_control_retirement(r, ctx):
               "Activity cannot retire while a deployment is live (AL-1)", "AL-1")
     r.refused("control", "POST", f"/controls/deployments/{did}/transition", {"target": "Decommissioned"},
               "Decommission needs a rationale (DL-3)", "DL-3")
-    r.do("control", "PATCH", f"/controls/deployments/{did}", {"decommission_rationale": "Folded into WAF tuning."},
+    r.do("controlanalyst", "PATCH", f"/controls/deployments/{did}", {"decommission_rationale": "Folded into WAF tuning."},
          step="Decommission rationale")
     r.transition("control", f"/controls/deployments/{did}", "Decommissioned", step="Deployment decommissioned")
     s, b = call("POST", f"/controls/deployments/{did}/ce", {"ce_rating": "CE-Low", "ce_evidence_ref": "late"},
-                r.tokens["control"])
+                r.tokens["controlanalyst"])
     r.check("A decommissioned deployment is read-only (CINV-4)", s in (409, 422), f"{s} {msg(b)}")
     r.transition("control", f"/controls/activities/{aid}", "Retired", step="Activity retired")
-    r.do("control", "PATCH", f"/controls/{cid}", {"deprecation_rationale": "Superseded by WAF rule review."},
+    r.do("controlanalyst", "PATCH", f"/controls/{cid}", {"deprecation_rationale": "Superseded by WAF rule review."},
          step="Retirement rationale")
     r.transition("control", f"/controls/{cid}", "Deprecated", step="Control deprecated")
     obj = r.get("control", f"/controls/{cid}")

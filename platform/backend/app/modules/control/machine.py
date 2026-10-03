@@ -419,7 +419,10 @@ CONTROL_DEPLOYMENT_MACHINE = StateMachine(
                     "Re-assess CE on this deployment and record the evidence reference.",
                 ),
             ),
-            cascades=("deployment.restored",),
+            # deployment.repaired opens an effectiveness review (REV-1). It is
+            # separate from deployment.restored, which a rising CE rating also
+            # emits: a better rating is not a repair.
+            cascades=("deployment.restored", "deployment.repaired"),
         ),
         Transition(
             source="Degraded",
@@ -446,7 +449,10 @@ CONTROL_DEPLOYMENT_MACHINE = StateMachine(
                     "not count.",
                 ),
             ),
-            cascades=("deployment.restored",),
+            # deployment.repaired opens an effectiveness review (REV-1). It is
+            # separate from deployment.restored, which a rising CE rating also
+            # emits: a better rating is not a repair.
+            cascades=("deployment.restored", "deployment.repaired"),
         ),
         Transition(
             source="*",

@@ -86,6 +86,9 @@ def main() -> int:
     analyst = login("analyst@example.com")
     ciso = login("ciso@example.com")
     control_owner = login("control@example.com")
+    # Changing a control record, assessing CE and recording tests belong to
+    # the Control Analyst (PERM-1). The owner runs the control.
+    control_analyst = login("controlanalyst@example.com")
     appsec = login("appsec@example.com")
     grc = login("grc@example.com")
 
@@ -260,7 +263,7 @@ def main() -> int:
         "POST",
         "/controls",
         {"title": "Taxonomy probe control", "family": "Interpretive_Dance"},
-        analyst,
+        control_analyst,
     )
     check("an unconfigured control family is refused", status == 409, status)
 
@@ -486,7 +489,7 @@ def main() -> int:
         "POST",
         "/controls/deployments/" + dep2["id"] + "/ce",
         {"ce_rating": "CE-High", "ce_evidence_ref": ""},
-        control_owner,
+        control_analyst,
     )
     check("CE without evidence refused", status == 409, status)
     check("refusal names CINV-1", "CINV-1" in str(body.get("message", "")), body.get("message"))
@@ -513,7 +516,7 @@ def main() -> int:
             "evidence_ref": "Q4 test: 3 privileged roles found without MFA enforcement.",
             "notes": "Conditional access policy scope regression.",
         },
-        control_owner,
+        control_analyst,
     )
     check("failing test recorded", status == 201, (status, body.get("message")))
 
@@ -1093,7 +1096,7 @@ def main() -> int:
         "PATCH",
         "/controls/" + by_ref["CTL-005"]["id"],
         {"automation_level": "Manual"},
-        token=control_owner,
+        token=control_analyst,
     )
     status, ctl5 = call("GET", "/controls/" + by_ref["CTL-005"]["id"], token=analyst)
     dep5 = [d for a in ctl5["activities"] for d in a["deployments"]][0]
@@ -1104,7 +1107,7 @@ def main() -> int:
             "ce_rating": "CE-High",
             "ce_evidence_ref": "Quarterly recertification sign-off, Q3 2026.",
         },
-        token=control_owner,
+        token=control_analyst,
     )
     check("a Manual control cannot claim CE-High", status >= 400, status)
     check("the refusal names CINV-11", "CINV-11" in json.dumps(body), body)
@@ -1116,7 +1119,7 @@ def main() -> int:
             "ce_rating": "CE-Medium",
             "ce_evidence_ref": "Quarterly recertification sign-off, Q3 2026.",
         },
-        token=control_owner,
+        token=control_analyst,
     )
     check("the same control may hold CE-Medium, which Manual permits", status == 200, body)
 
@@ -1262,8 +1265,21 @@ def main() -> int:
     section("A reason-gated transition says a reason will clear it")
     _, gates = call("GET", "/risks/" + r1["id"] + "/gates", token=owner)
     closing = next((g for g in gates if g["target"] == "Closed"), {})
-    check("the closure gate reports a reason as the missing input",
-          closing.get("inputs_needed") == ["reason"], closing.get("inputs_needed"))
+    rationale = next((c for c in closing.get("checks", []) if c["id"] == "GATE_CLOSURE.1"), {})
+    check("the closure rationale is marked as satisfiable by a reason",
+          rationale.get("satisfiable_by") == "reason", rationale)
+    check("but a reason alone is not offered as enough while it is above appetite",
+          closing.get("inputs_needed") == [], closing.get("inputs_needed"))
+
+    section("A risk above appetite does not close on a sentence (GATE_CLOSURE.3)")
+    status, body = call("POST", "/risks/" + r1["id"] + "/transition",
+                        {"target": "Closed", "reason": "We are comfortable with it."}, owner)
+    check("closing RISK-001 at 15 High is refused", status == 409 and "GATE_CLOSURE.3" in str(body),
+          (status, body.get("message")))
+    status, body = call("POST", "/risks/" + r1["id"] + "/treatment-decision", {
+        "treatment_strategy": "Avoid",
+        "avoidance_description": "Legacy service accounts decommissioned; the path no longer exists."}, analyst)
+    check("the analyst records that the activity was avoided", status == 200, (status, body.get("message")))
 
     section("A risk closes with the reason given, and reopens into a new cycle")
     status, body = call("POST", "/risks/" + r1["id"] + "/transition",
@@ -1301,7 +1317,7 @@ def main() -> int:
     r3 = find(risks_now, "RISK-003")
     status, body = call("POST", "/risks/" + r3["id"] + "/treatment-decision",
                         {"treatment_strategy": "Avoid", "avoidance_description": "x"}, appsec)
-    check("an AppSec engineer cannot set a risk's treatment decision", status == 409, status)
+    check("an AppSec engineer cannot set a risk's treatment decision (PERM-1)", status == 403, status)
 
     section("The residual unlock reads the same records as the residual gate")
     call("PATCH", "/risks/" + r2["id"], {
@@ -1380,16 +1396,104 @@ def main() -> int:
     dep1 = next(d for a in cdet.get("activities", []) for d in a.get("deployments", [])
                 if d.get("reference") == "DEP-001")
     call("POST", "/controls/deployments/" + dep1["id"] + "/tests",
-         {"result": "Fail", "evidence_ref": "T-FAIL", "notes": "regression"}, control_owner)
+         {"result": "Fail", "evidence_ref": "T-FAIL", "notes": "regression"}, control_analyst)
     status, body = call("POST", "/controls/deployments/" + dep1["id"] + "/transition",
                         {"target": "Active"}, control_owner)
     check("the evidence held when it failed does not bring it back", status == 409 and "DL-4" in str(body),
           (status, body.get("message")))
     call("POST", "/controls/deployments/" + dep1["id"] + "/ce",
-         {"ce_rating": "CE-Medium", "ce_evidence_ref": "EV-AFTER-FIX"}, control_owner)
+         {"ce_rating": "CE-Medium", "ce_evidence_ref": "EV-AFTER-FIX"}, control_analyst)
     status, body = call("POST", "/controls/deployments/" + dep1["id"] + "/transition",
                         {"target": "Active"}, control_owner)
     check("a CE assessment after the failure does", status == 200, (status, body.get("message")))
+
+    section("PERM-1: only the configured role edits a risk")
+    sysowner = login("sysowner@example.com")
+    r5 = find(risks_now, "RISK-005")
+    status, body = call("PATCH", "/risks/" + r5["id"], {"tier_rationale": "edited by the CISO"}, ciso)
+    check("the CISO cannot edit a risk's content", status == 403 and "PERM-1" in str(body.get("message")),
+          (status, body.get("message")))
+    status, body = call("POST", "/risks/" + r5["id"] + "/controls", {"id": ctl1["id"]}, control_owner)
+    check("a control owner cannot link controls to a risk", status == 403, status)
+    status, body = call("PATCH", "/risks/" + r5["id"], {"tier_rationale": "Third-party access process."}, analyst)
+    check("the Risk Analyst can", status == 200, (status, body.get("message")))
+    status, body = call("PATCH", "/risks/" + r2["id"], {"readout_confirmed": True}, analyst)
+    check("the readout is confirmed by the risk's own owner, not the analyst (RINV-6)", status == 403, status)
+    _, r5d = call("GET", "/risks/" + r5["id"], token=analyst)
+    _, r5c = call("GET", "/risks/" + r5["id"], token=ciso)
+    check("the payload says who may edit", r5d.get("can_edit") is True and r5c.get("can_edit") is False,
+          (r5d.get("can_edit"), r5c.get("can_edit")))
+
+    section("PERM-1: only the configured role edits a control")
+    status, body = call("PATCH", "/controls/" + ctl1["id"], {"description": "owner edit"}, control_owner)
+    check("the control owner cannot edit the control record", status == 403, status)
+    status, body = call("PATCH", "/controls/" + ctl1["id"], {"description": "MFA on privileged paths."},
+                        control_analyst)
+    check("the Control Analyst can", status == 200, (status, body.get("message")))
+    status, body = call("POST", "/controls", {"title": "Owner-made control"}, control_owner)
+    check("nor can the owner create one", status == 403, status)
+
+    section("REV-1 to REV-4: a repaired control is retested before anything is told it works")
+    # DEP-001 went Failed -> Active in the DL-4 section above, which opened a review.
+    _, open_reviews = call("GET", "/control-reviews?state=Open", token=control_analyst)
+    review = next((x for x in open_reviews if x.get("deployment_reference") == "DEP-001"), None)
+    check("the repair opened an effectiveness review", review is not None,
+          [x.get("deployment_reference") for x in open_reviews])
+    review = review or {}
+    _, notes = call("GET", "/notifications", token=control_analyst)
+    check("the Control Analyst is told to retest",
+          any((review.get("reference") or "?") in (n.get("title") or "") for n in notes),
+          [n.get("title") for n in notes][:3])
+    rid_review = review.get("id", "missing")
+    status, body = call("POST", "/control-reviews/" + rid_review + "/transition",
+                        {"target": "Completed"}, control_analyst)
+    check("it cannot complete before a retest (REV-2)", status == 409 and "REV-2" in str(body),
+          (status, body.get("message")))
+
+    from datetime import date as _date, timedelta as _td
+    session = SessionLocal()
+    try:
+        session.execute(text("UPDATE control_reviews SET due_date = :d WHERE id = :i"),
+                        {"d": _date.today() - _td(days=1), "i": rid_review})
+        session.commit()
+    finally:
+        session.close()
+    call("POST", "/engine/jobs/run", None, ciso)
+    _, notes = call("GET", "/notifications", token=ciso)
+    check("an overdue review escalates to the CISO (REV-4)",
+          any((review.get("reference") or "?") in (n.get("title") or "") and "overdue" in (n.get("title") or "")
+              for n in notes), [n.get("title") for n in notes][:3])
+
+    # A risk with no declared scope, linked to the control: it should be prompted.
+    call("POST", "/risks/" + r5["id"] + "/controls", {"id": ctl1["id"]}, analyst)
+    call("POST", "/controls/deployments/" + dep1["id"] + "/tests",
+         {"result": "Pass", "evidence_ref": "RETEST-1", "notes": "retest after repair"}, control_analyst)
+    status, body = call("POST", "/control-reviews/" + rid_review + "/transition",
+                        {"target": "Completed"}, control_owner)
+    check("the control owner cannot complete the review", status == 409, status)
+    status, body = call("POST", "/control-reviews/" + rid_review + "/transition",
+                        {"target": "Completed"}, control_analyst)
+    check("the Control Analyst completes it after a passing retest", status == 200,
+          (status, body.get("message")))
+    _, r5d = call("GET", "/risks/" + r5["id"], token=analyst)
+    check("a linked risk is flagged to re-assess (REV-3)",
+          r5d.get("control_change_flag") == "Control_Recovered", r5d.get("control_change_flag"))
+
+    section("Assets can be changed, by their owner or a Control Analyst")
+    _, assets = call("GET", "/assets", token=analyst)
+    payments = next(a for a in assets if a["name"] == "Payments API")
+    status, body = call("PATCH", "/assets/" + payments["id"], {"tier": "Tier_2"}, appsec)
+    check("an unrelated role cannot edit an asset", status == 403, status)
+    status, body = call("PATCH", "/assets/" + payments["id"],
+                        {"description": "Card authorisation and settlement."}, sysowner)
+    check("its own system owner can", status == 200, (status, body.get("message")))
+    status, body = call("PATCH", "/assets/" + payments["id"], {"tier": "Tier_1"}, control_analyst)
+    check("so can a Control Analyst", status == 200, (status, body.get("message")))
+    status, body = call("PATCH", "/assets/" + payments["id"],
+                        {"system_owner_id": find_user(ciso_id=True)}, control_analyst)
+    check("a new owner must hold System_Owner (CINV-14)", status == 422, (status, body.get("invariant")))
+    status, body = call("POST", "/assets", {"name": "Shadow IT", "tier": "Tier_3"}, appsec)
+    check("registering an asset needs System_Owner or the asset edit role", status == 403, status)
 
     section("Threat components belong to their own model")
     _, tms = call("GET", "/threat-models", token=appsec)
@@ -1437,7 +1541,7 @@ def main() -> int:
 
     section("Engine introspection")
     status, machines = call("GET", "/engine/machines", token=analyst)
-    check("8 state machines exposed", len(machines) == 8, len(machines))
+    check("9 state machines exposed", len(machines) == 9, len(machines))
     total_transitions = sum(len(m["transitions"]) for m in machines.values())
     check("transitions declared", total_transitions >= 40, total_transitions)
     status, cat = call("GET", "/engine/invariants", token=analyst)

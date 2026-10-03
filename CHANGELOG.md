@@ -13,6 +13,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added: edit permissions (PERM-1)
+
+Roles gated transitions and nothing else, so anyone signed in could rewrite a
+risk's statement, change its owners, set its scores or link controls to it. A
+gate that checks the record is only as good as the rule about who may write
+the record.
+
+`permissions.edit` in `governance.yml` now names who may change each kind of
+record: risks by the Risk Analyst, controls (objectives, activities,
+deployments, CE ratings) by a new Control_Analyst role, assets by a Control
+Analyst or the asset's own system owner. Admin is absent by default; adding it
+is one line. Transitions keep their per-gate roles and approvals keep ROLE-4,
+so a VP still records an acceptance and the named Risk Owner confirms the
+readout, now enforced (RINV-6). Raising a risk stays open to everyone, and test
+results stay open to independent testers. The interface disables what the API
+would refuse. Rules: `codified-rules` 2.5, PERM-1 to PERM-5.
+
+### Added: effectiveness review after a repair (REV-1 to REV-5)
+
+A repaired control was silent: the risk it held up stayed at its inherent
+score, the scenario it mitigated stayed open and the requirement it evidenced
+stayed in Gap, with nothing prompting anyone. A repair (Degraded or Failed back
+to Active) now opens a review assigned to the Control Analysts, due in ten days.
+It completes only on a passing test recorded after it opened, and completion
+prompts every linked risk in scope, open threat scenario and requirement in Gap
+to re-assess. Nothing is restored on anyone's behalf. Overdue reviews go to the
+CISO. A tenth state machine; migration `d2f61a7c9e40`; `codified-rules` 10.3.
+
+### Changed: a risk above appetite does not close on a sentence
+
+`GATE_CLOSURE.3`: closing needs the reported rating at or within appetite, or
+the activity avoided. Above appetite, the options are to reduce it, accept it
+formally, or avoid it.
+
+### Added: assets can be edited
+
+`PATCH /assets/{id}` and an asset register on the Controls page. Registering an
+asset now runs the invariants it always should have: CINV-14 (the named owner
+holds System_Owner) never ran on a new asset, and creation was not audited.
+
+228 enforcement tests (from 205). The business scenarios run with 0 failures
+and five design gaps.
+
 ### Fixed: what a business found by using the platform end to end
 
 The enforcement suite tests each rule in isolation against seed data. This

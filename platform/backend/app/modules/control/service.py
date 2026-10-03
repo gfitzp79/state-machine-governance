@@ -26,6 +26,7 @@ TEST_INTERVAL_DAYS = {"Continuous": 7, "Monthly": 30, "Quarterly": 90, "Annual":
 
 
 class ObjectiveService(LifecycleService[ControlObjective]):
+    edit_kind = "control"
     model = ControlObjective
     machine = CONTROL_OBJECTIVE_MACHINE
     entity_name = "control_objective"
@@ -50,6 +51,7 @@ class ObjectiveService(LifecycleService[ControlObjective]):
             entity.deprecation_rationale = reason
 
     def create_objective(self, data: dict[str, Any]) -> ControlObjective:
+        self.require_edit()
         obj = ControlObjective(reference=self.next_reference(), **data)
         self.create(obj)
         self.session.commit()
@@ -72,6 +74,8 @@ class ObjectiveService(LifecycleService[ControlObjective]):
                 for a in obj.activities
             ],
             "linked_risks": self._linked_risks(obj),
+            # PERM-1, so the interface can disable what the API would refuse.
+            "can_edit": self.can_edit(),
             "linked_policies": self._linked_policies(obj),
             "gates": self.gate_report(obj),
             "invariants": self.invariant_report(obj),
@@ -131,7 +135,9 @@ class ObjectiveService(LifecycleService[ControlObjective]):
         ]
 
     def confirm_alignment(self, obj: ControlObjective, policy_id: str) -> None:
-        """Closes out a PINV-7 re-alignment obligation."""
+        """Closes out a PINV-7 re-alignment obligation. The control's own owner
+        confirms it, or anyone who may edit controls."""
+        self.require_edit(also_user=obj.control_owner_id)
         from app.modules.policy.models import Policy, PolicyControlLink
 
         link = (
@@ -162,6 +168,7 @@ class ObjectiveService(LifecycleService[ControlObjective]):
 
 
 class ActivityService(LifecycleService[ControlActivity]):
+    edit_kind = "control"
     model = ControlActivity
     machine = CONTROL_ACTIVITY_MACHINE
     entity_name = "control_activity"
@@ -178,6 +185,7 @@ class ActivityService(LifecycleService[ControlActivity]):
             entity.suspension_rationale = reason
 
     def create_activity(self, data: dict[str, Any]) -> ControlActivity:
+        self.require_edit()
         act = ControlActivity(reference=self.next_reference(), **data)
         self.create(act)
         self.session.commit()
@@ -185,6 +193,7 @@ class ActivityService(LifecycleService[ControlActivity]):
 
 
 class DeploymentService(LifecycleService[ControlDeployment]):
+    edit_kind = "control"
     model = ControlDeployment
     machine = CONTROL_DEPLOYMENT_MACHINE
     entity_name = "control_deployment"
@@ -197,6 +206,7 @@ class DeploymentService(LifecycleService[ControlDeployment]):
             entity.decommission_rationale = reason
 
     def create_deployment(self, data: dict[str, Any]) -> ControlDeployment:
+        self.require_edit()
         dep = ControlDeployment(reference=self.next_reference(), **data)
         self.create(dep)
         self.session.commit()
@@ -204,6 +214,7 @@ class DeploymentService(LifecycleService[ControlDeployment]):
 
     def assess_ce(self, dep: ControlDeployment, data: dict[str, Any]) -> ControlDeployment:
         """CINV-1 and CINV-4 both land here, before the write."""
+        self.require_edit()
         if dep.is_read_only:
             raise Conflict(
                 "CINV-4 / DL-3: this deployment is decommissioned and read-only. "
@@ -281,13 +292,20 @@ class DeploymentService(LifecycleService[ControlDeployment]):
         triggers failure propagation; it is a consequence of the evidence, not a
         discretionary decision someone opts into, so it does not depend on the
         tester holding a control-lifecycle role. The gate preconditions still apply.
+
+        A test result is evidence about a control, not an edit to it, so it is
+        not governed by PERM-1: independent testers (internal audit, AppSec)
+        record results on controls they could never edit. The roles that may
+        edit controls are added to the testers.
         """
+        from app.core.governance import governance
+
         if dep.is_read_only:
             raise Conflict("CINV-4 / DL-3: this deployment is decommissioned and read-only")
-        if not any(r in self.actor_roles for r in self.TESTER_ROLES):
+        testers = tuple(dict.fromkeys(self.TESTER_ROLES + governance.edit_permissions.get("control", ())))
+        if not any(r in self.actor_roles for r in testers):
             raise Conflict(
-                "recording a control test result requires one of: "
-                + ", ".join(self.TESTER_ROLES)
+                "recording a control test result requires one of: " + ", ".join(testers)
             )
 
         sequence = len(dep.tests) + 1
@@ -352,15 +370,37 @@ class DeploymentService(LifecycleService[ControlDeployment]):
 
 
 class AssetService(LifecycleService[AttackSurface]):
+    edit_kind = "asset"
     model = AttackSurface
     machine = CONTROL_OBJECTIVE_MACHINE  # unused; assets have no lifecycle
     entity_name = "attack_surface"
     taxonomy = {"tier": "asset_tiers"}
 
+    EDITABLE = ("name", "tier", "description", "system_owner_id")
+
     def create_asset(self, data: dict[str, Any]) -> AttackSurface:
-        self.validate_taxonomy(data)
+        """Registered by anyone who may edit assets, or by any System_Owner:
+        owners register their own systems.
+
+        This used to add the row directly, which skipped the invariants, so
+        CINV-14 (the named system owner holds System_Owner) never ran on a new
+        asset, and the creation was not audited.
+        """
+        if not ("System_Owner" in self.actor_roles or self.can_edit()):
+            self.require_edit()
         asset = AttackSurface(**data)
-        self.session.add(asset)
+        self.create(asset)
+        self.session.commit()
+        return asset
+
+    def update_asset(self, asset: AttackSurface, data: dict[str, Any]) -> AttackSurface:
+        """An asset changes: renamed, re-tiered, re-described or handed to a new
+        owner. Edited by its own system owner or by anyone who may edit assets
+        (PERM-1). A new owner must hold System_Owner (CINV-14), which apply()
+        enforces before anything is written."""
+        self.require_edit(also_user=asset.system_owner_id)
+        changes = {k: v for k, v in data.items() if k in self.EDITABLE}
+        self.apply(asset, changes)
         self.session.commit()
         return asset
 

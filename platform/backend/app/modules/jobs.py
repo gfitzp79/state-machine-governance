@@ -434,6 +434,12 @@ def track_policy_realignment(session: Session, actor_id: str | None = None) -> l
     return breached
 
 
+def _escalate_reviews(session: Session, actor_id: str | None) -> list[str]:
+    from app.modules.review.service import escalate_overdue_reviews
+
+    return escalate_overdue_reviews(session, actor_id)
+
+
 def run_all(session: Session, actor_id: str | None = None) -> dict[str, Any]:
     result = {
         "ce_expired": expire_control_effectiveness(session, actor_id),
@@ -444,6 +450,7 @@ def run_all(session: Session, actor_id: str | None = None) -> dict[str, Any]:
         "threats_auto_promoted": promote_stale_threat_scenarios(session, actor_id),
         "realignment_overdue": track_policy_realignment(session, actor_id),
         "sla_breached": refresh_risk_sla(session, actor_id),
+        "control_reviews_escalated": _escalate_reviews(session, actor_id),
     }
     session.commit()
     return result

@@ -138,6 +138,27 @@ class AssetCreate(BaseModel):
     system_owner_id: str | None = None
 
 
+class AssetUpdate(BaseModel):
+    name: str | None = None
+    tier: str | None = None
+    description: str | None = None
+    system_owner_id: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+def _asset_dict(a, svc) -> dict[str, Any]:
+    return {
+        "id": a.id,
+        "name": a.name,
+        "tier": a.tier,
+        "description": a.description,
+        "system_owner_id": a.system_owner_id,
+        "compliance_scopes": list(a.compliance_scopes or []),
+        "can_edit": svc.can_edit(also_user=a.system_owner_id),
+    }
+
+
 # -- objectives ------------------------------------------------------------
 
 
@@ -203,7 +224,7 @@ def update_objective(
 ) -> dict[str, Any]:
     svc = ObjectiveService(session, user.id, user.role_names)
     obj = svc.get(objective_id)
-    svc.apply(obj, payload.model_dump(exclude_unset=True))
+    svc.update(obj, payload.model_dump(exclude_unset=True))
     session.commit()
     return svc.detail(obj)
 
@@ -246,7 +267,7 @@ def update_activity(
 ) -> dict[str, Any]:
     svc = ActivityService(session, user.id, user.role_names)
     act = svc.get(activity_id)
-    svc.apply(act, payload.model_dump(exclude_unset=True))
+    svc.update(act, payload.model_dump(exclude_unset=True))
     session.commit()
     return summarise_activity(act)
 
@@ -294,7 +315,7 @@ def update_deployment(
 ) -> dict[str, Any]:
     svc = DeploymentService(session, user.id, user.role_names)
     dep = svc.get(deployment_id)
-    svc.apply(dep, payload.model_dump(exclude_unset=True))
+    svc.update(dep, payload.model_dump(exclude_unset=True))
     session.commit()
     return svc.detail(dep)
 
@@ -335,20 +356,20 @@ def transition_deployment(
 @assets_router.get("")
 def list_assets(session: DbSession, user: CurrentUser) -> list[dict[str, Any]]:
     svc = AssetService(session, user.id, user.role_names)
-    return [
-        {
-            "id": a.id,
-            "name": a.name,
-            "tier": a.tier,
-            "description": a.description,
-            "system_owner_id": a.system_owner_id,
-        }
-        for a in sorted(svc.list(), key=lambda a: a.name)
-    ]
+    return [_asset_dict(a, svc) for a in sorted(svc.list(), key=lambda a: a.name)]
 
 
 @assets_router.post("", status_code=201)
 def create_asset(payload: AssetCreate, session: DbSession, user: CurrentUser) -> dict[str, Any]:
     svc = AssetService(session, user.id, user.role_names)
     asset = svc.create_asset(payload.model_dump(exclude_none=True))
-    return {"id": asset.id, "name": asset.name, "tier": asset.tier}
+    return _asset_dict(asset, svc)
+
+
+@assets_router.patch("/{asset_id}")
+def update_asset(
+    asset_id: str, payload: AssetUpdate, session: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    svc = AssetService(session, user.id, user.role_names)
+    asset = svc.update_asset(svc.get(asset_id), payload.model_dump(exclude_unset=True))
+    return _asset_dict(asset, svc)

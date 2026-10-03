@@ -19,7 +19,7 @@ from typing import Any, Generic, Sequence, TypeVar
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import Conflict, NotFound
+from app.core.errors import Conflict, Forbidden, NotFound
 from app.engine import AuditTrail, StateMachine, TransitionContext, cascades, invariants
 
 T = TypeVar("T")
@@ -38,6 +38,10 @@ class LifecycleService(Generic[T]):
     # from a CHECK constraint, so an organisation can change its taxonomy
     # without a schema migration. Validated on every create and update.
     taxonomy: dict[str, str] = {}
+
+    # Which permissions.edit list governs changes to this record's content
+    # (codified-rules 2.5). None means the record has no edit rule of its own.
+    edit_kind: str | None = None
 
     def __init__(self, session: Session, actor_id: str | None, actor_roles: Sequence[str] = ()):
         self.session = session
@@ -227,6 +231,43 @@ class LifecycleService(Generic[T]):
         return None
 
     # -- helpers ----------------------------------------------------------
+
+    def can_edit(self, also_user: str | None = None) -> bool:
+        from app.core.governance import governance
+
+        if self.edit_kind is None:
+            return True
+        allowed = governance.edit_permissions.get(self.edit_kind, ())
+        return any(r in self.actor_roles for r in allowed) or (
+            also_user is not None and also_user == self.actor_id
+        )
+
+    def require_edit(self, also_user: str | None = None) -> None:
+        """PERM-1: only the configured roles change what a record says.
+
+        Roles used to gate transitions and nothing else, so anyone signed in
+        could rewrite a risk's statement, change its owners, link controls to
+        it or set its scores. `also_user` admits one named person besides the
+        configured roles, such as an asset's own system owner.
+        """
+        from app.core.governance import governance
+
+        if self.can_edit(also_user):
+            return
+        allowed = governance.edit_permissions.get(self.edit_kind or "", ())
+        raise Forbidden(
+            "PERM-1: changing a " + str(self.edit_kind) + " requires one of: "
+            + (", ".join(allowed) or "no role (none is configured)")
+            + ". Who may edit is set in permissions.edit." + str(self.edit_kind)
+            + " in config/governance.yml.",
+            detail={"rule": "PERM-1", "record": self.edit_kind, "allowed": list(allowed)},
+        )
+
+    def update(self, entity: Any, changes: dict[str, Any]) -> Any:
+        """An edit made by a person, as opposed to a change made by the engine.
+        Routers call this; internal flows keep calling apply."""
+        self.require_edit()
+        return self.apply(entity, changes)
 
     def require_role(self, *roles: str) -> None:
         if not any(r in self.actor_roles for r in roles):

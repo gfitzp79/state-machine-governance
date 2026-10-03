@@ -10,6 +10,7 @@ const DEMO = [
   { email: 'grc@example.com', who: 'Tomas Lindqvist', role: 'GRC Engineer' },
   { email: 'ciso@example.com', who: 'Marcus Bell', role: 'CISO' },
   { email: 'control@example.com', who: 'Jonah Weiss', role: 'Control Owner' },
+  { email: 'controlanalyst@example.com', who: 'Nadia Haddad', role: 'Control Analyst' },
   { email: 'appsec@example.com', who: 'Ines Ferreira', role: 'AppSec Lead' },
   { email: 'admin@example.com', who: 'Ada Okafor', role: 'Admin' },
 ]
