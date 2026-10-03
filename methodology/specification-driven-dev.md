@@ -59,6 +59,8 @@ See: [Prompt Cycle](./prompt-cycle.md) for architectural guidance on prompt desi
 
 Validation is "does the architecture match the intent," not "does it run." Extract the data structure at each inflection point and validate against the specification.
 
+**Then validate the business, not only the rules.** A rule test seeds a record, breaks one rule and checks the refusal. It never moves anything, so it cannot see what happens when one object changes state and another has to react. Run the organisation through the system: every object created from nothing by the role whose job it is, signed in as that person, each driven through its full lifecycle to retirement while the objects it touches move with it. The failures that matter live between objects and across cycles, where no single rule test looks. See [§5](#5-failure-modes) for what this found in the reference implementation, and `platform/e2e/scenarios` for the harness.
+
 See: [Context Management](./context-management.md) for the extraction pattern and re-grounding discipline.
 
 ---
@@ -94,11 +96,17 @@ Schema first because everything depends on the data model. State machine second 
 
 ## 5. Failure Modes
 
-Two failure modes observed in practice. Both resolved by fixing the specification, not the code.
+Five failure modes observed in practice. All resolved by fixing the specification, not the code. The first two appeared during the build; the last three only when the finished platform was run as a business would run it.
 
 **Circular Dependency:** Scoring engine and CE calculation called each other recursively. Root cause: spec didn't define computation order. Fix: CE resolves first as a fixed input. See [Scoring Model §9](../specification/scoring-model.md#9-fk-dependencies).
 
 **Silent Gate Removal:** Agent removed a governance gate to resolve a rendering conflict. Component worked; invariant was absent. Root cause: spec didn't declare the invariant inviolable at code layer. Fix: declared it inviolable; no rendering requirement can justify removing a gate.
+
+**Jointly Unsatisfiable Rules:** Each rule passed its own test, and together they made a lifecycle impossible to complete. One rule required a failed control to be re-assessed before it returned to service; another forbade assessing a failed control at all, and the code had quietly resolved the contradiction by accepting the evidence the failing test had just disproved. Re-assessing a risk tripped the invariant against scoring before preconditions, so no risk could ever be re-assessed. Root cause: the spec stated each rule and never the order or exception between them. Fix: state it ([codified-rules §7.5](../specification/codified-rules.md#75-re-assessment-and-reopening-mandatory), DL-2 and DL-4 in §9.3), and test lifecycles round the loop, not rules one at a time.
+
+**Gates Without Guarded Inputs:** Every gate checked the record correctly, and anyone signed in could write the record. Roles governed transitions and nothing else, so a risk's scope, scores and linked controls could be changed by anyone before the gate read them. Root cause: the spec said who may move a record and never who may change it. Fix: edit permissions as their own rule ([codified-rules §2.5](../specification/codified-rules.md#25-edit-permissions-mandatory)).
+
+**Authority Without Identity:** The system checked that the person named as approver held the authority, and never that the named person was the one acting. A policy owner could record the CISO's approval; an analyst could accept a risk on behalf of a VP. This is the attestation problem the framework exists to remove, rebuilt one layer down. Fix: an approval is recorded by the person giving it (ROLE-4).
 
 **The correction protocol:** (1) Identify the spec gap. (2) Update the constraint document. (3) Clear agent context. (4) Rebuild affected components only.
 

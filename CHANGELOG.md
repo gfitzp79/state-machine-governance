@@ -13,6 +13,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed: framework, what running the platform taught the specification
+
+The platform changes below were made code-first, with the rule written into
+`codified-rules` alongside. This brings the rest of the framework into line, so
+that the specification stands on its own without the platform beside it.
+
+- **Re-assessment and reopening are a new cycle** (`codified-rules` 2.4, §7.5,
+  CYC-1 to CYC-6). The rules existed only in code. The closing cycle goes to
+  phase history, the treatment decision and acceptance are cleared, and the
+  frozen inherent score stays visible until the preconditions pass again.
+  `state-transitions` 2.5 corrects Phase 7, which said re-assessment could return
+  to Phase 2 or Phase 3 (it is always Phase 2), and adds the reopen gate.
+- **Appetite gates closure** (§1.2, APT-1 and APT-2), stated as an appetite rule
+  rather than only as a closure precondition.
+- **Control_Analyst** is defined in §2.1 alongside the other roles.
+- **Scoring model** 2.1: RES-6 (locking the residual clears it), RES-7 and OUT-5
+  (re-assessment re-opens the inherent score), OUT-6 (appetite at closure), and a
+  new §11 listing what an organisation tunes and what the model holds fixed.
+- **Reference architecture** 1.1: the RBAC table had the Risk Owner and Control
+  Owner editing records PERM-1 now denies them, and its pseudocode let the Risk
+  Owner update a risk score. It now describes three axes (transitions, edits,
+  attestations) and why each needs the others.
+- **Methodology**: Phase 4 adds business-scenario validation, and §5 adds the
+  three failure modes it found: jointly unsatisfiable rules, gates without
+  guarded inputs, and authority without identity.
+- `invariants-catalogue` 2.3 explains why RINV-8 governs new scoring only;
+  `data-model` adds `reassessment_count` and the `prior_cycle` snapshot.
+
 ### Added: edit permissions (PERM-1)
 
 Roles gated transitions and nothing else, so anyone signed in could rewrite a

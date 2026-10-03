@@ -1,6 +1,6 @@
 # System Invariants Catalogue
 
-**Version:** 2.2-template | **License:** CC BY 4.0
+**Version:** 2.3-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §16-24
 **Purpose:** Complete catalogue of system invariants with enforcement layer, validation method, and implementation guidance. Invariants are hard rules that the system must never violate regardless of user role, workflow state, or API path.
 
@@ -63,6 +63,13 @@ boxes: a risk with no owner, no tier rationale and no linked control could pass
 three of them. They are now read from the record. The distinction is the one
 this catalogue exists to make, and it applies to any checklist: a condition the
 system can evaluate should never be offered as a claim the user can make.
+
+RINV-8 governs *new* scoring. A risk under re-assessment returns to Phase 2 with
+its previous cycle's scores still on the record, frozen, and that does not
+violate it: no new score can be written until the preconditions pass again. An
+earlier reading that treated the frozen figures as a violation rolled every
+re-assessment back, and made the risk lifecycle one-way. See
+[codified-rules §7.5](./codified-rules.md#75-re-assessment-and-reopening-mandatory).
 
 > **On RINV-14.** Threat models have carried this rule since TINV-4 and
 compliance since AINV-2. Risk, the oldest domain, had neither, so a control

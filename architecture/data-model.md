@@ -244,6 +244,7 @@ Core risk register. 7-phase lifecycle with phase-gated transitions enforced at s
 | treatment_strategy | text | YES | | Accept/Mitigate/Transfer/Avoid. CHECK. |
 | acceptance_expiry_date | date | YES | | RINV-4: NOT NULL when strategy=Accept |
 | acceptance_reassessment_count | integer | NO | 0 | |
+| reassessment_count | integer | NO | 0 | Completed assessment cycles. Incremented when re-assessment or reopening opens a new one (codified-rules §7.5) |
 | next_review_date | date | YES | | |
 | sla_status | text | NO | 'On_Track' | CHECK constraint |
 | escalation_flag | boolean | NO | false | |
@@ -310,7 +311,7 @@ Immutable phase transition audit trail.
 | from_phase | integer | YES | | NULL for initial creation |
 | to_phase | integer | NO | | |
 | changed_by | uuid | YES | | |
-| changed_fields | jsonb | YES | | Snapshot of fields at transition |
+| changed_fields | jsonb | YES | | Snapshot of fields at transition. On re-assessment and reopening it carries `prior_cycle`: the closing cycle's scores, treatment decision and acceptance (CYC-2) |
 | created_at | timestamptz | NO | now() | |
 
 ### risk_comments

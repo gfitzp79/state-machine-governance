@@ -1,6 +1,6 @@
 # GRC Codified Rules Engine: Unified Specification Template
 
-**Version:** 2.3-template | **License:** CC BY 4.0
+**Version:** 2.4-template | **License:** CC BY 4.0
 **Purpose:** Machine-parseable rule set for governance, risk, and compliance platforms. Covers the risk management lifecycle, control management hierarchy, and policy governance layer as a single integrated specification. Designed for organisations to adapt to their own frameworks, appetite statements, and regulatory obligations.
 
 > **How to use this document:** Replace all `[ORGANISATION]` placeholders and review every `[CUSTOMISE]` block against your own governance framework, regulatory requirements, and risk appetite. Parameters marked `RECOMMENDED` reflect industry best practice from ISO 27005, NIST RMF, NIST CSF, and SOC 2/COSO. SLA defaults are aligned to regulated financial services expectations. Adjust thresholds to match your operating environment.
@@ -33,7 +33,20 @@ APPETITE_THRESHOLDS (5x5 matrix):
   score IN [10,14] → rating=Moderate,      status=Above_Appetite, action=MITIGATE_OR_ACCEPT
   score IN [5,9]   → rating=Moderate-Low,  status=At_Appetite,    action=MONITOR_AND_REVIEW
   score IN [1,4]   → rating=Low,           status=Within_Appetite, action=MONITOR_ONLY
+
+RULE APT-1: appetite is evaluated against the REPORTED rating: the residual
+            once validated (§4.7), the inherent until then
+RULE APT-2: a risk whose reported rating is Above_Appetite is NOT Closed unless
+            its treatment is Avoid. It is reduced and re-scored, accepted
+            formally (§5.5), or avoided (GATE_CLOSURE.3)
 ```
+
+**Why appetite gates closure.** An appetite statement that only colours a
+heatmap is a report, not a limit. Without APT-2 a High risk at 15 could be
+closed by its owner with one sentence of rationale, and the register would
+then show one fewer risk above appetite while the exposure stayed exactly where
+it was. Closing is a claim that the organisation is content with what remains;
+the reported rating is the evidence for that claim, so the gate reads it.
 
 ### §1.3 Framework Alignment
 
@@ -74,6 +87,14 @@ ROLE Risk_Treatment_Owner:
 ROLE Control_Owner:
   type: control_design_effectiveness
   responsibilities: [design_maintain_controls, provide_effectiveness_evidence, support_remediation]
+
+ROLE Control_Analyst:
+  type: control_assurance
+  responsibilities: [maintain_control_records, assess_control_effectiveness,
+                     complete_effectiveness_reviews]
+  CONSTRAINT: the role that edits control records (§2.5, PERM-1). The control
+              owner runs the control and moves it through its lifecycle; the
+              analyst keeps its record and judges whether it works
 
 ROLE Control_Operator:
   type: operational_execution
@@ -651,6 +672,37 @@ AGENDA := [
   escalation_determination
 ]
 ```
+
+### §7.5 Re-assessment and Reopening (MANDATORY)
+
+```
+RULE CYC-1: re-assessment (Monitoring -> Preconditions) and reopening
+            (Closed -> Preconditions) each start a NEW assessment cycle, and
+            each REQUIRES a recorded reason
+RULE CYC-2: before anything changes, the closing cycle is written to the
+            append-only phase history: inherent and residual figures,
+            treatment decision, acceptance expiry and approver
+RULE CYC-3: the treatment decision and any acceptance belong to the cycle that
+            made them. They are cleared, and Phase 4 asks again
+RULE CYC-4: the previous cycle's inherent score stays on the record, frozen,
+            so the risk does not leave the heatmap or the appetite counts
+            while it is re-assessed. The residual re-locks, which clears it
+            (scoring-model RES-6), and the reported figure falls back to
+            inherent (RES-2)
+RULE CYC-5: no new score is written until the Phase 2 preconditions pass
+            again (§4.1). RINV-8 governs new scoring, not the figures a prior
+            cycle left frozen on the record
+RULE CYC-6: reopening a Closed risk is a governance act: [CUSTOMISE: CISO]
+```
+
+**Why a cycle, and not an edit.** A re-assessment that edits the old figures in
+place destroys the evidence of what the organisation believed and when, and a
+reopened risk that inherits its old acceptance inherits its expiry with it: an
+acceptance that lapsed while the risk was closed makes the reopened risk
+non-compliant on arrival (RINV-11), so it cannot be reopened at all. Each of
+these was found by running a risk round the loop rather than by reading the
+rules one at a time: every rule held on its own, and together they made the
+lifecycle one-way.
 
 ---
 
