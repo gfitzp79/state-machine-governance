@@ -1541,9 +1541,19 @@ def main() -> int:
 
     section("Engine introspection")
     status, machines = call("GET", "/engine/machines", token=analyst)
-    check("9 state machines exposed", len(machines) == 9, len(machines))
+    # The engine page claims to show every lifecycle, so hold it to the source:
+    # the compliance machine was once defined, enforced and missing from here.
+    import pathlib
+    import re
+    sources = [p.read_text(encoding="utf-8")
+               for p in pathlib.Path(__file__).parent.glob("app/modules/*/machine.py")]
+    defined = sum(len(re.findall(r"= StateMachine\(", s)) for s in sources)
+    declared = sum(len(re.findall(r"\bTransition\(", s)) for s in sources)
+    check("every state machine in the code is exposed", len(machines) == defined,
+          (len(machines), defined))
     total_transitions = sum(len(m["transitions"]) for m in machines.values())
-    check("transitions declared", total_transitions >= 40, total_transitions)
+    check("every transition in the code is exposed", total_transitions == declared,
+          (total_transitions, declared))
     status, cat = call("GET", "/engine/invariants", token=analyst)
     check("invariant catalogue served", cat["total"] >= 46, cat["total"])
     status, casc = call("GET", "/engine/cascades", token=analyst)
