@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Plus, Search } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
+import { editRolesHint, useCanEdit } from '../lib/permissions'
 import { PageHeader } from '../components/Layout'
 import { PersonSelect } from '../components/people'
 import { Badge, Card, Field, Modal, PageLoader, Table, useToast } from '../components/ui'
@@ -25,6 +26,10 @@ interface ObjectiveRow {
 export default function Controls() {
   const [rows, setRows] = useState<ObjectiveRow[] | null>(null)
   const [assets, setAssets] = useState<any[]>([])
+  const [editing, setEditing] = useState<any | null>(null)
+  const canEditControls = useCanEdit('control')
+  // Owners register their own systems, so System_Owner may add an asset too.
+  const canAddAsset = useCanEdit('asset', ['System_Owner'])
   const [ref, setRef] = useState<any>(null)
   const [users, setUsers] = useState<any[]>([])
   const [query, setQuery] = useState('')
@@ -61,11 +66,24 @@ export default function Controls() {
         description="Objectives define what a control must achieve, activities define how, deployments define where. Effectiveness is assessed per deployment because operational reality differs per asset (CE-3)."
         actions={
           <>
-            <button className="btn-ghost" onClick={() => setModal('asset')}>
+            <button
+              className="btn-ghost"
+              disabled={!canAddAsset}
+              title={canAddAsset ? undefined : editRolesHint('asset')}
+              onClick={() => {
+                setEditing(null)
+                setModal('asset')
+              }}
+            >
               <Plus className="h-4 w-4" />
               Asset
             </button>
-            <button className="btn-primary" onClick={() => setModal('control')}>
+            <button
+              className="btn-primary"
+              disabled={!canEditControls}
+              title={canEditControls ? undefined : editRolesHint('control')}
+              onClick={() => setModal('control')}
+            >
               <Plus className="h-4 w-4" />
               New control
             </button>
@@ -161,6 +179,44 @@ export default function Controls() {
         )}
       </Card>
 
+      <Card
+        className="mt-5"
+        title="Asset register"
+        subtitle="Where controls deploy and what threat models and risks scope to. Edited by the asset's own system owner or a Control Analyst."
+        bodyClassName="p-0"
+      >
+        <Table columns={['Asset', 'Tier', 'System owner', 'Compliance scope', '']}>
+          {assets.map((a) => (
+            <tr key={a.id}>
+              <td className="table-cell">
+                <p className="font-medium text-ink">{a.name}</p>
+                {a.description && <p className="mt-0.5 text-xs text-ink-muted">{a.description}</p>}
+              </td>
+              <td className="table-cell whitespace-nowrap">{label(a.tier)}</td>
+              <td className="table-cell text-sm">
+                {users.find((u) => u.id === a.system_owner_id)?.full_name ?? 'Unassigned'}
+              </td>
+              <td className="table-cell text-xs text-ink-muted">
+                {(a.compliance_scopes ?? []).join(', ') || 'None'}
+              </td>
+              <td className="table-cell text-right">
+                <button
+                  className="btn-ghost btn-sm"
+                  disabled={!a.can_edit}
+                  title={a.can_edit ? undefined : editRolesHint('asset')}
+                  onClick={() => {
+                    setEditing(a)
+                    setModal('asset')
+                  }}
+                >
+                  Edit
+                </button>
+              </td>
+            </tr>
+          ))}
+        </Table>
+      </Card>
+
       <CreateControlModal
         open={modal === 'control'}
         onClose={() => setModal(null)}
@@ -175,6 +231,8 @@ export default function Controls() {
       />
 
       <CreateAssetModal
+        key={editing?.id ?? 'new'}
+        asset={editing}
         open={modal === 'asset'}
         onClose={() => setModal(null)}
         refData={ref}
@@ -182,7 +240,8 @@ export default function Controls() {
         onDone={async () => {
           setModal(null)
           await loadAssets()
-          push({ kind: 'ok', title: 'Asset added to the register' })
+          push({ kind: 'ok', title: editing ? 'Asset updated' : 'Asset added to the register' })
+          setEditing(null)
         }}
         onError={(e) => push({ kind: 'error', title: 'Refused', body: e.message })}
       />
@@ -298,6 +357,7 @@ function CreateControlModal({
 }
 
 function CreateAssetModal({
+  asset,
   open,
   onClose,
   refData,
@@ -305,6 +365,7 @@ function CreateAssetModal({
   onDone,
   onError,
 }: {
+  asset?: any | null
   open: boolean
   onClose: () => void
   refData: any
@@ -313,10 +374,10 @@ function CreateAssetModal({
   onError: (e: ApiError) => void
 }) {
   const [form, setForm] = useState({
-    name: '',
-    tier: 'Tier_3',
-    description: '',
-    system_owner_id: '',
+    name: asset?.name ?? '',
+    tier: asset?.tier ?? 'Tier_3',
+    description: asset?.description ?? '',
+    system_owner_id: asset?.system_owner_id ?? '',
   })
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -324,7 +385,7 @@ function CreateAssetModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="New asset"
+      title={asset ? 'Edit ' + asset.name : 'New asset'}
       description="Assets are where controls deploy and what threat models scope to."
     >
       <form
@@ -332,7 +393,9 @@ function CreateAssetModal({
         onSubmit={async (e) => {
           e.preventDefault()
           try {
-            await api.post('/assets', form)
+            const body = { ...form, system_owner_id: form.system_owner_id || null }
+            if (asset) await api.patch(`/assets/${asset.id}`, body)
+            else await api.post('/assets', body)
             onDone()
           } catch (err) {
             if (err instanceof ApiError) onError(err)

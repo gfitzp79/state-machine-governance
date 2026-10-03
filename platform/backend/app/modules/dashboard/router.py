@@ -24,6 +24,8 @@ from app.modules.control.machine import (
 )
 from app.modules.control.models import ControlDeployment, ControlObjective
 from app.modules.policy.machine import POLICY_EXCEPTION_MACHINE, POLICY_MACHINE
+from app.modules.review.machine import CONTROL_REVIEW_MACHINE
+from app.modules.review.models import ControlReview
 from app.modules.policy.models import Policy, PolicyException
 from app.modules.risk.machine import RISK_MACHINE
 from app.modules.risk.models import RISK_PHASES, Risk
@@ -40,6 +42,7 @@ def dashboard(session: DbSession, user: CurrentUser) -> dict[str, Any]:
     risks = session.execute(select(Risk)).scalars().all()
     open_risks = [r for r in risks if r.lifecycle_state != "Closed"]
     objectives = session.execute(select(ControlObjective)).scalars().all()
+    reviews = session.execute(select(ControlReview)).scalars().all()
     deployments = session.execute(select(ControlDeployment)).scalars().all()
     policies = session.execute(select(Policy)).scalars().all()
     exceptions = session.execute(select(PolicyException)).scalars().all()
@@ -113,6 +116,9 @@ def dashboard(session: DbSession, user: CurrentUser) -> dict[str, Any]:
             "tests_overdue": sum(
                 1 for d in deployments if d.next_test_due and d.next_test_due < today
             ),
+            # Repaired controls nobody has yet shown to work (REV-1 to REV-4).
+            "reviews_open": sum(1 for r in reviews if r.lifecycle_state == "Open"),
+            "reviews_overdue": sum(1 for r in reviews if r.overdue),
         },
         "policy": {
             "total": len(policies),
@@ -197,6 +203,7 @@ def machines(user: CurrentUser) -> dict[str, Any]:
         "policy_exception": POLICY_EXCEPTION_MACHINE.describe(),
         "treatment": TREATMENT_MACHINE.describe(),
         "threat_model": THREAT_MODEL_MACHINE.describe(),
+        "control_review": CONTROL_REVIEW_MACHINE.describe(),
     }
 
 

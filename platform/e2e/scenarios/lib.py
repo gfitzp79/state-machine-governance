@@ -98,6 +98,7 @@ class Run:
             "owner": "owner@example.com", "control": "control@example.com",
             "delivery": "delivery@example.com", "appsec": "appsec@example.com",
             "sysowner": "sysowner@example.com", "policy": "policy@example.com",
+            "controlanalyst": "controlanalyst@example.com",
         }.items():
             s, b = call("POST", "/auth/login", {"email": email, "password": PASSWORD})
             assert s == 200, (email, s, b)

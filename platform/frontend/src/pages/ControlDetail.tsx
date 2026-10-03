@@ -16,6 +16,8 @@ import {
   useToast,
 } from '../components/ui'
 import { CEResolution, GatePanel, InvariantList } from '../components/governance'
+import { EffectivenessReviews } from '../components/reviews'
+import { editRolesHint } from '../lib/permissions'
 import { cx, formatDate, formatDateTime, label } from '../lib/format'
 
 export default function ControlDetail() {
@@ -167,7 +169,12 @@ export default function ControlDetail() {
             title="Activities and deployments"
             subtitle="An activity is how the objective is implemented. A deployment is where it actually runs, and carries its own effectiveness rating."
             action={
-              <button className="btn-ghost btn-sm" onClick={() => setModal({ type: 'activity' })}>
+              <button
+                className="btn-ghost btn-sm"
+                disabled={!ctl.can_edit}
+                title={ctl.can_edit ? undefined : editRolesHint('control')}
+                onClick={() => setModal({ type: 'activity' })}
+              >
                 <Plus className="h-3.5 w-3.5" />
                 Activity
               </button>
@@ -196,6 +203,8 @@ export default function ControlDetail() {
                         </button>
                         <button
                           className="btn-ghost btn-sm"
+                          disabled={!ctl.can_edit}
+                          title={ctl.can_edit ? undefined : editRolesHint('control')}
                           onClick={() => setModal({ type: 'deployment', activity: a })}
                         >
                           <Plus className="h-3.5 w-3.5" />
@@ -253,6 +262,9 @@ export default function ControlDetail() {
 
       {tab === 'lifecycle' && (
         <div className="grid gap-4 lg:grid-cols-2">
+          <div className="lg:col-span-2">
+            <EffectivenessReviews objectiveId={id!} onChanged={load} />
+          </div>
           <Card
             title="Available transitions"
             subtitle="Retirement is blocked while a linked risk is above appetite and unmitigated (CINV-8)."
@@ -264,7 +276,11 @@ export default function ControlDetail() {
               reasonPrompt={(t) => t === 'Deprecated'}
             />
           </Card>
-          <Card title="Control record">
+          <Card
+            title="Control record"
+            subtitle={ctl.can_edit ? undefined : editRolesHint('control') + ' Read-only for you.'}
+          >
+            <fieldset disabled={!ctl.can_edit}>
             <dl className="divide-y">
               <Detail label="Remediation plan">
                 <textarea
@@ -314,6 +330,7 @@ export default function ControlDetail() {
                 />
               </Detail>
             </dl>
+            </fieldset>
           </Card>
         </div>
       )}
@@ -413,13 +430,14 @@ export default function ControlDetail() {
         onClose={() => setDeployment(null)}
         wide
         title={deployment ? `${deployment.reference} — ${deployment.asset_name}` : ''}
-        description="Control effectiveness is assessed here, per deployment. Only Active and Degraded deployments are assessable (DL-2)."
+        description="Control effectiveness is assessed here, per deployment. Active, Degraded and Failed deployments are assessable; a Failed one recovers only on an assessment made after it failed (DL-2, DL-4)."
       >
         {deployment && (
           <DeploymentPanel
             deployment={deployment}
             refData={ref}
             busy={busy}
+            canEdit={!!ctl?.can_edit}
             onAssess={(body) =>
               run(
                 'ce',
@@ -577,10 +595,12 @@ function DeploymentPanel({
   onAssess,
   onTest,
   onTransition,
+  canEdit,
 }: {
   deployment: any
   refData: any
   busy: string | null
+  canEdit: boolean
   onAssess: (body: any) => void
   onTest: (body: any) => void
   onTransition: (target: string, reason?: string) => void
@@ -616,7 +636,11 @@ function DeploymentPanel({
 
       <section>
         <h3 className="mb-2 text-sm font-semibold text-ink">Control effectiveness</h3>
-        {!deployment.ce_editable ? (
+        {!canEdit ? (
+          <p className="rounded-lg border bg-surface-sunken px-3 py-2.5 text-sm text-ink-muted">
+            {editRolesHint('control')} Test results below can still be recorded by testers.
+          </p>
+        ) : !deployment.ce_editable ? (
           <p className="rounded-lg border bg-surface-sunken px-3 py-2.5 text-sm text-ink-muted">
             This deployment is {label(deployment.deployment_status)}, so effectiveness is not
             assessable (DL-2

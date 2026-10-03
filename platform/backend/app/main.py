@@ -25,6 +25,8 @@ from app.modules.identity import router as identity_router
 from app.modules.policy import invariants as _policy_invariants  # noqa: F401
 from app.modules.policy import router as policy_router
 from app.modules.risk import invariants as _risk_invariants  # noqa: F401
+from app.modules.review import cascades as _review_cascades  # noqa: F401
+from app.modules.review import router as review_router
 from app.modules.risk import router as risk_router
 from app.modules.threat import invariants as _threat_invariants  # noqa: F401
 from app.modules.threat import router as threat_router
@@ -125,6 +127,7 @@ for r in (
     treatment_router.router,
     threat_router.router,
     compliance_router.router,
+    review_router.router,
     dashboard_router.router,
 ):
     app.include_router(r, prefix="/api")

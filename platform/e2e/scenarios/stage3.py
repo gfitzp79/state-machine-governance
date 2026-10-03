@@ -180,7 +180,7 @@ def s3_risk_lifecycle(r, ctx):
          step="Fortnightly check-in")
 
     # The treatment builds a new control.
-    s, obj = r.do("control", "POST", "/controls", {
+    s, obj = r.do("controlanalyst", "POST", "/controls", {
         "title": "Customer multi-factor authentication", "family": "Identity_Management",
         "control_type": "Preventive", "control_owner_id": r.uid("control"),
         "objective_statement": "Customer logins require a second factor.",
@@ -188,19 +188,19 @@ def s3_risk_lifecycle(r, ctx):
         "operating_frequency": "Continuous", "assurance_method": "Inspection", "is_key_control": True,
     }, step="Control owner creates the customer MFA control")
     ctx["mfa"] = idof(obj)
-    s, act = r.do("control", "POST", "/controls/activities", {
+    s, act = r.do("controlanalyst", "POST", "/controls/activities", {
         "objective_id": ctx["mfa"], "title": "Enforce MFA at customer login",
         "control_operator_id": r.uid("control"), "automation_level": "Semi_Automated"},
         step="MFA activity")
     ctx["mfa_act"] = idof(act)
     r.transition("control", f"/controls/activities/{ctx['mfa_act']}", "Active", step="MFA activity active")
-    s, dep = r.do("control", "POST", "/controls/deployments", {
+    s, dep = r.do("controlanalyst", "POST", "/controls/deployments", {
         "activity_id": ctx["mfa_act"], "attack_surface_id": ctx["portal"], "test_frequency": "Quarterly"},
         step="MFA deployment planned on the portal")
     ctx["mfa_dep"] = idof(dep)
     r.transition("control", f"/controls/{ctx['mfa']}", "Implementation", step="MFA objective -> Implementation")
     r.transition("control", f"/controls/deployments/{ctx['mfa_dep']}", "Active", step="MFA deployment -> Active")
-    r.do("control", "POST", f"/controls/deployments/{ctx['mfa_dep']}/ce", {
+    r.do("controlanalyst", "POST", f"/controls/deployments/{ctx['mfa_dep']}/ce", {
         "ce_rating": "CE-Medium", "ce_evidence_ref": "EVID-MFA-rollout-dashboard",
         "ce_notes": "Enrolment incomplete; step-up not yet on all flows."}, step="MFA assessed CE-Medium")
     r.transition("control", f"/controls/{ctx['mfa']}", "Operating", step="MFA objective -> Operating")

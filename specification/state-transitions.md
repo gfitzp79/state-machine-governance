@@ -1,6 +1,6 @@
 # State Transitions Reference
 
-**Version:** 2.3-template | **License:** CC BY 4.0
+**Version:** 2.4-template | **License:** CC BY 4.0
 **Source:** Derived from [Codified Rules Specification](./codified-rules.md) §4-§5 (Risk and Treatment), §9 (Controls), §13 (Policy), §19-§20 (Threat)
 **Purpose:** Complete definition of every lifecycle state machine in the platform, including valid transitions, gate preconditions, blocking rules, and cascade behaviours. Designed for implementation teams to build phase-gate enforcement at the API layer.
 
@@ -20,6 +20,7 @@
 8. [Treatment Lifecycle (6 States)](#8-treatment-lifecycle-6-states)
 9. [Requirement Assessment Lifecycle (6 States)](#9-requirement-assessment-lifecycle-6-states)
 10. [Cross-Lifecycle Cascade Rules](#10-cross-lifecycle-cascade-rules)
+11. [Control Effectiveness Review Lifecycle (3 States)](#11-control-effectiveness-review-lifecycle-3-states)
 
 ---
 
@@ -103,6 +104,7 @@
 | **Active SLAs** | Re-evaluation cadence: Critical 14d, High 30d, Moderate 60d, Moderate-Low 90d. Acceptance expiry tracking. Treatment execution SLA tracking. |
 | **Re-assessment triggers** | Control CE degradation on linked control. Acceptance expiry reached. Treatment SLA breach. External trigger (incident, regulatory change, threat intelligence). |
 | **On re-assessment** | Risk returns to Phase 2 (Preconditions) or Phase 3 (Scoring) depending on the nature of the change. Full lifecycle re-traversal with updated data. |
+| **Closure (`GATE_CLOSURE`)** | Risk Owner, CISO or Admin. Closure rationale recorded (a reason given with the transition counts); treatment decision recorded; and the reported rating at or within appetite, **or** the activity avoided. A risk above appetite is reduced, accepted formally, or avoided: it is not closed by explaining it. |
 
 ---
 
@@ -567,3 +569,32 @@ Every state transition MUST be recorded in the audit log with: entity ID, previo
 ---
 
 *This reference is released under CC BY 4.0. Adapt freely with attribution.*
+
+---
+
+## 11. Control Effectiveness Review Lifecycle (3 States)
+
+Codified rules: section 10.3 (REV-1 to REV-5).
+
+### State Machine Diagram
+
+```
+          (deployment repaired: REV-1)
+                     |
+                     v
+                   Open --GATE_REVIEW_COMPLETED--> Completed
+                     |
+                     +---GATE_REVIEW_CANCELLED---> Cancelled
+```
+
+### Transition Rules
+
+| From | To | Gate | Roles | Preconditions |
+|---|---|---|---|---|
+| (none) | Open | Opened by the engine on `deployment.repaired` | System | One open review per deployment, enforced by a partial unique index |
+| Open | Completed | `GATE_REVIEW_COMPLETED` | permissions.edit.control | REV-2: a Pass recorded after the review opened; REV-2.1: deployment Active or Degraded; REV-2.2: CE above Unvalidated with evidence |
+| Open | Cancelled | `GATE_REVIEW_CANCELLED` | permissions.edit.control, CISO | REV-5: reason recorded |
+
+Completion emits `control_review.completed`, which carries out REV-3. A
+scheduled job carries out REV-4.
+

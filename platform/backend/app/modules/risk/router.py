@@ -194,7 +194,7 @@ def update_risk(
 ) -> dict[str, Any]:
     svc = _service(session, user)
     risk = svc.get(risk_id)
-    svc.apply(risk, payload.model_dump(exclude_unset=True))
+    svc.update(risk, payload.model_dump(exclude_unset=True))
     session.commit()
     return svc.detail(risk)
 

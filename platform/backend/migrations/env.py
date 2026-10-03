@@ -28,6 +28,7 @@ from app.modules.compliance import models as _compliance  # noqa: F401
 from app.modules.control import models as _control  # noqa: F401
 from app.modules.identity import models as _identity  # noqa: F401
 from app.modules.policy import models as _policy  # noqa: F401
+from app.modules.review import models as _review  # noqa: F401
 from app.modules.risk import models as _risk  # noqa: F401
 from app.modules.threat import models as _threat  # noqa: F401
 from app.modules.treatment import models as _treatment  # noqa: F401

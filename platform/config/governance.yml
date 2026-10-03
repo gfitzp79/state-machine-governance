@@ -413,6 +413,7 @@ roles:
     - { id: Auditor,              level: 0, description: "Read-only assurance access" }
     - { id: Control_Operator,     level: 1, description: "Implements and operates controls" }
     - { id: Control_Owner,        level: 2, description: "Owns control design and effectiveness evidence" }
+    - { id: Control_Analyst,      level: 3, description: "Maintains control records and assesses their effectiveness" }
     - { id: Risk_Treatment_Owner, level: 2, description: "Accountable for treatment delivery" }
     - { id: AppSec_Engineer,      level: 2, description: "Application security engineering" }
     - { id: Risk_Analyst,         level: 3, description: "Assessment, scoring, validation, SLA tracking" }
@@ -446,6 +447,33 @@ roles:
     Low: Director
 
 # ---------------------------------------------------------------------------
+# Edit permissions
+# Specification: codified-rules section 2.5
+#
+# Who may change the content of a record. Lifecycle transitions are governed by
+# each gate's own role list, and approvals by ROLE-4; this governs everything
+# else. A role not listed can read a record, comment on it, and fire whatever
+# transitions its gates allow, but cannot change what the record says.
+#
+# [CUSTOMISE] Admin is deliberately absent. Add it to a list to give the platform
+# administrator break-glass edit rights; the audit trail records who used them.
+# ---------------------------------------------------------------------------
+permissions:
+  edit:
+    # Risk statement, tier, ownership, scope, scores, residual gate conditions,
+    # treatment decisions other than acceptance, and links to controls,
+    # treatments and policies. Raising a new risk stays open to everyone:
+    # intake is triage, and the Intake gate is where it is filtered.
+    risk: [Risk_Analyst]
+    # Control objectives, activities and deployments, CE assessments and test
+    # results. The control owner runs the control and moves it through its
+    # lifecycle; the analyst keeps the record and judges whether it works.
+    control: [Control_Analyst]
+    # Asset name, tier, description and system owner. The asset's own named
+    # system owner may also edit it, and any System_Owner may register one.
+    asset: [Control_Analyst]
+
+# ---------------------------------------------------------------------------
 # Escalation and SLA windows, in calendar days
 # Specification: codified-rules section 6, state-transitions section 8
 # ---------------------------------------------------------------------------
@@ -458,6 +486,9 @@ escalation:
   policy_remapping_days: 60
   # Risk re-assessment window after a contributing control is retired.
   control_retirement_reassessment_days: 30
+  # Days a Control Analyst has to confirm a repaired control works, by retest
+  # and CE assessment, before the review is escalated to the CISO (REV-4).
+  control_recovery_review_days: 10
 
 # ---------------------------------------------------------------------------
 # Treatment planning

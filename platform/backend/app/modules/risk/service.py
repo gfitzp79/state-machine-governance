@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from app.core.errors import Conflict, DomainError, NotFound
+from app.core.errors import Conflict, DomainError, Forbidden, NotFound
 from app.core.governance import governance
 from app.core.service import LifecycleService
 from app.engine import AuditTrail
@@ -32,6 +32,7 @@ from app.modules.treatment.models import Treatment
 class RiskService(LifecycleService[Risk]):
     model = Risk
     machine = RISK_MACHINE
+    edit_kind = "risk"
     entity_name = "risk"
     reference_prefix = "RISK"
     taxonomy = {"tier": "risk_tiers", "intake_source": "intake_sources"}
@@ -60,11 +61,31 @@ class RiskService(LifecycleService[Risk]):
         self.session.commit()
         return risk
 
+    READOUT_FIELDS = ("readout_confirmed", "readout_conducted_at", "readout_adjustment_rationale")
+
+    def update(self, risk: Risk, changes: dict[str, Any]) -> Risk:
+        """PERM-1 for the risk's content; RINV-6 for the readout.
+
+        The readout confirmation is the Risk Owner's own act, so it is recorded
+        by the risk's named owner and nobody else, analysts included. Anything
+        else in the request is an edit and needs the risk edit role.
+        """
+        readout = {k: v for k, v in changes.items() if k in self.READOUT_FIELDS}
+        if readout and self.actor_id != risk.risk_owner_id:
+            raise Forbidden(
+                "RINV-6: the readout is confirmed by this risk's own Risk Owner",
+                detail={"rule": "RINV-6", "risk_owner_id": risk.risk_owner_id},
+            )
+        if len(readout) < len(changes):
+            self.require_edit()
+        return self.apply(risk, changes)
+
     # -- scoring ----------------------------------------------------------
 
     def score_inherent(self, risk: Risk, impact: int, likelihood: int, **fields: Any) -> Risk:
         """RINV-8: refused before the preconditions gate has passed.
         OUT-5: refused once the risk has left Phase 3."""
+        self.require_edit()
         if risk.phase_number < PHASE_NUMBERS["Scoring"]:
             raise Conflict(
                 "RINV-8: scoring cannot begin until the Phase 2 preconditions gate has passed"
@@ -103,6 +124,7 @@ class RiskService(LifecycleService[Risk]):
     def score_residual(self, risk: Risk, impact: int, likelihood: int, **fields: Any) -> Risk:
         """RINV-1: refused while the residual lock is on. The lock is released only
         by the Phase 6 gate, and re-applied by any control cascade."""
+        self.require_edit()
         if risk.residual_score_locked:
             raise Conflict(
                 "RINV-1: residual scores are locked. All five conditions of "
@@ -152,6 +174,7 @@ class RiskService(LifecycleService[Risk]):
 
     def link_asset(self, risk: Risk, attack_surface_id: str) -> Risk:
         """Name an asset this risk concerns. Narrows the CE filter (RINV-14)."""
+        self.require_edit()
         from app.modules.control.models import AttackSurface
         from app.modules.risk.models import RiskAssetLink
 
@@ -187,6 +210,7 @@ class RiskService(LifecycleService[Risk]):
         a residual reduction that only the removed asset's control justified is
         refused, and the whole operation rolls back.
         """
+        self.require_edit()
         from app.modules.risk.models import RiskAssetLink
 
         link = next(
@@ -213,12 +237,16 @@ class RiskService(LifecycleService[Risk]):
     # -- treatment decision -----------------------------------------------
 
     def set_treatment_decision(self, risk: Risk, data: dict[str, Any]) -> Risk:
-        # The treatment decision is the risk decision (codified-rules 2.1:
-        # the Risk_Owner owns it). Any signed-in user could set it, including
-        # the AppSec engineer and the treatment owner. Edits elsewhere are still
-        # unguarded by role; this is the one with the most at stake.
-        self.require_role("Risk_Analyst", "Risk_Owner", "GRC_Engineer", "CISO", "Admin")
         strategy = data.get("treatment_strategy")
+        # An acceptance is an approval (ROLE-4): the approver records it, and
+        # the seniority rule below decides who may. Every other decision is an
+        # edit to the risk (PERM-1).
+        if strategy == "Accept":
+            from app.core.governance import governance as _g
+
+            self.require_role("Risk_Owner", "Risk_Stakeholder", "CISO", *_g.edit_permissions["risk"])
+        else:
+            self.require_edit()
         rating = risk.inherent_rating
 
         if strategy == "Accept":
@@ -324,6 +352,7 @@ class RiskService(LifecycleService[Risk]):
     # -- links ------------------------------------------------------------
 
     def link_control(self, risk: Risk, objective_id: str) -> RiskControlLink:
+        self.require_edit()
         objective = self.session.get(ControlObjective, objective_id)
         if objective is None:
             raise NotFound("control objective " + objective_id + " not found")
@@ -363,6 +392,7 @@ class RiskService(LifecycleService[Risk]):
         return link
 
     def unlink_control(self, risk: Risk, link_id: str) -> None:
+        self.require_edit()
         link = self.session.get(RiskControlLink, link_id)
         if link is None or link.risk_id != risk.id:
             raise NotFound("link not found on this risk")
@@ -379,6 +409,7 @@ class RiskService(LifecycleService[Risk]):
         self.session.refresh(risk)
 
     def link_treatment(self, risk: Risk, treatment_id: str, is_primary: bool = False):
+        self.require_edit()
         treatment = self.session.get(Treatment, treatment_id)
         if treatment is None:
             raise NotFound("treatment " + treatment_id + " not found")
@@ -404,6 +435,7 @@ class RiskService(LifecycleService[Risk]):
         return link
 
     def link_policy(self, risk: Risk, policy_id: str):
+        self.require_edit()
         existing = (
             self.session.query(RiskPolicyLink)
             .filter(RiskPolicyLink.risk_id == risk.id, RiskPolicyLink.policy_id == policy_id)
@@ -505,6 +537,7 @@ class RiskService(LifecycleService[Risk]):
         would have refused the same risk because no treatment was complete.
         Two doors to one score have to check the same things.
         """
+        self.require_edit()
         if risk.lifecycle_state != "Evidence_Residual":
             raise Conflict("RINV-1: the residual is unlocked only in Evidence_Residual")
         transition = RISK_MACHINE.lookup("Evidence_Residual", "Monitoring")
@@ -598,6 +631,8 @@ class RiskService(LifecycleService[Risk]):
             "evidence_ref": risk.evidence_ref,
             "readout_conducted_at": risk.readout_conducted_at,
             "readout_adjustment_rationale": risk.readout_adjustment_rationale,
+            # PERM-1, so the interface can disable what the API would refuse.
+            "can_edit": self.can_edit(),
             "scope_assets": [
                 {"id": l.attack_surface_id, "name": getattr(l.surface, "name", None)}
                 for l in risk.asset_links

@@ -120,6 +120,24 @@ def _treatment_resolved_for_closure(risk: Risk, _ctx: TransitionContext) -> bool
     return risk.treatment_strategy in ("Accept", "Mitigate", "Transfer", "Avoid")
 
 
+def _closable_against_appetite(risk: Risk, _ctx: TransitionContext) -> bool:
+    """GATE_CLOSURE.3: a risk closes when its exposure is acceptable, not when
+    someone explains it away.
+
+    Closing used to need a sentence and any treatment decision, so a 15 High
+    risk above appetite closed with one line. It now closes only when its
+    reported rating is at or within appetite, or when the exposure no longer
+    exists because the activity was avoided. Above appetite, the options are the
+    ones the framework already provides: reduce it, accept it formally (it then
+    stays monitored until the acceptance runs out), or avoid it.
+    """
+    from app.engine.scoring import ScoringEngine
+
+    if risk.treatment_strategy == "Avoid":
+        return True
+    return not ScoringEngine.is_above_appetite(risk.reported_rating)
+
+
 # -- the machine -----------------------------------------------------------
 
 RISK_MACHINE = StateMachine(
@@ -377,6 +395,13 @@ RISK_MACHINE = StateMachine(
                     "Treatment decision resolved",
                     _treatment_resolved_for_closure,
                     "A risk cannot close without a recorded treatment decision.",
+                ),
+                Precondition(
+                    "GATE_CLOSURE.3",
+                    "Exposure within appetite, or avoided",
+                    _closable_against_appetite,
+                    "A risk above appetite is not closed by explaining it. Reduce it and "
+                    "re-score, accept it formally, or avoid the activity.",
                 ),
             ),
             cascades=("risk.closed",),

@@ -34,11 +34,18 @@ def s1_asset_and_control():
     }, step="System owner registers the portal as a Tier 1 asset")
     ctx["portal"] = idof(asset)
 
+    r.refused("appsec", "PATCH", f"/assets/{ctx['portal']}", {"tier": "Tier_2"},
+              "Someone else cannot edit the asset (PERM-1)", "PERM-1")
+    r.do("sysowner", "PATCH", f"/assets/{ctx['portal']}",
+         {"description": "Internet-facing portal for card management, payments and statements."},
+         step="Its system owner edits the asset")
     s, b = r.do("admin", "POST", f"/compliance/assets/{ctx['portal']}/scopes",
                 {"compliance_scopes": ["NIST-CSF-2.0"]},
                 step="Portal placed in NIST CSF scope")
 
-    s, obj = r.do("control", "POST", "/controls", {
+    r.refused("control", "POST", "/controls", {"title": "Owner-made control"},
+              "The control owner cannot create a control record (PERM-1)", "PERM-1")
+    s, obj = r.do("controlanalyst", "POST", "/controls", {
         "title": "Web application firewall on customer-facing applications",
         "description": "Managed WAF with OWASP core rule set and bot management.",
         "family": "Application_Security", "control_type": "Preventive",
@@ -55,7 +62,7 @@ def s1_asset_and_control():
               {"target": "Implementation"},
               "Design -> Implementation refused with no activity or deployment plan", "OL-1")
 
-    s, act = r.do("control", "POST", "/controls/activities", {
+    s, act = r.do("controlanalyst", "POST", "/controls/activities", {
         "objective_id": ctx["waf"], "title": "Operate WAF policy on the portal edge",
         "control_operator_id": r.uid("control"), "automation_level": "Automated",
         "operating_frequency": "Continuous", "procedure_ref": "RUN-WAF-001",
@@ -64,7 +71,7 @@ def s1_asset_and_control():
     ctx["waf_act"] = idof(act)
     r.check("Activity starts in Draft", state_of(act) == "Draft", str(state_of(act)))
 
-    s, dep = r.do("control", "POST", "/controls/deployments", {
+    s, dep = r.do("controlanalyst", "POST", "/controls/deployments", {
         "activity_id": ctx["waf_act"], "attack_surface_id": ctx["portal"],
         "test_frequency": "Quarterly",
     }, step="Deployment planned on the portal")
@@ -73,7 +80,7 @@ def s1_asset_and_control():
         r.note("Deployment against a Draft activity", msg(dep))
         r.transition("control", f"/controls/activities/{ctx['waf_act']}", "Active",
                      step="Activity activated first")
-        s, dep = r.do("control", "POST", "/controls/deployments", {
+        s, dep = r.do("controlanalyst", "POST", "/controls/deployments", {
             "activity_id": ctx["waf_act"], "attack_surface_id": ctx["portal"],
             "test_frequency": "Quarterly"}, step="Deployment planned after activation")
         ctx["waf_dep"] = idof(dep)
@@ -92,10 +99,10 @@ def s1_asset_and_control():
     r.transition("control", f"/controls/deployments/{ctx['waf_dep']}", "Active",
                  step="Deployment Planned -> Active")
 
-    r.refused("control", "POST", f"/controls/deployments/{ctx['waf_dep']}/ce",
+    r.refused("controlanalyst", "POST", f"/controls/deployments/{ctx['waf_dep']}/ce",
               {"ce_rating": "CE-High"}, "CE-High without evidence is refused", "CINV-1")
 
-    r.do("control", "POST", f"/controls/deployments/{ctx['waf_dep']}/ce", {
+    r.do("controlanalyst", "POST", f"/controls/deployments/{ctx['waf_dep']}/ce", {
         "ce_rating": "CE-High", "ce_evidence_ref": "EVID-WAF-2026-Q4-config-export",
         "ce_notes": "Rule set and blocking mode verified in production.",
     }, step="CE-High assessed with evidence")

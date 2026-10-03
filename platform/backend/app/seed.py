@@ -150,6 +150,13 @@ def seed(session: Session) -> None:
         session, "policy@example.com", "Aoife Byrne", "Head of Governance", "Director",
         ["Policy_Owner"],
     )
+    # The only role that may change a control record, assess its effectiveness
+    # or record its tests (permissions.edit.control). The owner runs the control;
+    # the analyst judges whether it works.
+    _user(
+        session, "controlanalyst@example.com", "Nadia Haddad", "Control Assurance Analyst",
+        "Manager", ["Control_Analyst"],
+    )
     session.flush()
 
     # -- assets ------------------------------------------------------------

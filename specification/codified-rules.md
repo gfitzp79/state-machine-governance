@@ -1,6 +1,6 @@
 # GRC Codified Rules Engine: Unified Specification Template
 
-**Version:** 2.2-template | **License:** CC BY 4.0
+**Version:** 2.3-template | **License:** CC BY 4.0
 **Purpose:** Machine-parseable rule set for governance, risk, and compliance platforms. Covers the risk management lifecycle, control management hierarchy, and policy governance layer as a single integrated specification. Designed for organisations to adapt to their own frameworks, appetite statements, and regulatory obligations.
 
 > **How to use this document:** Replace all `[ORGANISATION]` placeholders and review every `[CUSTOMISE]` block against your own governance framework, regulatory requirements, and risk appetite. Parameters marked `RECOMMENDED` reflect industry best practice from ISO 27005, NIST RMF, NIST CSF, and SOC 2/COSO. SLA defaults are aligned to regulated financial services expectations. Adjust thresholds to match your operating environment.
@@ -157,6 +157,35 @@ who made a decision, and the only evidence that they made it is that they were
 the one who recorded it. A policy approval or a risk acceptance that any user
 can attribute to a CISO or a VP is an attestation about somebody else, which is
 the shape this specification exists to remove.
+
+### §2.5 Edit Permissions (MANDATORY)
+
+```
+RULE PERM-1: a record's content is changed only by the roles configured for it
+  [CUSTOMISE] RECOMMENDED:
+  risk     -> Risk_Analyst
+  control  -> Control_Analyst          # objectives, activities, deployments, CE
+  asset    -> Control_Analyst, and the asset's own named System_Owner
+RULE PERM-2: transitions are governed by each gate's own roles (section 1.x),
+             and approvals by ROLE-4. Neither is an edit
+RULE PERM-3: some acts belong to a named person, not a role, and are theirs
+             whatever their role: the Risk Owner confirms the readout (RINV-6),
+             the approver records the acceptance (ROLE-4)
+RULE PERM-4: raising a risk is open to everyone. Intake is triage, and the
+             Intake gate is where it is filtered
+RULE PERM-5: a control test result is evidence about a control, not an edit to
+             it. Independent testers (internal audit, AppSec) record results on
+             controls they may not edit
+```
+
+**Why edits need their own rule.** Roles used to gate transitions and nothing
+else. Anyone signed in could rewrite a risk's statement, change its owners, set
+its scores or link controls to it, and the gates would then evaluate whatever
+had been written. A gate that checks the record is only as good as the rule
+about who may write the record. PERM-1 keeps the analyst who maintains a record
+separate from the people who act on it: the control owner runs a control and
+moves it through its lifecycle, and the Control Analyst keeps its record and
+judges whether it works.
 
 **Why this is stated separately from §2.3.** Separation rules say who may *not*
 hold two roles at once. Ownership by severity says how senior an owner must be.
@@ -799,6 +828,42 @@ CE_EXPIRY:
   Continuous: 2 months | Monthly: 6 months | Quarterly: 12 months | Annual: 24 months
 EXPIRED_CE → auto-downgrade to CE-Unvalidated; no manual override
 ```
+
+### §10.3 Effectiveness Review After Repair (MANDATORY)
+
+```
+CONTROL_REVIEW_STATES: Open, Completed, Cancelled
+
+RULE REV-1: a deployment repaired back to Active (Degraded -> Active,
+            Failed -> Active) opens exactly one effectiveness review, due
+            within [CUSTOMISE: 10] days, assigned to the roles in PERM-1 control
+RULE REV-2: a review completes only on a passing test recorded AFTER it opened,
+            with the deployment live and rated above CE-Unvalidated with
+            evidence. The remediation assessment that let it return (DL-4) is
+            not a test
+RULE REV-3: completion prompts everything that depends on the control to
+            re-assess, in the terms of its own lifecycle:
+              linked risks in scope       -> flagged Control_Recovered; analyst
+                                             and owner notified
+              threat scenarios it mitigates, still open
+                                          -> AppSec partner and system owner
+                                             notified to re-confirm
+              requirements it evidences, in Gap
+                                          -> requirement owner notified
+            Nothing is restored on their behalf
+RULE REV-4: an open review past its due date is escalated to the CISO, once
+RULE REV-5: a review is cancelled with a reason, for instance when the control
+            fails again; a new one opens on the next repair
+```
+
+**Why a repair is not a recovery.** Before REV-1, a control coming back was
+silent. The risk it held up stayed at its inherent score, the scenario it
+mitigated stayed open, and the requirement it evidenced stayed in Gap, with
+nothing telling anyone to look. Restoring them automatically would have been
+worse: a control repaired is not a control shown to work, and the residual,
+the mitigation and the coverage were each earned by evidence the failure had
+contradicted. The retest is what earns the prompt, and the prompt is all the
+engine does.
 
 ---
 
