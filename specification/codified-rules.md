@@ -1,6 +1,6 @@
 # GRC Codified Rules Engine: Unified Specification Template
 
-**Version:** 2.4-template | **License:** CC BY 4.0
+**Version:** 2.5-template | **License:** CC BY 4.0
 **Purpose:** Machine-parseable rule set for governance, risk, and compliance platforms. Covers the risk management lifecycle, control management hierarchy, and policy governance layer as a single integrated specification. Designed for organisations to adapt to their own frameworks, appetite statements, and regulatory obligations.
 
 > **How to use this document:** Replace all `[ORGANISATION]` placeholders and review every `[CUSTOMISE]` block against your own governance framework, regulatory requirements, and risk appetite. Parameters marked `RECOMMENDED` reflect industry best practice from ISO 27005, NIST RMF, NIST CSF, and SOC 2/COSO. SLA defaults are aligned to regulated financial services expectations. Adjust thresholds to match your operating environment.
@@ -222,6 +222,39 @@ that trusts the field inherits the assertion.
 Enforced by `RINV-15`, `RINV-16`, `CINV-13`, `CINV-14`, `CINV-15`, `PINV-10`
 and `TINV-12`: see the [Invariants
 Catalogue](./invariants-catalogue.md#risk-management-invariants-rinv).
+
+### §2.6 People Joining, Moving and Leaving (MANDATORY)
+
+```
+RULE USR-1: users are created, changed and deactivated by
+            [CUSTOMISE: Admin, CISO]. The Admin role itself is granted and
+            removed only by an Admin
+RULE USR-2: nobody changes their own roles, or deactivates or deletes their
+            own account
+RULE USR-3: a role is not removed, and an account is not deactivated, while
+            the person is named on an open record in a field that needs it
+            (ROLE-1). The refusal lists the records; they are reassigned first.
+            A record in a terminal state holds nobody in post
+RULE USR-4: deactivation records a reason and ends access at once: sign-in
+            is refused and sessions already open stop working. The person
+            stays on every record they touched, and is no longer offered as
+            an owner. Reactivation restores access
+RULE USR-5: an account is deleted only if it has left no trace: it never
+            acted, and no record or audit entry names it. Anyone else is
+            deactivated, because deleting them would erase who did what
+RULE USR-6: the last active Admin keeps the role and stays active
+RULE USR-7: every change to an account is audited. A password is stored
+            only as its hash and never reaches the audit trail
+```
+
+**Why leaving needs a rule.** Owner fields name people, and the invariants
+check those people hold the role the field implies. Taking a role from someone
+who owns open risks does not fail at the time: it fails on the next write to
+each of those risks, when RINV-15 finds an owner without the role, and the
+person trying to move the risk forward is not the one who caused it. A leaver
+deactivated while still named as owner is quieter still: the record asserts an
+accountability nobody can exercise. USR-3 moves the failure to the moment of
+the change, where the administrator can see it and reassign.
 
 ---
 

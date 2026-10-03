@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import get_session
-from app.core.errors import Forbidden
+from app.core.errors import NotAuthenticated
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -62,7 +62,7 @@ def decode_token(token: str) -> dict[str, Any]:
             options={"require": ["exp", "sub"]},
         )
     except InvalidTokenError as exc:
-        raise Forbidden("invalid or expired token") from exc
+        raise NotAuthenticated("invalid or expired token") from exc
 
 
 def get_current_user(
@@ -72,11 +72,11 @@ def get_current_user(
     from app.modules.identity.models import User
 
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise Forbidden("authentication required")
+        raise NotAuthenticated("authentication required")
     claims = decode_token(authorization.split(" ", 1)[1])
     user = session.get(User, claims.get("sub"))
     if user is None or not user.is_active:
-        raise Forbidden("user not found or deactivated")
+        raise NotAuthenticated("user not found or deactivated")
     return user
 
 

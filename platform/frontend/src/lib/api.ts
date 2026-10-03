@@ -117,7 +117,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   if (!res.ok) {
-    if (res.status === 403 && getToken()) {
+    // Sign out only when the session itself is gone. A refusal of something
+    // this user may not do is also a 403, and is not a reason to lose their work.
+    if (res.status === 403 && parsed.code === 'not_authenticated' && getToken()) {
       clearSession()
       window.location.hash = '#/login'
     }

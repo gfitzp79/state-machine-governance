@@ -1564,6 +1564,126 @@ def main() -> int:
         [e["event"] for e in casc["events"]],
     )
 
+    section("USR: a person joins, changes role, leaves, and a mistaken account is removed")
+    admin = login("admin@example.com")
+    _, admin_me = call("GET", "/auth/me", token=admin)
+    status, body = call("POST", "/users", {"email": "x@example.com", "full_name": "Nope",
+                                           "password": "longenough1", "roles": []}, analyst)
+    check("USR-1: an analyst cannot create users", status == 403 and "USR-1" in body.get("message", ""),
+          (status, body))
+    check("a permission refusal is not a sign-out (code forbidden, not not_authenticated)",
+          body.get("code") == "forbidden", body.get("code"))
+
+    newcomer = {"email": "Sam.Newhire@Example.com", "full_name": "Sam Newhire",
+                "password": "first-pass-123", "job_title": "Head of Payments Risk",
+                "seniority": "Director", "roles": ["Risk_Owner"]}
+    status, sam = call("POST", "/users", newcomer, admin)
+    check("an Admin creates a user", status == 201, (status, sam))
+    check("the email is stored lower-case", sam.get("email") == "sam.newhire@example.com", sam.get("email"))
+    status, body = call("POST", "/users", dict(newcomer, email="SAM.NEWHIRE@example.com"), admin)
+    check("the same email in another case is a duplicate", status == 409, (status, body))
+    status, body = call("POST", "/users", dict(newcomer, email="other@example.com", roles=["Not_A_Role"]), admin)
+    check("an unknown role is refused", status == 409 and "Not_A_Role" in body.get("message", ""), body)
+    status, body = call("POST", "/users", dict(newcomer, email="other@example.com", seniority="Overlord"), admin)
+    check("an unknown seniority is refused", status == 409, (status, body))
+    status, body = call("POST", "/users", dict(newcomer, email="other@example.com", roles=["Admin"]), ciso)
+    check("USR-1: only an Admin grants the Admin role", status == 403 and "USR-1" in body.get("message", ""),
+          (status, body))
+
+    status, body = call("POST", "/auth/login", {"email": "SAM.NEWHIRE@example.com", "password": "first-pass-123"})
+    check("the new user signs in, whatever the case of their email", status == 200, (status, body))
+    sam_token = body.get("token")
+    _, owners = call("GET", "/users?role=Risk_Owner", token=analyst)
+    check("the new Risk Owner is offered by the owner picker", sam["id"] in [u["id"] for u in owners])
+
+    status, body = call("PATCH", "/users/" + sam["id"], {"job_title": "Director, Payments Risk",
+                                                         "roles": ["Risk_Owner", "Risk_Stakeholder"]}, admin)
+    check("an Admin edits a user's title and roles", status == 200
+          and sorted(body.get("roles", [])) == ["Risk_Owner", "Risk_Stakeholder"], (status, body))
+    _, me_now = call("GET", "/auth/me", token=sam_token)
+    check("a role change applies to a session already open", "Risk_Stakeholder" in me_now.get("roles", []), me_now)
+    status, body = call("PATCH", "/users/" + sam["id"], {"email": "sneaky@example.com"}, admin)
+    check("fields the edit does not support are refused, not ignored", status == 422, status)
+    status, body = call("PATCH", "/users/" + admin_me["id"], {"roles": ["Admin"]}, admin)
+    check("USR-2: nobody changes their own roles", status == 403 and "USR-2" in body.get("message", ""),
+          (status, body))
+
+    _, risks_now = call("GET", "/risks", token=analyst)
+    _, target = call("GET", "/risks/" + find(risks_now, "RISK-005")["id"], token=analyst)
+    original_owner = target["risk_owner_id"]
+    status, body = call("PATCH", "/risks/" + target["id"], {"risk_owner_id": sam["id"]}, analyst)
+    check("the new user is named owner of an open risk", status == 200, (status, body))
+    status, detail = call("GET", "/users/" + sam["id"], token=admin)
+    check("their account lists what they are accountable for",
+          any(r["reference"] == "RISK-005" and r["field"] == "risk_owner_id" for r in detail.get("accountable_for", [])),
+          detail.get("accountable_for"))
+    status, body = call("PATCH", "/users/" + sam["id"], {"roles": ["Risk_Stakeholder"]}, admin)
+    check("USR-3: the role an open record needs cannot be removed", status == 409
+          and "USR-3" in body.get("message", "")
+          and any(r["reference"] == "RISK-005" for r in (body.get("detail") or {}).get("records", [])),
+          (status, body))
+    status, body = call("POST", "/users/" + sam["id"] + "/deactivate", {"reason": "Left the organisation"}, admin)
+    check("USR-3: someone named on an open record cannot be deactivated",
+          status == 409 and "USR-3" in body.get("message", ""), (status, body))
+    status, body = call("POST", "/users/" + sam["id"] + "/deactivate", {"reason": ""}, admin)
+    check("USR-4: a deactivation needs a reason", status == 422, status)
+
+    status, body = call("PATCH", "/risks/" + target["id"], {"risk_owner_id": original_owner}, analyst)
+    check("the risk is reassigned to its previous owner", status == 200, (status, body))
+    status, body = call("PATCH", "/users/" + sam["id"], {"roles": ["Risk_Stakeholder"]}, admin)
+    check("with nothing open needing it, the role can be removed", status == 200, (status, body))
+    status, body = call("POST", "/users/" + sam["id"] + "/deactivate", {"reason": "Left the organisation"}, ciso)
+    check("a CISO deactivates the leaver", status == 200 and body.get("is_active") is False, (status, body))
+
+    status, body = call("POST", "/auth/login", {"email": "sam.newhire@example.com", "password": "first-pass-123"})
+    check("USR-4: a deactivated account cannot sign in", status == 403, (status, body))
+    status, body = call("GET", "/auth/me", token=sam_token)
+    check("USR-4: and a session it already held stops working",
+          status == 403 and body.get("code") == "not_authenticated", (status, body))
+    _, active = call("GET", "/users", token=analyst)
+    check("a deactivated person is not offered in pickers", sam["id"] not in [u["id"] for u in active])
+    _, everyone = call("GET", "/users?active_only=false", token=admin)
+    check("but they remain in the directory, marked inactive",
+          any(u["id"] == sam["id"] and u["is_active"] is False for u in everyone))
+    status, body = call("DELETE", "/users/" + sam["id"], token=admin)
+    check("USR-5: someone named in the record's history cannot be deleted",
+          status == 409 and "USR-5" in body.get("message", ""), (status, body))
+
+    status, body = call("POST", "/users/" + sam["id"] + "/reactivate", token=admin)
+    check("an Admin reactivates the account", status == 200 and body.get("is_active") is True, (status, body))
+    status, _ = call("POST", "/users/" + sam["id"] + "/password", {"password": "second-pass-456"}, admin)
+    check("an Admin resets the password", status == 200, status)
+    status, _ = call("POST", "/auth/login", {"email": "sam.newhire@example.com", "password": "first-pass-123"})
+    check("the old password stops working", status == 403, status)
+    status, _ = call("POST", "/auth/login", {"email": "sam.newhire@example.com", "password": "second-pass-456"})
+    check("the new password works", status == 200, status)
+
+    status, typo = call("POST", "/users", {"email": "jhon.smiht@example.com", "full_name": "Jhon Smiht",
+                                           "password": "typo-pass-789", "roles": ["Auditor"]}, admin)
+    check("an account created by mistake", status == 201, (status, typo))
+    _, typo_detail = call("GET", "/users/" + typo["id"], token=admin)
+    check("an account with no history is deletable", typo_detail.get("deletable") is True, typo_detail)
+    status, body = call("DELETE", "/users/" + typo["id"], token=admin)
+    check("USR-5: it is deleted", status == 200, (status, body))
+    status, _ = call("GET", "/users/" + typo["id"], token=admin)
+    check("and is gone", status == 404, status)
+    _, user_audit = call("GET", "/audit?entity_type=user&entity_id=" + typo["id"], token=admin)
+    check("USR-7: its creation and deletion stay in the audit trail",
+          {"USER_CREATED", "USER_DELETED"} <= {a["action"] for a in user_audit}, user_audit)
+    _, sam_audit = call("GET", "/audit?entity_type=user&entity_id=" + sam["id"], token=admin)
+    check("USR-7: every change to the leaver's account is audited",
+          {"USER_CREATED", "USER_UPDATED", "USER_DEACTIVATED", "USER_REACTIVATED", "PASSWORD_RESET"}
+          <= {a["action"] for a in sam_audit}, sorted({a["action"] for a in sam_audit}))
+    check("the password never reaches the audit trail",
+          "second-pass-456" not in json.dumps(sam_audit) and "first-pass-123" not in json.dumps(sam_audit))
+
+    status, body = call("POST", "/users/" + admin_me["id"] + "/deactivate", {"reason": "testing"}, ciso)
+    check("USR-6: the last active Admin cannot be deactivated",
+          status == 409 and "USR-6" in body.get("message", ""), (status, body))
+    status, body = call("DELETE", "/users/" + admin_me["id"], token=admin)
+    check("USR-2: nobody deletes their own account", status == 403 and "USR-2" in body.get("message", ""),
+          (status, body))
+
     section("Audit trail captured the whole run")
     status, audit = call("GET", "/audit?limit=500", token=ciso)
     actions = {a["action"] for a in audit}

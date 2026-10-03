@@ -22,6 +22,8 @@ import ThreatModelDetail from './pages/ThreatModelDetail'
 import Engine from './pages/Engine'
 import Audit from './pages/Audit'
 import Notifications from './pages/Notifications'
+import Settings from './pages/Settings'
+import Users from './pages/Users'
 
 function RequireAuth() {
   return getToken() ? <Outlet /> : <Navigate to="/login" replace />
@@ -50,6 +52,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <Route path="engine" element={<Engine />} />
               <Route path="audit" element={<Audit />} />
               <Route path="notifications" element={<Notifications />} />
+              <Route path="users" element={<Users />} />
+              <Route path="settings" element={<Settings />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
