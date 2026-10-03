@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] - Tested the way a business uses it
+
 ### Changed: framework, what running the platform taught the specification
 
 The platform changes below were made code-first, with the rule written into
@@ -460,6 +464,7 @@ changes needed to describe what it actually does.
   Permissions-Policy, and `server_tokens off`.
 - Both containers run unprivileged.
 
-[Unreleased]: https://github.com/gfitzp79/state-machine-governance/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/gfitzp79/state-machine-governance/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/gfitzp79/state-machine-governance/releases/tag/v0.3.0
 [0.2.0]: https://github.com/gfitzp79/state-machine-governance/releases/tag/v0.2.0
 [0.1.0]: https://github.com/gfitzp79/state-machine-governance/releases/tag/v0.1.0
